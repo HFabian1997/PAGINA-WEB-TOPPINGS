@@ -582,9 +582,10 @@
 </template>
 
 <template id="tpl-gallery-item">
-  <div class="gallery-admin-item">
+  <div class="gallery-admin-item" data-sort-item>
     <img class="preview" data-role="preview">
     <label>Descripción <input type="text" data-role="alt"></label>
+    <span class="image-list-grip" data-role="grip" title="Mantené presionado y arrastrá para mover">⠿ arrastrar</span>
     <button class="btn-remove" data-role="remove" title="Eliminar foto" aria-label="Eliminar foto">&times;</button>
   </div>
 </template>

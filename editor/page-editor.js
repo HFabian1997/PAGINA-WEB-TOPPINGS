@@ -365,36 +365,33 @@
     return m ? parseFloat(m[1]) : 1;
   }
 
-  /** El propio elemento, o cualquier ancestro suyo, es position:fixed —
-   *  cubre botones flotantes cuyo contenedor (.fab-stack, etc.) es el
-   *  fixed y el botón en sí es position:static/relative dentro de él. */
-  function hasFixedAncestor(el) {
-    var node = el;
-    while (node && node !== document.documentElement) {
-      if (getComputedStyle(node).position === "fixed") return true;
-      node = node.parentElement;
-    }
-    return false;
-  }
+  /* Antes cada elemento solo se podía mover dentro de la caja de su padre —
+     en la práctica eso significaba que casi nada se movía: un título ocupa
+     todo el ancho de su contenedor, así que el margen para moverlo era cero.
+     Ahora el límite es la PANTALLA: se puede llevar cualquier bloque a
+     donde sea, con la única condición de que no se salga de vista.
+
+     El límite sigue existiendo por dos motivos: el `overflow-x: clip` del
+     body recorta cualquier cosa que pase del ancho de la pantalla (quedaría
+     invisible), y un elemento arrastrado fuera de vista ya no se podría
+     volver a agarrar para devolverlo. */
+  var KEEP_VISIBLE_PX = 48;
 
   function clampDelta(el, rectAtStart, dx, dy) {
-    var isFixed = hasFixedAncestor(el);
-    var bounds;
-    if (isFixed) {
-      bounds = { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight };
-    } else {
-      var parent = el.parentElement || document.body;
-      bounds = parent.getBoundingClientRect();
-    }
-    var minDx = bounds.left - rectAtStart.left;
-    var maxDx = bounds.right - rectAtStart.right;
-    var minDy = bounds.top - rectAtStart.top;
-    var maxDy = bounds.bottom - rectAtStart.bottom;
-    if (minDx > maxDx) { minDx = maxDx = (minDx + maxDx) / 2; }
-    if (minDy > maxDy) { minDy = maxDy = (minDy + maxDy) / 2; }
+    var w = rectAtStart.width || 1;
+    var h = rectAtStart.height || 1;
+    // cuánto del elemento debe seguir dentro de la pantalla
+    var keepX = Math.min(KEEP_VISIBLE_PX, w);
+    var keepY = Math.min(KEEP_VISIBLE_PX, h);
+
+    var minDx = -rectAtStart.right + keepX;
+    var maxDx = window.innerWidth - rectAtStart.left - keepX;
+    var minDy = -rectAtStart.bottom + keepY;
+    var maxDy = window.innerHeight - rectAtStart.top - keepY;
+
     return {
-      dx: Math.max(minDx, Math.min(maxDx, dx)),
-      dy: Math.max(minDy, Math.min(maxDy, dy))
+      dx: Math.round(Math.max(minDx, Math.min(maxDx, dx))),
+      dy: Math.round(Math.max(minDy, Math.min(maxDy, dy)))
     };
   }
 

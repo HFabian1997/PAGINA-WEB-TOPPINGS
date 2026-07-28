@@ -313,6 +313,17 @@
     var list = $("[data-gallery-list]");
     if (!list) return;
     var items = state.content.galeria || (state.content.galeria = []);
+
+    if (!list.__sortable) {
+      list.__sortable = true;
+      makeSortable(list, function (from, to) {
+        var arr = state.content.galeria;
+        arr.splice(to, 0, arr.splice(from, 1)[0]);
+        markDirty();
+        renderGallery();
+      });
+    }
+
     list.innerHTML = "";
     items.forEach(function (item, idx) {
       var node = $("#tpl-gallery-item").content.cloneNode(true);
@@ -634,7 +645,7 @@
     var item = null;      // el elemento que se está arrastrando
     var placeholder = null;
     var dragging = false;
-    var startX = 0, startY = 0, grabX = 0, grabY = 0, fromIdx = 0;
+    var startX = 0, startY = 0, grabX = 0, grabY = 0, fromIdx = 0, isGrid = false;
 
     function itemsOf() {
       return Array.prototype.filter.call(list.children, function (c) {
@@ -642,10 +653,25 @@
       });
     }
 
+    /* ¿La lista es una cuadrícula (fotos, varias por renglón) o una columna
+       (horario, premios de la ruleta)? De eso depende si soltar "a la
+       derecha" o "más abajo" de otro elemento significa ponerlo después.
+       Se decide mirando si hay dos elementos que compartan renglón. */
+    function listIsGrid() {
+      var all = itemsOf();
+      for (var i = 1; i < all.length; i++) {
+        var prev = all[i - 1].getBoundingClientRect();
+        var cur = all[i].getBoundingClientRect();
+        if (Math.abs(cur.top - prev.top) < 4) return true;
+      }
+      return false;
+    }
+
     function begin() {
       dragging = true;
       var r = item.getBoundingClientRect();
       fromIdx = itemsOf().indexOf(item);
+      isGrid = listIsGrid();
 
       placeholder = document.createElement("div");
       placeholder.className = "sort-placeholder";
@@ -676,7 +702,10 @@
         if (others[i] === item) continue;
         var r = others[i].getBoundingClientRect();
         if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
-          var after = (x - r.left) > r.width / 2;
+          // en cuadrícula manda el eje horizontal; en columna, el vertical
+          var after = isGrid
+            ? (x - r.left) > r.width / 2
+            : (y - r.top) > r.height / 2;
           list.insertBefore(placeholder, after ? others[i].nextSibling : others[i]);
           return;
         }
@@ -713,7 +742,10 @@
       if (e.button != null && e.button !== 0) return;
       var target = e.target.closest("[data-sort-item]");
       if (!target || !list.contains(target)) return;
-      if (e.target.closest("button")) return;   // no pisar ↑ ↓ ×
+      // No pisar los controles: ↑ ↓ ×, ni los campos de texto (en la galería
+      // cada foto tiene su descripción — mantener el dedo para escribir no
+      // puede convertirse en un arrastre).
+      if (e.target.closest("button, input, textarea, select, a")) return;
 
       item = target;
       startX = e.clientX;
@@ -846,10 +878,21 @@
       var container = parts.length ? getPath(state.content, parts.join(".")) : state.content;
       var items = container[arrKey] || (container[arrKey] = []);
 
+      if (!list.__sortable) {
+        list.__sortable = true;
+        makeSortable(list, function (from, to) {
+          var arr = (parts.length ? getPath(state.content, parts.join(".")) : state.content)[arrKey];
+          arr.splice(to, 0, arr.splice(from, 1)[0]);
+          markDirty();
+          renderRepeatLists();
+        });
+      }
+
       list.innerHTML = "";
       items.forEach(function (item, idx) {
         var node = $("#tpl-repeat-item").content.cloneNode(true);
         var wrap = node.querySelector(".repeat-item");
+        wrap.setAttribute("data-sort-item", "");
         fields.forEach(function (f, i) {
           var label = document.createElement("label");
           if (fields.length > 2 || f === "description") label.className = "full";
@@ -877,6 +920,12 @@
           renderRepeatLists();
         };
         wrap.appendChild(removeBtn);
+
+        var grip = document.createElement("span");
+        grip.className = "image-list-grip";
+        grip.textContent = "⠿ arrastrar";
+        wrap.appendChild(grip);
+
         list.appendChild(node);
       });
     });
@@ -1399,8 +1448,28 @@
   function renderRuletaPrizes() {
     var list = $("[data-ruleta-prizes-list]");
     if (!list) return;
+
+    if (!list.__sortable) {
+      list.__sortable = true;
+      makeSortable(list, function (from, to) {
+        // la ruleta no tiene marca de "cambios sin guardar": edita su propio
+        // estado y se guarda con su botón aparte
+        var arr = ruletaState.prizes;
+        arr.splice(to, 0, arr.splice(from, 1)[0]);
+        renderRuletaPrizes();
+      });
+    }
+
     list.innerHTML = "";
-    ruletaState.prizes.forEach(function (p, idx) { list.appendChild(buildRuletaPrizeRow(p, idx)); });
+    ruletaState.prizes.forEach(function (p, idx) {
+      var row = buildRuletaPrizeRow(p, idx);
+      row.setAttribute("data-sort-item", "");
+      var grip = document.createElement("span");
+      grip.className = "image-list-grip";
+      grip.textContent = "⠿ arrastrar";
+      row.appendChild(grip);
+      list.appendChild(row);
+    });
     renderRuletaProbSum();
   }
 

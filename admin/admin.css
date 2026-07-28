@@ -283,6 +283,56 @@ body.is-sorting-active { user-select: none; }
 @media (max-width: 640px) {
   .field-grid, .product-admin-fields, .repeat-item { grid-template-columns: 1fr; }
   .product-admin-card { grid-template-columns: 1fr; }
+
+  /* ---- El panel se maneja casi siempre desde el celular ----
+     En pantalla chica todo estaba pensado para escritorio: una foto por
+     renglón ocupando media pantalla, pestañas enormes, y para reordenar
+     había que bajar y subir sin ver el resto. Aquí se compacta todo para
+     que quepan varias fotos a la vez y se puedan mover de un vistazo. */
+
+  .admin-panel { padding-left: 0; padding-right: 0; }
+  .admin-panel h2 { font-size: 1.15rem; }
+  .admin-panel h3 { font-size: .95rem; }
+
+  /* pestañas: fila que se desliza en vez de un bloque de 13 botones */
+  .admin-tabs {
+    flex-wrap: nowrap; overflow-x: auto; gap: .35rem;
+    padding-bottom: .75rem; margin-bottom: 1.25rem;
+    scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  }
+  .admin-tabs::-webkit-scrollbar { display: none; }
+  .admin-tab { flex: 0 0 auto; font-size: .78rem; padding: .45rem .8rem; white-space: nowrap; }
+  /* los títulos de grupo romperían la fila deslizable */
+  .admin-tab-group-label { display: none; }
+
+  /* fotos: dos por renglón y miniatura más baja */
+  .gallery-admin-grid { grid-template-columns: 1fr 1fr; gap: .6rem; }
+  .gallery-admin-item { padding: .5rem; }
+  .gallery-admin-item .preview { height: 84px; }
+  .gallery-admin-item label { font-size: .7rem; }
+  .image-list-num { top: .35rem; left: .35rem; min-width: 22px; height: 22px; font-size: .72rem; }
+  .image-list-actions { gap: .4rem; margin-top: .4rem; }
+  .image-list-actions button { width: 34px; height: 34px; }
+  .image-list-pos { font-size: .68rem; }
+  .image-list-grip { font-size: .62rem; padding: .3rem; }
+  .btn-remove { width: 24px; height: 24px; font-size: .95rem; top: .35rem; right: .35rem; }
+
+  /* "Imagen del sitio" */
+  .looks-grid { gap: .6rem; }
+  .looks-card { padding: .75rem; gap: .5rem; }
+  .looks-preview { height: 100px; }
+
+  /* carrusel dentro de cada categoría */
+  .cc-admin-image { gap: .6rem; padding: .5rem; }
+  .cc-admin-image .preview { width: 68px; height: 46px; }
+
+  /* premios de la ruleta */
+  .ruleta-prize-row { padding: .8rem .85rem; }
+  .ruleta-prize-grid { grid-template-columns: 1fr; gap: .6rem; }
+  .ruleta-stats-grid { gap: .6rem; }
+
+  /* el renglón de cada lista repetida (horario, zona secreta) */
+  .repeat-item { padding: .85rem 2.5rem .85rem .85rem; gap: .5rem; }
 }
 
 /* ---------------- 🎡 Ruleta ---------------- */
