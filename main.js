@@ -158,7 +158,13 @@
     // todavía el nombre viejo (por eso antes solo se veía actualizado al
     // volver a jugar, que sí hace su propia consulta después).
     fetch(RUN_API, { method: "POST", headers: { "Content-Type": "application/json" }, body: body })
-      .then(function () { if (window.__renameGameName) window.__renameGameName(newName); })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        // El servidor devuelve el ranking YA con el nombre corregido: se le
+        // pasa tal cual al juego para que repinte con ese dato y no dependa
+        // de una segunda consulta.
+        if (window.__renameGameName) window.__renameGameName(newName, res && res.status);
+      })
       .catch(function (e) {
         console.warn("[rename] run-leaderboard.php:", e);
         if (window.__renameGameName) window.__renameGameName(newName);

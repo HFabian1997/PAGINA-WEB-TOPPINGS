@@ -1590,31 +1590,44 @@
     /* ---- top del período + estado del premio en la pantalla de inicio,
        antes de jugar. Se repite sola para que el botón/contador se
        actualicen sin recargar la página. ---- */
+    /* Pinta la pantalla de inicio con un estado del ranking ya recibido.
+       Está separado de la consulta a propósito: al cambiar el nombre, el
+       propio servidor devuelve el ranking ya corregido, y usarlo directo
+       evita depender de una segunda consulta que puede llegar antes de que
+       el cambio quede guardado. */
+    function applyIntroStatus(res) {
+      // `ok` solo viene en la respuesta de `status`; el ranking que devuelve
+      // `rename` no lo trae, así que no se puede exigir.
+      if (!res || res.ok === false || !res.top) return;
+      if (!introLeaderboardEl || !introLeaderboardListEl) return;
+      if (introLeaderboardTitleEl) {
+        introLeaderboardTitleEl.textContent = "🏆 Top 3 " + periodLabel(res.rankingType);
+      }
+      var top3 = (res.top || []).slice(0, 3);
+      if (top3.length) {
+        introLeaderboardListEl.innerHTML = top3.map(function (r) {
+          var mine = res.mine && res.mine.rank === r.rank;
+          return '<li' + (mine ? ' class="is-mine"' : "") + '><span class="run-lb-rank">' + r.rank + '</span>' +
+            '<span class="run-lb-name">' + escHtml(r.name) + (mine ? " (TÚ)" : "") + '</span>' +
+            '<span class="run-lb-score">' + r.score + '</span></li>';
+        }).join("");
+        introLeaderboardEl.hidden = false;
+      }
+      renderEventStatus(res);
+      renderClaimUI(res);
+    }
+
     function fetchIntroLeaderboard() {
       if (!introLeaderboardEl || !introLeaderboardListEl) return;
       var params = "?action=status&deviceId=" + encodeURIComponent(getDeviceId());
       var name = localStorage.getItem(NAME_KEY);
       if (name) params += "&name=" + encodeURIComponent(name);
-      fetch(LEADERBOARD_API + params)
+      // `_` rompe cualquier caché intermedia: este proyecto ya tuvo respuestas
+      // JSON servidas viejas por el servidor web, no por el navegador.
+      params += "&_=" + Date.now();
+      fetch(LEADERBOARD_API + params, { cache: "no-store" })
         .then(function (r) { return r.json(); })
-        .then(function (res) {
-          if (!res || !res.ok) return;
-          if (introLeaderboardTitleEl) {
-            introLeaderboardTitleEl.textContent = "🏆 Top 3 " + periodLabel(res.rankingType);
-          }
-          var top3 = (res.top || []).slice(0, 3);
-          if (top3.length) {
-            introLeaderboardListEl.innerHTML = top3.map(function (r) {
-              var mine = res.mine && res.mine.rank === r.rank;
-              return '<li' + (mine ? ' class="is-mine"' : "") + '><span class="run-lb-rank">' + r.rank + '</span>' +
-                '<span class="run-lb-name">' + escHtml(r.name) + (mine ? " (TÚ)" : "") + '</span>' +
-                '<span class="run-lb-score">' + r.score + '</span></li>';
-            }).join("");
-            introLeaderboardEl.hidden = false;
-          }
-          renderEventStatus(res);
-          renderClaimUI(res);
-        })
+        .then(applyIntroStatus)
         .catch(function (e) { console.warn("[toppings-run] no se pudo cargar el top del ranking:", e); });
     }
 
@@ -1673,21 +1686,42 @@
     // El saludo del inicio llama esto cuando el cliente cambia su nombre,
     // para que el juego (si está a la vista) también quede al día sin
     // necesidad de recargar la página.
-    window.__renameGameName = function (newName) {
+    /* El saludo del inicio llama esto al cambiar el nombre. Recibe también el
+       ranking que devuelve el propio servidor tras renombrar (`status`), que
+       es la fuente confiable: ya viene con el nombre corregido.
+
+       Se repinta en tres pasos, de menos a más confiable, para que nunca
+       quede el nombre viejo en pantalla:
+         1. la fila propia, al instante, sin red de por medio;
+         2. cualquier fila que todavía muestre el nombre viejo — cubre el caso
+            de que el puntaje esté guardado bajo otra llave y el servidor no
+            lo reconozca como "mío";
+         3. el estado que devolvió el servidor, o una consulta si no vino. */
+    window.__renameGameName = function (newName, status) {
+      var oldName = playerName;
       playerName = newName;
       if (playerEl && !playerEl.hidden && stages.game && !stages.game.hidden) {
         playerEl.textContent = newName.toUpperCase();
       }
-      /* El nombre se cambia en pantalla de una vez, sin esperar la respuesta
-         del servidor: la fila propia del top ya está marcada con `is-mine`,
-         así que se reescribe ahí mismo. La consulta que va detrás solo
-         confirma. Sin esto había un parpadeo de varios segundos con el
-         nombre viejo, que es justo lo que se notaba. */
+
       if (introLeaderboardListEl) {
         var mia = introLeaderboardListEl.querySelector("li.is-mine .run-lb-name");
         if (mia) mia.textContent = newName + " (TÚ)";
+        if (oldName) {
+          Array.prototype.forEach.call(
+            introLeaderboardListEl.querySelectorAll(".run-lb-name"),
+            function (el) {
+              var txt = el.textContent.replace(" (TÚ)", "");
+              if (txt === oldName) {
+                el.textContent = newName + (el.textContent.indexOf(" (TÚ)") !== -1 ? " (TÚ)" : "");
+              }
+            }
+          );
+        }
       }
-      fetchIntroLeaderboard();
+
+      if (status && status.top) applyIntroStatus(status);
+      else fetchIntroLeaderboard();
     };
 
     playBtn.addEventListener("click", function () {

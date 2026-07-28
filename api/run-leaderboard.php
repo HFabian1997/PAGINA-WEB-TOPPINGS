@@ -162,15 +162,38 @@ function normalizeState($state) {
   // siempre empiezan con "d_"; las llaves ya migradas sin deviceId real
   // quedan como "legacy_<hash>") — así esta migración corre una sola vez
   // y no hace nada en las siguientes lecturas.
+  /* El formato viejo se reconoce por la FORMA DEL VALOR, no por la llave.
+     Antes se miraba si la llave empezaba por "d_" o "legacy_", y eso era
+     frágil: cualquier ID de dispositivo con otro prefijo disparaba la
+     migración y reescribía los nombres de todas las filas poniéndoles la
+     llave como nombre. Pasó de verdad y dejó el ranking con nombres del
+     tipo "legacy_5aadb8…" a la vista del cliente.
+
+     En el formato viejo el valor era el puntaje suelto (un número) o un
+     objeto sin 'name', porque el nombre estaba en la llave. */
   $needsScoreMigration = false;
   foreach ($state['scores'] as $key => $info) {
-    if (strpos((string) $key, 'd_') !== 0 && strpos((string) $key, 'legacy_') !== 0) { $needsScoreMigration = true; break; }
+    if (!is_array($info) || !isset($info['name'])) { $needsScoreMigration = true; break; }
   }
   if ($needsScoreMigration) {
     $migrated = array();
-    foreach ($state['scores'] as $oldName => $info) {
-      $deviceId = !empty($info['deviceId']) ? (string) $info['deviceId'] : ('legacy_' . md5((string) $oldName));
-      $row = array('name' => (string) $oldName, 'score' => (int) $info['score'], 'updatedAt' => isset($info['updatedAt']) ? $info['updatedAt'] : null);
+    foreach ($state['scores'] as $oldKey => $info) {
+      // Las filas que YA tienen 'name' están en el formato nuevo: se dejan
+      // intactas, con su llave. Solo se convierten las viejas, donde el
+      // nombre estaba en la llave.
+      if (is_array($info) && isset($info['name'])) {
+        $migrated[$oldKey] = $info;
+        continue;
+      }
+      $score = is_array($info) ? (int) (isset($info['score']) ? $info['score'] : 0) : (int) $info;
+      $deviceId = (is_array($info) && !empty($info['deviceId']))
+        ? (string) $info['deviceId']
+        : ('legacy_' . md5((string) $oldKey));
+      $row = array(
+        'name' => (string) $oldKey,
+        'score' => $score,
+        'updatedAt' => (is_array($info) && isset($info['updatedAt'])) ? $info['updatedAt'] : null
+      );
       if (isset($migrated[$deviceId])) {
         if ($row['score'] > (int) $migrated[$deviceId]['score']) $migrated[$deviceId] = $row;
       } else {
@@ -189,6 +212,36 @@ function normalizeState($state) {
  *  permanente. Se llama desde register-name, submit y rename, para que el
  *  aviso de "ese nombre ya está en uso" funcione sin importar por dónde se
  *  haya registrado la persona. */
+/**
+ * Un dispositivo puede no tener fila propia en el ranking aunque su puntaje
+ * SÍ esté guardado: pasa con datos migrados o con respaldos reconstruidos,
+ * donde la fila quedó bajo una llave que no es el ID real de nadie.
+ *
+ * Si existe una fila con ese mismo nombre y sin dueño real, se le traspasa a
+ * este dispositivo. Así deja de haber dos filas de la misma persona y el
+ * cambio de nombre pasa a verse de verdad en el ranking.
+ *
+ * $lookFor: nombre a buscar. Si viene vacío se usa el último que este
+ * dispositivo haya registrado en el servidor.
+ */
+function adoptScoreRow(&$state, $deviceId, $lookFor) {
+  if (isset($state['scores'][$deviceId])) return false;
+  $lookFor = trim((string) $lookFor);
+  if ($lookFor === '' && isset($state['names'][$deviceId])) {
+    $lookFor = trim((string) $state['names'][$deviceId]);
+  }
+  if ($lookFor === '') return false;
+
+  foreach ($state['scores'] as $key => $info) {
+    if ((string) $key === (string) $deviceId) continue;
+    if (strcasecmp((string) $info['name'], $lookFor) !== 0) continue;
+    unset($state['scores'][$key]);
+    $state['scores'][$deviceId] = $info;
+    return true;
+  }
+  return false;
+}
+
 function rememberName(&$state, $deviceId, $name) {
   $deviceId = trim((string) $deviceId);
   $name = trim((string) $name);
@@ -439,6 +492,11 @@ switch ($action) {
       // El ranking queda congelado mientras hay un ganador esperando reclamar:
       // nadie puede seguir acumulando puntos ni superar al ganador.
       if ($state['claim']['status'] !== 'waiting') return $state;
+      // Antes de crear fila nueva, se intenta adoptar una que ya exista con
+      // este mismo nombre pero guardada bajo otra llave (respaldos
+      // reconstruidos, migraciones). Sin esto quedaban dos filas del mismo
+      // jugador y al renombrarse solo cambiaba una.
+      if (!isset($state['scores'][$deviceId])) adoptScoreRow($state, $deviceId, $name);
       if (!isset($state['scores'][$deviceId])) {
         $state['scores'][$deviceId] = array('name' => $name, 'score' => $score, 'updatedAt' => nowMs());
       } else {
@@ -521,22 +579,9 @@ switch ($action) {
     $final = withWriteLock(function ($state) use ($deviceId, $newName, $oldName) {
       ensureRankingState($state);
       rememberName($state, $deviceId, $newName);
+      if (!isset($state['scores'][$deviceId])) adoptScoreRow($state, $deviceId, $oldName);
       if (isset($state['scores'][$deviceId])) {
         $state['scores'][$deviceId]['name'] = $newName;
-      } elseif ($oldName !== '') {
-        // Este dispositivo todavía no tiene fila propia — puede ser un
-        // registro migrado de antes de que existiera el ID de dispositivo
-        // (quedó guardado con una llave interna, sin el ID real de nadie).
-        // Si hay una de esas filas huérfanas con el nombre viejo EXACTO,
-        // se adopta como propia en vez de dejarla duplicada por siempre.
-        foreach ($state['scores'] as $key => $info) {
-          if (strpos((string) $key, 'legacy_') === 0 && strcasecmp((string) $info['name'], $oldName) === 0) {
-            $info['name'] = $newName;
-            unset($state['scores'][$key]);
-            $state['scores'][$deviceId] = $info;
-            break;
-          }
-        }
       }
       if ($state['winner'] && !empty($state['winner']['deviceId']) && hash_equals((string) $state['winner']['deviceId'], $deviceId)) {
         $state['winner']['name'] = $newName;
