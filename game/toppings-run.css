@@ -133,24 +133,48 @@
 .run-overlay-score { color: var(--ink-soft); font-weight: 700; margin: 0; font-size: .82rem; }
 .run-overlay-actions { display: flex; gap: .5rem; flex-wrap: wrap; justify-content: center; flex-shrink: 0; }
 
-.run-leaderboard { width: 100%; max-width: 240px; }
+.run-leaderboard { width: 100%; max-width: 260px; margin-inline: auto; }
 .run-leaderboard[hidden] { display: none; }
 .run-leaderboard-title {
   font-family: var(--sans); font-weight: 800; font-size: .68rem; letter-spacing: .04em;
-  text-transform: uppercase; color: var(--accent); text-align: center; margin: 0 0 .35rem;
+  text-transform: uppercase; color: var(--accent); text-align: center; margin: 0 0 .4rem;
 }
-/* El título del top y el reloj comparten renglón: antes eran dos líneas
-   separadas y en un celular eso ya era la mitad de la tarjeta. */
-.run-board-head {
-  display: flex; align-items: baseline; justify-content: space-between; gap: .5rem;
-  margin-bottom: .35rem;
+/* ---- Ganador del evento anterior ----
+   Va en su propia tarjeta y siempre dice DE QUÉ evento fue: antes ponía solo
+   "Ganó Fabián" y no se entendía si era de ahora o de la vez pasada. */
+.run-prev-winner {
+  width: 100%; max-width: 260px; margin: 0;
+  display: flex; flex-direction: column; align-items: center; gap: .1rem;
+  padding: .55rem .7rem; text-align: center;
+  background: rgba(255,212,0,.09); border: 1px solid rgba(255,212,0,.35);
+  border-radius: var(--radius-sm);
 }
-.run-board-head .run-leaderboard-title { margin: 0; text-align: left; }
-.run-board-timer {
-  font-family: var(--sans); font-weight: 800; font-size: .68rem;
-  color: var(--ink-mute); font-variant-numeric: tabular-nums; white-space: nowrap;
+.run-prev-winner[hidden] { display: none; }
+.run-prev-winner-label {
+  font-family: var(--sans); font-weight: 800; font-size: .62rem; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--accent);
 }
-.run-board-timer[hidden] { display: none; }
+.run-prev-winner-name {
+  font-weight: 800; font-size: .92rem; color: var(--ink);
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.run-prev-winner-score { font-size: .72rem; color: var(--ink-mute); font-weight: 700; }
+
+/* ---- Reloj del evento ---- */
+.run-event-clock {
+  width: 100%; max-width: 260px; margin: 0;
+  display: flex; flex-direction: column; align-items: center; gap: .05rem;
+  text-align: center;
+}
+.run-event-clock[hidden] { display: none; }
+.run-event-clock-label {
+  font-size: .68rem; font-weight: 700; color: var(--ink-mute);
+  text-transform: uppercase; letter-spacing: .04em;
+}
+.run-event-clock-time {
+  font-family: var(--display); font-size: 1.35rem; line-height: 1.1;
+  color: var(--accent); font-variant-numeric: tabular-nums;
+}
 .run-leaderboard-list { display: flex; flex-direction: column; gap: .2rem; }
 .run-leaderboard-list li {
   display: flex; align-items: center; gap: .4rem; padding: .3rem .5rem;

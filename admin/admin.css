@@ -127,7 +127,10 @@ p.hint { color: var(--ink-mute); font-size: .9rem; margin: 0 0 1.5rem; }
 }
 .field-grid label, .repeat-item label { display: flex; flex-direction: column; gap: .4rem; font-size: .82rem; color: var(--ink-soft); font-weight: 600; }
 .field-grid label.full, .repeat-item label.full { grid-column: 1 / -1; }
+/* Sin esto los campos ocultos se siguen viendo: `.field-grid label` y
+   `.switch` declaran `display` y le ganan al atributo `hidden`. */
 [data-bg-field][hidden] { display: none; }
+[data-modal-field][hidden] { display: none; }
 input[type="text"], input[type="number"], textarea, select {
   background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px;
   color: var(--ink); padding: .65rem .75rem; font: inherit; font-weight: 400;
@@ -420,16 +423,10 @@ body.is-sorting-active { user-select: none; }
 }
 .cc-admin-image-actions button:disabled { opacity: .3; cursor: default; }
 .cc-admin-image-buttons { display: flex; align-items: center; gap: .4rem; }
-/* Botón con texto, no una × diminuta: antes pasaba desapercibido y parecía
-   que las fotos del carrusel solo se pudieran mover u ocultar. */
-.cc-admin-image-actions button.cc-admin-image-delete {
-  width: auto; height: auto; padding: .4rem .7rem; white-space: nowrap;
-  font-size: .75rem; font-weight: 700;
-  border-color: rgba(255,90,90,.5); color: #ff8080;
-}
-.cc-admin-image-actions button.cc-admin-image-delete:hover {
-  background: var(--danger); border-color: var(--danger); color: #fff;
-}
+/* la × de eliminar es la misma que en las fotos del menú, arriba a la
+   derecha de la fila (por eso la fila es `position: relative`) */
+.cc-admin-image > .btn-remove { width: 26px; height: 26px; font-size: 1rem; }
+.cc-admin-image .image-list-grip { margin-top: 0; flex: 1 1 auto; }
 
 .cc-blocks { display: flex; flex-direction: column; gap: .4rem; margin-bottom: 1rem; }
 .cc-block {

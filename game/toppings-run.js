@@ -214,6 +214,7 @@
     var claimCountdownEl = $("[data-run-claim-countdown]", card);
     var eventCountdownEl = $("[data-run-event-countdown]", card);
     var statusEl = $("[data-run-status]", card);
+    var prevWinnerEl = $("[data-run-prev-winner]", card);
     var backBtn = $("[data-run-back]", card);
     var restartBtn = $("[data-run-restart]", card);
     var homeBtn = $("[data-run-home]", card);
@@ -1432,21 +1433,28 @@
        demasiado texto para una tarjeta de celular. Ahora queda el top 3 con
        un reloj chico al lado, y UNA sola línea que dice lo único que el
        jugador necesita saber en ese momento. */
+    /* El nombre del periodo sale de la configuración del panel, para que el
+       cliente sepa si el top es de la hora, del día o de la semana. */
+    function periodLabel(type) {
+      if (type === "hourly") return "de esta hora";
+      if (type === "daily") return "de hoy";
+      return "de esta semana";
+    }
+
     function shortLine(res) {
-      var frozen = eventIsFrozen(res);
       var mine = res.mine;
       var top = (res.top && res.top.length) ? res.top[0] : null;
 
-      if (frozen) {
-        if (res.canClaim) return "🥇 ¡Ganaste! Reclama tu premio";
-        return res.winner ? "🏆 Ganó " + res.winner.name : "🏁 Evento terminado";
+      if (eventIsFrozen(res)) {
+        return res.canClaim
+          ? "🥇 ¡Ganaste! Reclama tu premio abajo"
+          : "Este evento ya cerró. Espera el siguiente para volver a competir.";
       }
       if (mine && mine.rank === 1) return "🥇 Vas primero — aguanta hasta el final";
       if (mine && top) {
-        var falta = top.score - mine.score;
-        return "Vas " + mine.rank + "º · te faltan " + falta + " para el 1º";
+        return "Vas " + mine.rank + "º · te faltan " + (top.score - mine.score) + " puntos para el 1º";
       }
-      if (top) return "Supera " + top.score + " para quedar primero";
+      if (top) return "Supera " + top.score + " puntos para quedar primero";
       return "¡Sé el primero en jugar!";
     }
 
@@ -1456,6 +1464,25 @@
       var frozen = eventIsFrozen(res);
       var clockOffset = Date.now() - res.serverNow;
 
+      /* Ganador del evento ANTERIOR. Mientras el evento corre sale del
+         historial; cuando ya terminó, el ganador de este evento pasa a ser
+         "el anterior" para todos los demás. Siempre se dice de qué evento
+         se trata — antes ponía solo "Ganó Fabián" y no se entendía cuándo. */
+      if (prevWinnerEl) {
+        var prev = frozen
+          ? res.winner
+          : ((res.history && res.history.length) ? res.history[0] : null);
+        if (prev && prev.name) {
+          prevWinnerEl.innerHTML =
+            '<span class="run-prev-winner-label">🏆 Ganador del evento anterior</span>' +
+            '<span class="run-prev-winner-name">' + escHtml(prev.name) + "</span>" +
+            '<span class="run-prev-winner-score">' + prev.score + " puntos</span>";
+          prevWinnerEl.hidden = false;
+        } else {
+          prevWinnerEl.hidden = true;
+        }
+      }
+
       if (statusEl) {
         statusEl.textContent = shortLine(res);
         statusEl.hidden = false;
@@ -1464,7 +1491,7 @@
       }
 
       // Un solo reloj: mientras corre el evento marca lo que falta para que
-      // termine; una vez terminado, lo que falta para que se reinicie.
+      // termine; una vez terminado, cuándo vuelve a abrirse.
       var target = frozen
         ? (res.claim && res.claim.windowEndsAtMs)
         : res.periodEndAtMs;
@@ -1474,7 +1501,9 @@
       }
       var paint = function () {
         var msLeft = Math.max(0, target - (Date.now() - clockOffset));
-        eventCountdownEl.textContent = (frozen ? "🔄 " : "⏱️ ") + formatClaimCountdown(msLeft);
+        eventCountdownEl.innerHTML = frozen
+          ? '<span class="run-event-clock-label">🔄 El próximo evento empieza en</span><span class="run-event-clock-time">' + formatClaimCountdown(msLeft) + "</span>"
+          : '<span class="run-event-clock-label">⏱️ Este evento termina en</span><span class="run-event-clock-time">' + formatClaimCountdown(msLeft) + "</span>";
         eventCountdownEl.hidden = false;
       };
       paint();
@@ -1569,9 +1598,9 @@
         .then(function (r) { return r.json(); })
         .then(function (res) {
           if (!res || !res.ok) return;
-          // El periodo ya lo deja claro el reloj de al lado, así que el
-          // título no lo repite.
-          if (introLeaderboardTitleEl) introLeaderboardTitleEl.textContent = "🏆 Top 3";
+          if (introLeaderboardTitleEl) {
+            introLeaderboardTitleEl.textContent = "🏆 Top 3 " + periodLabel(res.rankingType);
+          }
           var top3 = (res.top || []).slice(0, 3);
           if (top3.length) {
             introLeaderboardListEl.innerHTML = top3.map(function (r) {

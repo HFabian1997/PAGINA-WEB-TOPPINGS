@@ -1165,9 +1165,21 @@
       list.innerHTML = '<p class="hint">Todavía no has agregado imágenes a este carrusel.</p>';
       return;
     }
+    // mismo arrastre que las fotos del menú (se engancha una sola vez)
+    if (!list.__sortable) {
+      list.__sortable = true;
+      makeSortable(list, function (from, to) {
+        var cfg = carouselOf(cat);
+        cfg.images.splice(to, 0, cfg.images.splice(from, 1)[0]);
+        markDirty();
+        renderCarouselAdmin(host, cat);
+      });
+    }
+
     list.innerHTML = "";
     c.images.forEach(function (item, idx) {
       var row = document.createElement("div");
+      row.setAttribute("data-sort-item", "");
       row.className = "cc-admin-image" + (item.active === false ? " is-off" : "");
       row.innerHTML =
         '<img class="preview" src="' + adminAssetUrl(item.src) + '" alt="">' +
@@ -1177,9 +1189,10 @@
             '<button type="button" data-role="up" aria-label="Subir">↑</button>' +
             '<span class="image-list-pos">' + (idx + 1) + " / " + c.images.length + "</span>" +
             '<button type="button" data-role="down" aria-label="Bajar">↓</button>' +
-            '<button type="button" class="cc-admin-image-delete" data-role="remove">🗑️ Eliminar</button>' +
           "</span>" +
-        "</div>";
+          '<span class="image-list-grip">⠿ arrastrar</span>' +
+        "</div>" +
+        '<button type="button" class="btn-remove" data-role="remove" title="Eliminar del carrusel" aria-label="Eliminar del carrusel">&times;</button>';
 
       var onBox = row.querySelector('[data-role="on"]');
       onBox.checked = item.active !== false;
@@ -1302,6 +1315,7 @@
     renderAiDocStatus();
     renderLooks();
     renderBgTypeVisibility();
+    renderModalStyleVisibility();
     renderNameChangeModeVisibility();
     renderRankingStatus();
     renderAllRewardTypeVisibility();
@@ -1325,6 +1339,22 @@
       renderBgTypeVisibility();
       renderLooks();
     });
+  }
+
+  /* Estilo de las ventanas emergentes: los ajustes del chorreado solo tienen
+     sentido con el estilo urbano, así que se ocultan con el estilo simple. */
+  function renderModalStyleVisibility() {
+    var select = $("[data-modal-style-select]");
+    if (!select) return;
+    var c = state.content.customization || {};
+    var urban = ((c.modal && c.modal.style) || "urban") !== "plain";
+    $$('[data-modal-field="urban"]').forEach(function (el) { el.hidden = !urban; });
+  }
+
+  function initModalStyleToggle() {
+    var select = $("[data-modal-style-select]");
+    if (!select) return;
+    select.addEventListener("change", renderModalStyleVisibility);
   }
 
   /* ---------------- "Imagen del sitio" (pestaña Negocio) ----------------
@@ -1736,6 +1766,7 @@
     initAiDoc();
     initBgTypeToggle();
     initLooks();
+    initModalStyleToggle();
     initNameChangeModeToggle();
     initRewardTypeToggles();
     initRankingReset();

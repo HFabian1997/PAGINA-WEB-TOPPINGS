@@ -42,6 +42,16 @@
     }
     // backgroundType "texture" (o sin definir): se deja la textura urbana de siempre.
 
+    /* Estilo de las ventanas emergentes (Personalización → Ventanas).
+       "urban" = franja de pintura con chorreado + textura de muro;
+       "plain" = la ventana lisa de siempre. */
+    var modal = c.modal || {};
+    var plain = modal.style === "plain";
+    document.body.classList.toggle("modal-plain", plain);
+    document.body.classList.toggle("modal-no-drip", !plain && modal.drip === false);
+    document.body.classList.toggle("modal-no-texture", !plain && modal.texture === false);
+    if (modal.dripColor) root.style.setProperty("--modal-drip", modal.dripColor);
+
     if (c.effects) {
       document.body.classList.toggle("no-animations", c.effects.animations === false);
       document.body.classList.toggle("no-glow", c.effects.glow === false);

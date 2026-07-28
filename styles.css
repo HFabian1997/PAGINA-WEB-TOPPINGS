@@ -42,6 +42,11 @@
      administración solo reescribe estas dos variables. */
   --page-bg-color: #0a0a0a;
   --page-bg-image: url("assets/img/bg-texture.jpg");
+
+  /* Ventanas emergentes: el chorreado y la textura se configuran desde
+     Personalización → Ventanas emergentes. */
+  --modal-drip: #FFD400;
+  --modal-drip-height: 13px;
 }
 
 /* =============================================================
@@ -455,20 +460,70 @@ body.no-glow [data-hero-cta-primary] { animation-name: heroCtaPulseSoft; }
 }
 .prize-modal[hidden] { display: none; }
 .prize-modal-backdrop { position: absolute; inset: 0; }
+
+/* ---- Ventanas con aire urbano ----
+   La tarjeta lleva la misma textura de muro que el sitio, un chorreado de
+   pintura amarilla en el borde de arriba (hecho con gradientes radiales, no
+   con imágenes: pesa cero y escala solo) y un contorno grueso tipo sticker. */
 .prize-modal-card {
   position: relative; z-index: 1; width: 100%; max-width: 420px; text-align: center;
-  background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius-lg);
-  padding: clamp(2rem, 6vw, 3rem) clamp(1.5rem, 5vw, 2.5rem);
-  box-shadow: var(--shadow-md);
+  background:
+    linear-gradient(rgba(20,20,20,.94), rgba(20,20,20,.94)),
+    url("assets/img/bg-texture.jpg") center / cover no-repeat;
+  border: 2px solid rgba(255,255,255,.14);
+  border-radius: var(--radius-lg);
+  padding: clamp(2.25rem, 7vw, 3.25rem) clamp(1.5rem, 5vw, 2.5rem) clamp(2rem, 6vw, 3rem);
+  box-shadow: var(--shadow-md), 0 0 0 1px rgba(0,0,0,.6);
+  overflow: hidden;
 }
-.prize-modal-close {
-  position: absolute; top: .75rem; right: .75rem; width: 32px; height: 32px; border-radius: 50%;
+/* franja amarilla superior con goteo */
+.prize-modal-card::before {
+  content: "";
+  position: absolute; top: 0; left: 0; right: 0; height: 36px;
+  /* Los goteos son elipses centradas justo en el borde inferior de la franja
+     (y = 13px): la mitad de arriba se funde con ella y la de abajo queda
+     colgando, como pintura fresca. Antes iban a `100%` y quedaban despegadas. */
+  background:
+    radial-gradient(9px 15px at 13% var(--modal-drip-height), var(--modal-drip) 99%, transparent 100%),
+    radial-gradient(6px 21px at 31% var(--modal-drip-height), var(--modal-drip) 99%, transparent 100%),
+    radial-gradient(8px 10px at 52% var(--modal-drip-height), var(--modal-drip) 99%, transparent 100%),
+    radial-gradient(6px 23px at 73% var(--modal-drip-height), var(--modal-drip) 99%, transparent 100%),
+    radial-gradient(10px 13px at 89% var(--modal-drip-height), var(--modal-drip) 99%, transparent 100%),
+    linear-gradient(var(--modal-drip), var(--modal-drip));
+  background-repeat: no-repeat;
+  background-size: 100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% var(--modal-drip-height);
+  pointer-events: none;
+}
+
+/* ---- Variantes que se eligen desde el panel ---- */
+/* Sin chorreado: franja lisa arriba */
+body.modal-no-drip .prize-modal-card::before {
+  height: var(--modal-drip-height);
+  background: var(--modal-drip);
+}
+/* Sin textura de muro: fondo liso de siempre */
+body.modal-no-texture .prize-modal-card { background: var(--bg-2); }
+/* Estilo simple: como estaba antes, sin franja ni textura */
+body.modal-plain .prize-modal-card {
+  background: var(--bg-2); border-width: 1px;
+  padding-top: clamp(2rem, 6vw, 3rem);
+}
+body.modal-plain .prize-modal-card::before { display: none; }
+body.modal-plain .prize-modal-close {
+  top: .75rem; width: 32px; height: 32px;
   background: rgba(255,255,255,.08); border: 1px solid var(--line); color: var(--ink);
-  font-size: 1.3rem; line-height: 1; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  transition: color .3s var(--ease-out), border-color .3s var(--ease-out);
 }
-.prize-modal-close:hover { color: var(--accent); border-color: var(--accent); }
+
+.prize-modal-close {
+  position: absolute; top: 34px; right: .75rem; width: 38px; height: 38px; border-radius: 50%;
+  background: var(--accent); border: 2px solid rgba(0,0,0,.55); color: var(--accent-ink);
+  font-size: 1.35rem; font-weight: 800; line-height: 1; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 14px rgba(0,0,0,.5);
+  transition: transform .25s var(--ease-out), box-shadow .25s var(--ease-out);
+}
+.prize-modal-close:hover { transform: scale(1.08) rotate(90deg); box-shadow: var(--shadow-yellow); }
+body.no-animations .prize-modal-close:hover { transform: none; }
 .gift-box {
   display: flex; align-items: center; justify-content: center;
   width: 140px; height: 140px; margin: 1.5rem auto 0;

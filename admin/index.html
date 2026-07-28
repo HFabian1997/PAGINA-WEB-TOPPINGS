@@ -523,6 +523,20 @@
       </label>
     </div>
 
+    <h3>🪟 Ventanas emergentes</h3>
+    <p class="hint">Son los avisos que le salen al cliente encima de la página: premios, escanear el QR, nombre repetido, la ruleta.</p>
+    <div class="field-grid" data-form="customization.modal">
+      <label>Estilo
+        <select data-field="style" data-modal-style-select>
+          <option value="urban">Urbano (pintura chorreada arriba)</option>
+          <option value="plain">Simple (sin pintura)</option>
+        </select>
+      </label>
+      <label data-modal-field="urban">Color de la pintura <input type="color" data-field="dripColor"></label>
+    </div>
+    <label class="switch" data-modal-field="urban"><input type="checkbox" data-field="customization.modal.drip"> Que la pintura chorree hacia abajo</label>
+    <label class="switch" data-modal-field="urban"><input type="checkbox" data-field="customization.modal.texture"> Textura de muro en el fondo de la ventana</label>
+
     <h3>Efectos</h3>
     <label class="switch"><input type="checkbox" data-field="customization.effects.animations"> Animaciones (movimientos y transiciones)</label>
     <label class="switch"><input type="checkbox" data-field="customization.effects.glow"> Brillo/resplandor en botones y acentos</label>
