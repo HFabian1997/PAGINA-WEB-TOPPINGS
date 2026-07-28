@@ -36,6 +36,12 @@
   --container: 1240px;
   --gutter: clamp(1.25rem, 4vw, 2.5rem);
   --header-h: clamp(84px, 18vw, 118px);
+
+  /* Fondo de la página. Se pintan sobre la capa fija `html::before`, no sobre
+     `html` directamente — ver la nota en "2. Reset & base". El panel de
+     administración solo reescribe estas dos variables. */
+  --page-bg-color: #0a0a0a;
+  --page-bg-image: url("assets/img/bg-texture.jpg");
 }
 
 /* =============================================================
@@ -47,7 +53,24 @@ html {
   tab-size: 2;
   scroll-behavior: smooth;
   scroll-padding-top: var(--header-h);
-  background: #0a0a0a url("assets/img/bg-texture.jpg") center / cover no-repeat fixed;
+  background: var(--page-bg-color);
+}
+/* El fondo va en una capa `position: fixed` propia, NO con
+   `background-attachment: fixed` sobre `html`. Safari en iPhone y varios
+   navegadores de Android ignoran o recortan mal `attachment: fixed`, así que
+   un fondo elegido desde el panel podía verse mal o directamente no verse en
+   el celular. Una capa fija de verdad se comporta igual en todos lados. */
+html::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-color: var(--page-bg-color);
+  background-image: var(--page-bg-image);
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
 }
 body {
   color: var(--ink);
@@ -141,11 +164,37 @@ h1, h2, h3, h4 { text-wrap: balance; line-height: 1.05; letter-spacing: -0.01em;
   box-shadow: var(--shadow-yellow);
 }
 .btn-primary:hover { transform: translateY(-3px) scale(1.02); box-shadow: 0 16px 40px rgba(255,212,0,.4); }
-[data-hero-cta-primary] { animation: heroCtaPulse 2.2s ease-in-out infinite; }
+/* Botón "Ver menú": es la acción principal de la portada, así que va más
+   grande y con un halo de neón que late para que salte a la vista. El halo
+   usa --shadow-yellow, que Personalización puede apagar ("Brillo"), y la
+   animación se detiene sola con "Animaciones" desactivadas o si el sistema
+   pide menos movimiento. */
+[data-hero-cta-primary] {
+  padding: 1.15rem 2.4rem;
+  font-size: 1.15rem;
+  letter-spacing: .02em;
+  border: 2px solid rgba(255,255,255,.85);
+  animation: heroCtaNeon 2.2s ease-in-out infinite;
+}
 [data-hero-cta-primary]:hover, [data-hero-cta-primary]:focus-visible { animation-play-state: paused; }
-@keyframes heroCtaPulse {
-  0%, 100% { transform: scale(1); box-shadow: var(--shadow-yellow); }
-  50% { transform: scale(1.06); box-shadow: 0 18px 44px rgba(255,212,0,.55); }
+@keyframes heroCtaNeon {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 6px rgba(255,212,0,.85), 0 0 18px rgba(255,212,0,.55), 0 12px 32px rgba(255,212,0,.28);
+  }
+  50% {
+    transform: scale(1.06);
+    box-shadow: 0 0 14px rgba(255,212,0,1), 0 0 34px rgba(255,212,0,.8), 0 0 60px rgba(255,212,0,.45), 0 16px 42px rgba(255,212,0,.4);
+  }
+}
+/* Si el dueño apaga el brillo desde Personalización, queda solo el latido */
+body.no-glow [data-hero-cta-primary] { animation-name: heroCtaPulseSoft; }
+@keyframes heroCtaPulseSoft {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.06); }
+}
+@media (max-width: 480px) {
+  [data-hero-cta-primary] { padding: 1rem 1.8rem; font-size: 1.05rem; }
 }
 .btn-ghost {
   background: transparent; color: var(--ink);

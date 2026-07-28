@@ -212,11 +212,9 @@
     var claimEl = $("[data-run-claim]", card);
     var claimBtn = $("[data-run-claim-btn]", card);
     var claimCountdownEl = $("[data-run-claim-countdown]", card);
-    var claimHintEl = $("[data-run-claim-hint]", card);
     var eventCountdownEl = $("[data-run-event-countdown]", card);
-    var eventWinnerEl = $("[data-run-event-winner]", card);
-    var eventWinnerNameEl = $("[data-run-event-winner-name]", card);
-    var eventWinnerResetEl = $("[data-run-event-winner-reset]", card);
+    var statusEl = $("[data-run-status]", card);
+    var backBtn = $("[data-run-back]", card);
     var restartBtn = $("[data-run-restart]", card);
     var homeBtn = $("[data-run-home]", card);
     var exitBtn = $("[data-run-exit]", card);
@@ -234,15 +232,42 @@
     var bmxImg = new Image();
     bmxImg.src = "game/assets/bmx.png";
 
+    /* El juego es una de las tarjetas del carrusel horizontal de premios.
+       Al pasar a pantalla completa la tarjeta sale del flujo (position: fixed),
+       el carrusel se queda sin ese ancho y el navegador reajusta su
+       desplazamiento — por eso, al salir del juego, se veía "deslizarse solo"
+       de vuelta a la primera opción. Aquí se recuerda dónde estaba y se
+       restaura de golpe al volver. */
+    var methodsWrap = document.querySelector("[data-prize-methods]");
+    var savedMethodsScroll = 0;
+
     function showStage(name) {
+      var goingFullscreen = name === "game";
+      var wasFullscreen = card.classList.contains("is-fullscreen");
+      if (methodsWrap && goingFullscreen && !wasFullscreen) {
+        savedMethodsScroll = methodsWrap.scrollLeft;
+      }
+
       Object.keys(stages).forEach(function (k) {
         if (stages[k]) stages[k].hidden = k !== name;
       });
       // Mientras se juega, la tarjeta pasa a pantalla completa para que se
       // vea todo grande (antes el canvas quedaba chico, embebido entre el
       // resto del carrusel de premios) — al salir vuelve a su tamaño normal.
-      card.classList.toggle("is-fullscreen", name === "game");
-      document.body.classList.toggle("run-no-scroll", name === "game");
+      card.classList.toggle("is-fullscreen", goingFullscreen);
+      document.body.classList.toggle("run-no-scroll", goingFullscreen);
+
+      if (methodsWrap && !goingFullscreen && wasFullscreen) {
+        var restore = function () {
+          var prev = methodsWrap.style.scrollBehavior;
+          methodsWrap.style.scrollBehavior = "auto"; // sin animación: que no se vea el salto
+          methodsWrap.scrollLeft = savedMethodsScroll;
+          methodsWrap.style.scrollBehavior = prev;
+        };
+        restore();
+        // y otra vez tras el reflujo, por si el navegador lo reajusta después
+        requestAnimationFrame(restore);
+      }
     }
 
     /* ---- tamaño del canvas: 100% del ancho de su tarjeta, nunca más — así
@@ -1402,44 +1427,58 @@
       return !!(res && res.claim && res.claim.status !== "waiting");
     }
 
+    /* La pantalla de inicio mostraba cuatro bloques a la vez (cuenta atrás,
+       ganador anterior en 3 líneas, top 3, y una pista larga de reclamo):
+       demasiado texto para una tarjeta de celular. Ahora queda el top 3 con
+       un reloj chico al lado, y UNA sola línea que dice lo único que el
+       jugador necesita saber en ese momento. */
+    function shortLine(res) {
+      var frozen = eventIsFrozen(res);
+      var mine = res.mine;
+      var top = (res.top && res.top.length) ? res.top[0] : null;
+
+      if (frozen) {
+        if (res.canClaim) return "🥇 ¡Ganaste! Reclama tu premio";
+        return res.winner ? "🏆 Ganó " + res.winner.name : "🏁 Evento terminado";
+      }
+      if (mine && mine.rank === 1) return "🥇 Vas primero — aguanta hasta el final";
+      if (mine && top) {
+        var falta = top.score - mine.score;
+        return "Vas " + mine.rank + "º · te faltan " + falta + " para el 1º";
+      }
+      if (top) return "Supera " + top.score + " para quedar primero";
+      return "¡Sé el primero en jugar!";
+    }
+
     function renderEventStatus(res) {
       clearInterval(eventCountdownTimer);
       lastStatus = res;
       var frozen = eventIsFrozen(res);
       var clockOffset = Date.now() - res.serverNow;
 
-      if (!frozen) {
-        if (eventWinnerEl) eventWinnerEl.hidden = true;
-        if (!eventCountdownEl || !res.periodEndAtMs) return;
-        var paintRunning = function () {
-          var msLeft = Math.max(0, res.periodEndAtMs - (Date.now() - clockOffset));
-          eventCountdownEl.textContent = "⏱️ El evento termina en " + formatClaimCountdown(msLeft);
-          eventCountdownEl.hidden = false;
-        };
-        paintRunning();
-        eventCountdownTimer = setInterval(paintRunning, 1000);
-        return;
+      if (statusEl) {
+        statusEl.textContent = shortLine(res);
+        statusEl.hidden = false;
+        statusEl.classList.toggle("is-leading", !frozen && !!(res.mine && res.mine.rank === 1));
+        statusEl.classList.toggle("is-won", frozen && !!res.canClaim);
       }
 
-      // El evento terminó: se muestra el ganador a todo el mundo.
-      if (eventCountdownEl) eventCountdownEl.hidden = true;
-      if (!eventWinnerEl) return;
-      eventWinnerEl.hidden = false;
-      if (eventWinnerNameEl) {
-        eventWinnerNameEl.textContent = res.winner
-          ? res.winner.name + " · " + res.winner.score + " puntos"
-          : "Sin ganador en este evento";
+      // Un solo reloj: mientras corre el evento marca lo que falta para que
+      // termine; una vez terminado, lo que falta para que se reinicie.
+      var target = frozen
+        ? (res.claim && res.claim.windowEndsAtMs)
+        : res.periodEndAtMs;
+      if (!eventCountdownEl || !target) {
+        if (eventCountdownEl) eventCountdownEl.hidden = true;
+        return;
       }
-      if (eventWinnerResetEl && res.claim.windowEndsAtMs) {
-        var paintReset = function () {
-          var msLeft = Math.max(0, res.claim.windowEndsAtMs - (Date.now() - clockOffset));
-          eventWinnerResetEl.textContent = "🔄 Los puntos se reinician en " + formatClaimCountdown(msLeft);
-        };
-        paintReset();
-        eventCountdownTimer = setInterval(paintReset, 1000);
-      } else if (eventWinnerResetEl) {
-        eventWinnerResetEl.textContent = "";
-      }
+      var paint = function () {
+        var msLeft = Math.max(0, target - (Date.now() - clockOffset));
+        eventCountdownEl.textContent = (frozen ? "🔄 " : "⏱️ ") + formatClaimCountdown(msLeft);
+        eventCountdownEl.hidden = false;
+      };
+      paint();
+      eventCountdownTimer = setInterval(paint, 1000);
     }
 
     /* El botón de reclamar se ve SIEMPRE (no solo cuando el evento ya
@@ -1471,26 +1510,13 @@
         }
       }
 
-      if (claimHintEl) {
-        if (finished && res.canClaim) {
-          claimHintEl.hidden = true;
-        } else {
-          claimHintEl.hidden = false;
-          if (!isTop1) {
-            claimHintEl.textContent = "Aún no eres el top 1.";
-          } else if (!finished) {
-            claimHintEl.textContent = "Eres top 1. No te dejes alcanzar hasta finalizar el evento para obtener tu recompensa.";
-          } else {
-            claimHintEl.textContent = "Solo el jugador que ocupe el puesto #1 puede reclamar este premio.";
-          }
-        }
-      }
-
-      if (claimCountdownEl && finished && claim.windowEndsAtMs) {
+      // La pista larga desapareció: lo que antes explicaba ya lo dice en una
+      // línea el estado de arriba, y el color del propio botón.
+      if (claimCountdownEl && finished && res.canClaim && claim.windowEndsAtMs) {
         var clockOffset = Date.now() - res.serverNow;
         var paint = function () {
           var msLeft = Math.max(0, claim.windowEndsAtMs - (Date.now() - clockOffset));
-          claimCountdownEl.textContent = "⏳ Tiempo restante para reclamar: " + formatClaimCountdown(msLeft);
+          claimCountdownEl.textContent = "⏳ Te quedan " + formatClaimCountdown(msLeft);
           claimCountdownEl.hidden = false;
         };
         paint();
@@ -1543,14 +1569,15 @@
         .then(function (r) { return r.json(); })
         .then(function (res) {
           if (!res || !res.ok) return;
-          if (introLeaderboardTitleEl) {
-            introLeaderboardTitleEl.textContent = "🏆 Top 3 " + (res.rankingType === "daily" ? "de hoy" : res.rankingType === "hourly" ? "de esta hora" : "de la semana");
-          }
+          // El periodo ya lo deja claro el reloj de al lado, así que el
+          // título no lo repite.
+          if (introLeaderboardTitleEl) introLeaderboardTitleEl.textContent = "🏆 Top 3";
           var top3 = (res.top || []).slice(0, 3);
           if (top3.length) {
             introLeaderboardListEl.innerHTML = top3.map(function (r) {
-              return '<li><span class="run-lb-rank">' + r.rank + '</span>' +
-                '<span class="run-lb-name">' + escHtml(r.name) + '</span>' +
+              var mine = res.mine && res.mine.rank === r.rank;
+              return '<li' + (mine ? ' class="is-mine"' : "") + '><span class="run-lb-rank">' + r.rank + '</span>' +
+                '<span class="run-lb-name">' + escHtml(r.name) + (mine ? " (TÚ)" : "") + '</span>' +
                 '<span class="run-lb-score">' + r.score + '</span></li>';
             }).join("");
             introLeaderboardEl.hidden = false;
@@ -1632,10 +1659,20 @@
         if (lastStatus.claim && lastStatus.claim.windowEndsAtMs) {
           var clockOffset = Date.now() - lastStatus.serverNow;
           var msLeft = Math.max(0, lastStatus.claim.windowEndsAtMs - (Date.now() - clockOffset));
-          resetTxt = "\n\nEl sistema de puntos se reinicia en " + formatClaimCountdown(msLeft) + ".";
+          resetTxt = " Vuelve en " + formatClaimCountdown(msLeft) + ".";
         }
-        var ok = confirm("El evento ya terminó, así que los puntos que hagas ahora NO serán válidos para el ranking." + resetTxt + "\n\n¿Quieres jugar de todas formas, solo por diversión?");
-        if (!ok) return;
+        var proceed = function () { showStage("select"); };
+        if (window.__askConfirm) {
+          window.__askConfirm({
+            title: "EL EVENTO YA TERMINÓ",
+            text: "Los puntos que hagas ahora no cuentan para el ranking." + resetTxt,
+            yesLabel: "Jugar por diversión",
+            noLabel: "Ahora no"
+          }, proceed);
+        } else {
+          proceed();
+        }
+        return;
       }
       showStage("select");
     });
@@ -1671,6 +1708,15 @@
         }
         if (window.__checkNameThenProceed) window.__checkNameThenProceed(name, proceed, null);
         else proceed();
+      });
+    }
+
+    // Volver de "elige tu personaje" a la pantalla de inicio (ranking, evento
+    // y premio) sin tener que empezar una partida.
+    if (backBtn) {
+      backBtn.addEventListener("click", function () {
+        showStage("intro");
+        fetchIntroLeaderboard();
       });
     }
 

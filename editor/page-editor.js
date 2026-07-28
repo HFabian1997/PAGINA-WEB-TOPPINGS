@@ -137,15 +137,34 @@
     return (v && typeof v === "object" && !Array.isArray(v)) ? v : {};
   }
 
+  var MIN_SCALE = 0.4;
+  var MAX_SCALE = 2.5;
+  var SCALE_STEP = 0.1;
+
+  function clampScale(s) {
+    return Math.max(MIN_SCALE, Math.min(MAX_SCALE, Math.round(s * 100) / 100));
+  }
+
+  /* El tamaño se aplica con `scale`, no tocando width/height: así funciona
+     igual con un texto, una imagen o una tarjeta entera, sin romper el
+     diseño responsive de alrededor. El `transform-origin` queda en el centro
+     para que el elemento crezca hacia los dos lados y no se corra. */
+  function writeTransform(el, dx, dy, scale) {
+    var cs = getComputedStyle(el);
+    if (cs.position === "static") el.style.position = "relative";
+    var t = "translate(" + (dx || 0) + "px," + (dy || 0) + "px)";
+    if (scale && scale !== 1) t += " scale(" + clampScale(scale) + ")";
+    el.style.transform = t;
+  }
+
   function applyOverride(selector, ov) {
     var el;
     try { el = document.querySelector(selector); } catch (e) { return; }
     if (!el) return;
-    if (typeof ov.dx === "number" || typeof ov.dy === "number") {
-      var cs = getComputedStyle(el);
-      if (cs.position === "static") el.style.position = "relative";
-      el.style.transform = "translate(" + (ov.dx || 0) + "px," + (ov.dy || 0) + "px)";
-    }
+
+    var hasMove = typeof ov.dx === "number" || typeof ov.dy === "number";
+    var hasScale = typeof ov.scale === "number" && ov.scale !== 1;
+    if (hasMove || hasScale) writeTransform(el, ov.dx, ov.dy, ov.scale);
     if (typeof ov.text === "string") el.textContent = ov.text;
   }
 
@@ -222,7 +241,7 @@
     hint.className = "editor-hint";
     hint.setAttribute(EDITOR_UI_ATTR, "");
     hint.hidden = true;
-    hint.textContent = "Mantén presionado y arrastra para mover · doble clic para editar el texto";
+    hint.textContent = "Mantén presionado y arrastra para mover · doble clic para editar el texto · − / + para el tamaño";
     document.body.appendChild(hint);
 
     var hoverBox = document.createElement("div");
@@ -278,11 +297,39 @@
     var selector = getStableSelector(el);
     var canEditText = isTextEditable(el);
     els.panelBody.innerHTML =
+      '<div class="editor-size-row">' +
+        '<label>Tamaño</label>' +
+        '<div class="editor-size-controls">' +
+          '<button type="button" data-editor-scale="-1" aria-label="Reducir">−</button>' +
+          '<span class="editor-size-val" data-editor-scale-val></span>' +
+          '<button type="button" data-editor-scale="1" aria-label="Agrandar">+</button>' +
+          '<button type="button" class="editor-size-reset" data-editor-scale="0">↺</button>' +
+        '</div>' +
+      '</div>' +
+      (canEditText ? '<button type="button" class="editor-toolbar-btn editor-panel-edit-text" data-editor-edit-text>✏️ Editar este texto</button>' : "") +
       '<div class="editor-side-panel-row"><label>Etiqueta</label><div class="val">' + el.tagName.toLowerCase() + '</div></div>' +
       '<div class="editor-side-panel-row"><label>Clases</label><div class="val">' + escHTML(el.className && typeof el.className === "string" ? el.className : "(ninguna)") + '</div></div>' +
       '<div class="editor-side-panel-row"><label>Texto</label><div class="val">' + escHTML(textPreview(el)) + '</div></div>' +
-      '<div class="editor-side-panel-row"><label>Selector estable</label><div class="val">' + escHTML(selector) + '</div></div>' +
-      (canEditText ? '<button type="button" class="editor-toolbar-btn editor-panel-edit-text" data-editor-edit-text>✏️ Editar este texto</button>' : "");
+      '<div class="editor-side-panel-row"><label>Selector estable</label><div class="val">' + escHTML(selector) + '</div></div>';
+
+    var valEl = $("[data-editor-scale-val]", els.panelBody);
+    function paintScale() {
+      valEl.textContent = Math.round(currentScale(el) * 100) + "%";
+    }
+    paintScale();
+
+    Array.prototype.forEach.call(els.panelBody.querySelectorAll("[data-editor-scale]"), function (btn) {
+      btn.addEventListener("click", function () {
+        var dir = Number(btn.getAttribute("data-editor-scale"));
+        var next = dir === 0 ? 1 : clampScale(currentScale(el) + dir * SCALE_STEP);
+        var t = currentTranslate(el);
+        writeTransform(el, t.dx, t.dy, next);
+        overrides[selector] = Object.assign({}, overrides[selector], { dx: t.dx, dy: t.dy, scale: next });
+        dirty = true;
+        paintScale();
+        positionBox(els.selectBox, el.getBoundingClientRect());
+      });
+    });
 
     if (canEditText) {
       $("[data-editor-edit-text]", els.panelBody).addEventListener("click", function () { startTextEdit(el); });
@@ -311,6 +358,11 @@
   function currentTranslate(el) {
     var m = (el.style.transform || "").match(/translate\(([-\d.]+)px,\s*([-\d.]+)px\)/);
     return m ? { dx: parseFloat(m[1]), dy: parseFloat(m[2]) } : { dx: 0, dy: 0 };
+  }
+
+  function currentScale(el) {
+    var m = (el.style.transform || "").match(/scale\(([\d.]+)\)/);
+    return m ? parseFloat(m[1]) : 1;
   }
 
   /** El propio elemento, o cualquier ancestro suyo, es position:fixed —
@@ -386,9 +438,8 @@
     drag.moved = true;
     els.hoverBox.hidden = true;
     var clamped = clampDelta(drag.el, drag.originalRect, drag.startDx + dxRaw, drag.startDy + dyRaw);
-    var cs = getComputedStyle(drag.el);
-    if (cs.position === "static") drag.el.style.position = "relative";
-    drag.el.style.transform = "translate(" + clamped.dx + "px," + clamped.dy + "px)";
+    // se conserva la escala: si no, arrastrar un elemento agrandado lo devolvía a su tamaño
+    writeTransform(drag.el, clamped.dx, clamped.dy, currentScale(drag.el));
     positionBox(els.selectBox, drag.el.getBoundingClientRect());
     els.selectLabel.textContent = "moviendo…";
   }

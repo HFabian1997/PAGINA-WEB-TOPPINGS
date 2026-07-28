@@ -52,6 +52,9 @@
 .run-select-icon { font-size: 2.2rem; line-height: 1; }
 .run-select-img { height: 76px; width: auto; object-fit: contain; }
 
+/* Volver de la selección de personaje al inicio (ranking) sin jugar */
+.run-back-btn { margin-top: .9rem; padding: .6rem 1.2rem; font-size: .85rem; }
+
 .run-name-form { display: flex; gap: .5rem; width: 100%; max-width: 320px; }
 .run-input {
   flex: 1; padding: .65rem .8rem; border-radius: var(--radius-sm); border: 1px solid var(--line);
@@ -136,6 +139,18 @@
   font-family: var(--sans); font-weight: 800; font-size: .68rem; letter-spacing: .04em;
   text-transform: uppercase; color: var(--accent); text-align: center; margin: 0 0 .35rem;
 }
+/* El título del top y el reloj comparten renglón: antes eran dos líneas
+   separadas y en un celular eso ya era la mitad de la tarjeta. */
+.run-board-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: .5rem;
+  margin-bottom: .35rem;
+}
+.run-board-head .run-leaderboard-title { margin: 0; text-align: left; }
+.run-board-timer {
+  font-family: var(--sans); font-weight: 800; font-size: .68rem;
+  color: var(--ink-mute); font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.run-board-timer[hidden] { display: none; }
 .run-leaderboard-list { display: flex; flex-direction: column; gap: .2rem; }
 .run-leaderboard-list li {
   display: flex; align-items: center; gap: .4rem; padding: .3rem .5rem;
@@ -148,24 +163,15 @@
 .run-lb-score { color: var(--accent); font-weight: 800; }
 .run-leaderboard-countdown { text-align: center; font-size: .66rem; color: var(--ink-mute); margin: .35rem 0 0; }
 
-/* Estado del evento en la pantalla de inicio del juego */
-.run-event-countdown {
-  font-family: var(--sans); font-weight: 800; font-size: .74rem; letter-spacing: .02em;
-  color: var(--accent); text-align: center; margin: 0;
+/* Una sola línea de estado, en lugar de los cuatro bloques que había antes
+   (cuenta atrás + ganador anterior en 3 renglones + pista de reclamo). */
+.run-status {
+  width: 100%; max-width: 260px; margin: 0; text-align: center;
+  font-size: .78rem; font-weight: 700; line-height: 1.35; color: var(--ink-soft);
 }
-.run-event-countdown[hidden] { display: none; }
-.run-event-winner {
-  width: 100%; max-width: 240px; text-align: center; padding: .55rem .6rem;
-  background: rgba(255,212,0,.1); border: 1px solid rgba(255,212,0,.4);
-  border-radius: var(--radius-sm);
-}
-.run-event-winner[hidden] { display: none; }
-.run-event-winner-title {
-  font-family: var(--sans); font-weight: 800; font-size: .64rem; letter-spacing: .05em;
-  text-transform: uppercase; color: var(--accent); margin: 0 0 .2rem;
-}
-.run-event-winner-name { font-weight: 800; font-size: .82rem; color: var(--ink); margin: 0; }
-.run-event-winner-reset { font-size: .68rem; color: var(--ink-mute); margin: .25rem 0 0; }
+.run-status[hidden] { display: none; }
+.run-status.is-leading { color: var(--accent); }
+.run-status.is-won { color: var(--accent); font-size: .86rem; font-weight: 800; }
 
 .run-claim { width: 100%; max-width: 260px; display: flex; flex-direction: column; align-items: center; gap: .4rem; }
 .run-claim[hidden] { display: none; }
@@ -189,8 +195,7 @@
   background: rgba(255,212,0,.12); color: var(--accent); cursor: not-allowed;
   border: 1px solid var(--accent); box-shadow: none;
 }
-.run-claim-hint { font-size: .72rem; color: var(--ink-mute); text-align: center; max-width: 220px; }
-.run-claim-hint[hidden] { display: none; }
+.run-claim-countdown { margin: 0; }
 
 @media (max-width: 480px) {
   .run-select-grid { gap: .7rem; }

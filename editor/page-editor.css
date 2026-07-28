@@ -83,6 +83,25 @@ body.editor-mode { padding-top: 46px; }
 }
 .editor-panel-edit-text { width: 100%; margin-top: .3rem; }
 
+/* ---- Agrandar / reducir el elemento seleccionado ---- */
+.editor-size-row { margin-bottom: 1rem; }
+.editor-size-row label {
+  display: block; font-size: .68rem; text-transform: uppercase; letter-spacing: .05em;
+  color: rgba(255,255,255,.45); margin-bottom: .35rem;
+}
+.editor-size-controls { display: flex; align-items: center; gap: .4rem; }
+.editor-size-controls button {
+  flex: 0 0 auto; width: 40px; height: 40px; border-radius: 10px;
+  border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.06);
+  color: #fff; font-size: 1.25rem; font-weight: 700; line-height: 1; cursor: pointer;
+}
+.editor-size-controls button:hover { border-color: #ffd400; color: #ffd400; }
+.editor-size-controls .editor-size-reset { font-size: 1rem; margin-left: auto; }
+.editor-size-val {
+  flex: 1 1 auto; text-align: center; font-size: .95rem; font-weight: 800;
+  font-variant-numeric: tabular-nums; color: #ffd400;
+}
+
 /* ---- Resaltados de hover / selección ---- */
 .editor-hover-box, .editor-select-box {
   position: fixed; z-index: 9997; pointer-events: none;

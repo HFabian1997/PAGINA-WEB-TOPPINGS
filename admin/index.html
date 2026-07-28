@@ -60,13 +60,39 @@
 
   <section class="admin-panel" data-panel="negocio">
     <h2>Información del negocio</h2>
+
+    <h3>🖼️ Imagen del sitio</h3>
+    <p class="hint">Cambia el logo de la portada y el fondo de toda la página. Se ve al instante aquí; para que lo vean tus clientes hay que darle "Guardar cambios".</p>
+    <div class="looks-grid">
+
+      <div class="looks-card">
+        <span class="looks-title">Logo de la portada</span>
+        <div class="looks-preview"><img data-image-preview="business.logo" alt=""></div>
+        <input type="file" accept="image/*" data-image-field="business.logo" hidden data-looks-input="business.logo">
+        <button type="button" class="btn btn-ghost looks-btn" data-looks-pick="business.logo">📷 Cambiar logo</button>
+      </div>
+
+      <div class="looks-card">
+        <span class="looks-title">Fondo de la página</span>
+        <div class="looks-preview" data-bg-live-preview></div>
+        <div class="looks-choices">
+          <label class="looks-choice"><input type="radio" name="bgType" value="texture" data-bg-choice="texture"> Textura</label>
+          <label class="looks-choice"><input type="radio" name="bgType" value="color" data-bg-choice="color"> Color</label>
+          <label class="looks-choice"><input type="radio" name="bgType" value="image" data-bg-choice="image"> Foto</label>
+        </div>
+        <label class="looks-inline" data-bg-quick="color">Elegí el color
+          <input type="color" data-bg-quick-color>
+        </label>
+        <input type="file" accept="image/*" data-image-field="customization.backgroundImage" hidden data-looks-input="customization.backgroundImage">
+        <button type="button" class="btn btn-ghost looks-btn" data-bg-quick="image" data-looks-pick="customization.backgroundImage">🖼️ Elegir foto de fondo</button>
+      </div>
+
+    </div>
+
+    <h3>Datos y textos</h3>
     <div class="field-grid" data-form="business">
       <label>Nombre <input type="text" data-field="name"></label>
       <label class="full">Clave de administrador (para entrar al panel y borrar fotos de stikers) <input type="text" data-field="adminSecret" placeholder="Elige una palabra o clave secreta"></label>
-      <label class="full">Logo (aparece en el encabezado y el pie de página)
-        <input type="file" accept="image/*" data-image-field="business.logo">
-        <img class="preview" data-image-preview="business.logo">
-      </label>
       <label>Frase / eslogan <textarea data-field="tagline" rows="2"></textarea></label>
       <label>WhatsApp (solo números, con indicativo de país) <input type="text" data-field="whatsapp" placeholder="573001234567"></label>
       <label>WhatsApp para mostrar <input type="text" data-field="whatsappDisplay" placeholder="+57 300 123 4567"></label>
@@ -542,13 +568,15 @@
 </template>
 
 <template id="tpl-image-list-item">
-  <div class="gallery-admin-item">
+  <div class="gallery-admin-item" data-sort-item>
+    <span class="image-list-num" data-role="num"></span>
     <img class="preview" data-role="preview">
     <div class="image-list-actions">
       <button type="button" data-role="up" title="Mover arriba" aria-label="Mover arriba">↑</button>
       <span class="image-list-pos" data-role="pos"></span>
       <button type="button" data-role="down" title="Mover abajo" aria-label="Mover abajo">↓</button>
     </div>
+    <span class="image-list-grip" data-role="grip" title="Mantené presionado y arrastrá para mover">⠿ arrastrar</span>
     <button class="btn-remove" data-role="remove" title="Eliminar imagen" aria-label="Eliminar imagen">&times;</button>
   </div>
 </template>

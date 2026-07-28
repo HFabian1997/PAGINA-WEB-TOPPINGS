@@ -1,0 +1,22 @@
+# ============================================================
+# NO subir a GitHub — el repositorio es público
+# ============================================================
+
+# Contraseña del admin y PIN de empleados (campos "adminSecret" y "pin")
+admin/content.json
+
+# Clave de la API de IA
+api/ai-config.php
+
+# Datos reales de clientes: nombres, puntajes, códigos de premio,
+# reclamos del día. No es código, es información de personas.
+api/data/*.json
+
+# Fotos que suben los clientes (retos, stikers)
+api/uploads/*
+!api/uploads/.htaccess
+
+# Respaldos y archivos de trabajo
+toppings_*.zip
+RESTAURAR_*.zip
+.claude/

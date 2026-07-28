@@ -85,8 +85,12 @@ function requireAuth() {
 }
 
 function buildManifestJs($content) {
+  // manifest.js es público: nunca debe incluir datos secretos.
+  $public = $content;
+  unset($public['business']['adminSecret']);
+  unset($public['deliverySettings']['pin']);
   return "(function () {\n  \"use strict\";\n  window.__BRAND__ = " .
-    json_encode($content, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) .
+    json_encode($public, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) .
     ";\n})();\n";
 }
 

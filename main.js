@@ -34,9 +34,11 @@
     root.style.fontSize = FONT_SCALE[c.fontSizeScale] || FONT_SCALE.normal;
 
     if (c.backgroundType === "color" && c.backgroundColor) {
-      root.style.background = c.backgroundColor;
+      root.style.setProperty("--page-bg-color", c.backgroundColor);
+      root.style.setProperty("--page-bg-image", "none");
     } else if (c.backgroundType === "image" && c.backgroundImage) {
-      root.style.background = "#0a0a0a url('" + c.backgroundImage + "') center / cover no-repeat fixed";
+      root.style.setProperty("--page-bg-color", "#0a0a0a");
+      root.style.setProperty("--page-bg-image", "url('" + c.backgroundImage + "')");
     }
     // backgroundType "texture" (o sin definir): se deja la textura urbana de siempre.
 
@@ -177,6 +179,56 @@
     if (changeBtn) changeBtn.onclick = dismiss;
     if (backdrop) backdrop.onclick = dismiss;
   }
+
+  /* ---------------- Ventana de confirmación propia ----------------
+     Reemplaza al confirm() del navegador: en el celular ese cuadro muestra
+     el dominio ("...hostingersite.com dice") sobre un fondo gris del
+     sistema, y el cliente lo lee como un error de la página en vez de como
+     una pregunta del sitio. Se arma sola la primera vez que se usa, así no
+     hay que repetir el mismo HTML en las 5 páginas. */
+  var confirmModal = null;
+
+  function buildConfirmModal() {
+    var el = document.createElement("div");
+    el.className = "prize-modal name-taken-modal";
+    el.hidden = true;
+    el.innerHTML =
+      '<div class="prize-modal-backdrop" data-confirm-close></div>' +
+      '<div class="prize-modal-card name-taken-card">' +
+        '<p class="section-kicker" data-confirm-title></p>' +
+        '<p class="claim-prize-hint" data-confirm-text></p>' +
+        '<div class="name-taken-actions">' +
+          '<button type="button" class="btn btn-primary" data-confirm-yes></button>' +
+          '<button type="button" class="btn btn-ghost" data-confirm-no></button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(el);
+    return el;
+  }
+
+  function askConfirm(opts, onYes, onNo) {
+    if (!confirmModal) confirmModal = buildConfirmModal();
+    var m = confirmModal;
+    $("[data-confirm-title]", m).textContent = opts.title || "";
+    $("[data-confirm-text]", m).textContent = opts.text || "";
+    var yes = $("[data-confirm-yes]", m);
+    var no = $("[data-confirm-no]", m);
+    yes.textContent = opts.yesLabel || "Continuar";
+    no.textContent = opts.noLabel || "Cancelar";
+    m.hidden = false;
+
+    function cleanup() {
+      m.hidden = true;
+      yes.onclick = null;
+      no.onclick = null;
+      $("[data-confirm-close]", m).onclick = null;
+    }
+    function decline() { cleanup(); if (onNo) onNo(); }
+    yes.onclick = function () { cleanup(); if (onYes) onYes(); };
+    no.onclick = decline;
+    $("[data-confirm-close]", m).onclick = decline;
+  }
+  window.__askConfirm = askConfirm;
 
   function checkNameThenProceed(name, onContinue, onChangeName) {
     var deviceId = getDeviceId();

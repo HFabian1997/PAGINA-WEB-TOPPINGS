@@ -240,6 +240,8 @@
           setImgSrc(previewEl, rel);
           markDirty();
           input.value = "";
+          renderImageFields();   // el logo y el fondo se muestran en dos lugares
+          renderLooks();
         });
       };
     });
@@ -615,6 +617,135 @@
   }
 
   /* ---------------- menu image lists (comidas/helados/bebidas) ---------------- */
+  /* ---------------- reordenar arrastrando ----------------
+     A propósito NO se usa el drag-and-drop nativo de HTML5 (el que sí usan
+     los bloques del carrusel): ese no existe en pantallas táctiles, y el
+     panel se maneja casi siempre desde el celular. Con Pointer Events
+     funciona igual con dedo y con mouse.
+
+     Hay que mantener presionado un momento antes de que empiece a arrastrar
+     — si no, cualquier intento de hacer scroll con el dedo sobre una foto
+     terminaría moviéndola de lugar. */
+  var SORT_HOLD_MS = 180;
+  var SORT_CANCEL_PX = 10;
+
+  function makeSortable(list, onReorder) {
+    var holdTimer = null;
+    var item = null;      // el elemento que se está arrastrando
+    var placeholder = null;
+    var dragging = false;
+    var startX = 0, startY = 0, grabX = 0, grabY = 0, fromIdx = 0;
+
+    function itemsOf() {
+      return Array.prototype.filter.call(list.children, function (c) {
+        return c !== placeholder && c.hasAttribute("data-sort-item");
+      });
+    }
+
+    function begin() {
+      dragging = true;
+      var r = item.getBoundingClientRect();
+      fromIdx = itemsOf().indexOf(item);
+
+      placeholder = document.createElement("div");
+      placeholder.className = "sort-placeholder";
+      placeholder.style.width = r.width + "px";
+      placeholder.style.height = r.height + "px";
+      list.insertBefore(placeholder, item);
+
+      item.classList.add("is-sorting");
+      item.style.width = r.width + "px";
+      item.style.height = r.height + "px";
+      item.style.position = "fixed";
+      item.style.left = r.left + "px";
+      item.style.top = r.top + "px";
+      item.style.zIndex = "999";
+      item.style.pointerEvents = "none";
+      grabX = startX - r.left;
+      grabY = startY - r.top;
+      document.body.classList.add("is-sorting-active");
+    }
+
+    function moveTo(x, y) {
+      item.style.left = (x - grabX) + "px";
+      item.style.top = (y - grabY) + "px";
+
+      // ¿sobre qué otra foto está el dedo? El placeholder se corre ahí.
+      var others = itemsOf();
+      for (var i = 0; i < others.length; i++) {
+        if (others[i] === item) continue;
+        var r = others[i].getBoundingClientRect();
+        if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+          var after = (x - r.left) > r.width / 2;
+          list.insertBefore(placeholder, after ? others[i].nextSibling : others[i]);
+          return;
+        }
+      }
+    }
+
+    function finish(commit) {
+      clearTimeout(holdTimer);
+      if (!dragging) { item = null; return; }
+
+      var toIdx = fromIdx;
+      if (placeholder) {
+        // índice final = posición del placeholder ignorando al que se arrastra
+        var order = Array.prototype.filter.call(list.children, function (c) {
+          return c === placeholder || (c !== item && c.hasAttribute("data-sort-item"));
+        });
+        toIdx = order.indexOf(placeholder);
+      }
+
+      item.classList.remove("is-sorting");
+      item.removeAttribute("style");
+      if (placeholder && placeholder.parentNode) placeholder.parentNode.removeChild(placeholder);
+      document.body.classList.remove("is-sorting-active");
+      placeholder = null;
+      dragging = false;
+      var moved = item;
+      item = null;
+
+      if (commit && toIdx !== fromIdx) onReorder(fromIdx, toIdx);
+      else if (moved) moved.classList.add("is-sort-return");
+    }
+
+    list.addEventListener("pointerdown", function (e) {
+      if (e.button != null && e.button !== 0) return;
+      var target = e.target.closest("[data-sort-item]");
+      if (!target || !list.contains(target)) return;
+      if (e.target.closest("button")) return;   // no pisar ↑ ↓ ×
+
+      item = target;
+      startX = e.clientX;
+      startY = e.clientY;
+      clearTimeout(holdTimer);
+      holdTimer = setTimeout(function () {
+        if (!item) return;
+        begin();
+        moveTo(startX, startY);
+      }, SORT_HOLD_MS);
+    });
+
+    list.addEventListener("pointermove", function (e) {
+      if (!item) return;
+      if (!dragging) {
+        // se movió antes de completar la pulsación larga => era scroll
+        if (Math.abs(e.clientX - startX) > SORT_CANCEL_PX || Math.abs(e.clientY - startY) > SORT_CANCEL_PX) {
+          clearTimeout(holdTimer);
+          item = null;
+        }
+        return;
+      }
+      e.preventDefault();
+      moveTo(e.clientX, e.clientY);
+    });
+
+    ["pointerup", "pointercancel"].forEach(function (evt) {
+      list.addEventListener(evt, function () { finish(evt === "pointerup"); });
+    });
+    window.addEventListener("blur", function () { if (item) finish(false); });
+  }
+
   function renderImageLists() {
     $$("[data-image-list]").forEach(function (list) {
       var path = list.getAttribute("data-image-list");
@@ -623,17 +754,34 @@
       var container = parts.length ? getPath(state.content, parts.join(".")) : state.content;
       var items = container[arrKey] || (container[arrKey] = []);
 
+      // el arrastre se engancha al contenedor una sola vez: `list.innerHTML = ""`
+      // borra las fotos pero no toca los escuchadores del contenedor
+      if (!list.__sortable) {
+        list.__sortable = true;
+        makeSortable(list, function (from, to) {
+          var arr = (parts.length ? getPath(state.content, parts.join(".")) : state.content)[arrKey];
+          // `to` ya viene medido sobre la lista SIN el elemento arrastrado
+          // (el placeholder ocupa su lugar), así que no hay que corregirlo.
+          arr.splice(to, 0, arr.splice(from, 1)[0]);
+          markDirty();
+          renderImageLists();
+          renderCarouselAdmins();
+        });
+      }
+
       list.innerHTML = "";
       items.forEach(function (src, idx) {
         var node = $("#tpl-image-list-item").content.cloneNode(true);
         var previewImg = node.querySelector('[data-role="preview"]');
         var posEl = node.querySelector('[data-role="pos"]');
+        var numEl = node.querySelector('[data-role="num"]');
         var upBtn = node.querySelector('[data-role="up"]');
         var downBtn = node.querySelector('[data-role="down"]');
         var removeBtn = node.querySelector('[data-role="remove"]');
 
         setImgSrc(previewImg, src);
         posEl.textContent = (idx + 1) + " / " + items.length;
+        numEl.textContent = idx + 1;
         upBtn.disabled = idx === 0;
         downBtn.disabled = idx === items.length - 1;
 
@@ -1016,6 +1164,7 @@
     renderGallery();
     renderRepeatLists();
     renderAiDocStatus();
+    renderLooks();
     renderBgTypeVisibility();
     renderNameChangeModeVisibility();
     renderRankingStatus();
@@ -1036,7 +1185,93 @@
   function initBgTypeToggle() {
     var select = $("[data-bg-type-select]");
     if (!select) return;
-    select.addEventListener("change", renderBgTypeVisibility);
+    select.addEventListener("change", function () {
+      renderBgTypeVisibility();
+      renderLooks();
+    });
+  }
+
+  /* ---------------- "Imagen del sitio" (pestaña Negocio) ----------------
+     Un solo lugar para el logo y el fondo, con vista previa de verdad: lo que
+     se ve en el recuadro es lo mismo que va a ver el cliente. Los <input
+     type="file"> quedan ocultos y los dispara el botón, así cambiar una
+     imagen es un clic y no dos. */
+  function customization() {
+    return state.content.customization || (state.content.customization = {});
+  }
+
+  function renderLooks() {
+    var c = customization();
+    var type = c.backgroundType || "texture";
+
+    $$("[data-bg-choice]").forEach(function (radio) {
+      var on = radio.getAttribute("data-bg-choice") === type;
+      radio.checked = on;
+      var label = radio.closest(".looks-choice");
+      if (label) label.classList.toggle("is-active", on);
+    });
+    $$("[data-bg-quick]").forEach(function (el) {
+      el.hidden = el.getAttribute("data-bg-quick") !== type;
+    });
+
+    var colorInput = $("[data-bg-quick-color]");
+    if (colorInput) colorInput.value = c.backgroundColor || "#0a0a0a";
+
+    var box = $("[data-bg-live-preview]");
+    if (box) {
+      if (type === "color") {
+        box.style.background = c.backgroundColor || "#0a0a0a";
+      } else if (type === "image" && c.backgroundImage) {
+        box.style.background = "#0a0a0a url('" + adminAssetUrl(c.backgroundImage) + "') center / cover no-repeat";
+      } else if (type === "image") {
+        box.style.background = "#0a0a0a";
+      } else {
+        box.style.background = "#0a0a0a url('" + adminAssetUrl("assets/img/bg-texture.jpg") + "') center / cover no-repeat";
+      }
+    }
+  }
+
+  function initLooks() {
+    // botón -> abre el selector de archivos oculto
+    $$("[data-looks-pick]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var input = $('[data-looks-input="' + btn.getAttribute("data-looks-pick") + '"]');
+        if (input) input.click();
+      });
+    });
+
+    $$("[data-bg-choice]").forEach(function (radio) {
+      radio.addEventListener("change", function () {
+        customization().backgroundType = radio.getAttribute("data-bg-choice");
+        markDirty();
+        renderLooks();
+        renderForms();              // mantiene sincronizado el select de Personalización
+        renderBgTypeVisibility();
+      });
+    });
+
+    // elegir una foto de fondo implica querer usarla: se cambia el tipo solo
+    var bgFile = $('[data-looks-input="customization.backgroundImage"]');
+    if (bgFile) {
+      bgFile.addEventListener("change", function () {
+        if (!bgFile.files || !bgFile.files[0]) return;
+        customization().backgroundType = "image";
+        markDirty();
+        renderLooks();
+        renderForms();
+        renderBgTypeVisibility();
+      });
+    }
+
+    var colorInput = $("[data-bg-quick-color]");
+    if (colorInput) {
+      colorInput.addEventListener("input", function () {
+        customization().backgroundColor = colorInput.value;
+        markDirty();
+        renderLooks();
+        renderForms();
+      });
+    }
   }
 
   /* ---------------- saludo al cliente: mostrar el número de cambios solo si el modo es "limited" ---------------- */
@@ -1344,6 +1579,7 @@
     initAudioRemove();
     initAiDoc();
     initBgTypeToggle();
+    initLooks();
     initNameChangeModeToggle();
     initRewardTypeToggles();
     initRankingReset();
