@@ -1473,10 +1473,11 @@
           ? res.winner
           : ((res.history && res.history.length) ? res.history[0] : null);
         if (prev && prev.name) {
+          // Una sola línea discreta al pie: es un dato de contexto, no la
+          // información principal de la tarjeta.
           prevWinnerEl.innerHTML =
-            '<span class="run-prev-winner-label">🏆 Ganador del evento anterior</span>' +
-            '<span class="run-prev-winner-name">' + escHtml(prev.name) + "</span>" +
-            '<span class="run-prev-winner-score">' + prev.score + " puntos</span>";
+            "🏆 Ganador del evento anterior: " +
+            '<strong>' + escHtml(prev.name) + "</strong> · " + prev.score + " pts";
           prevWinnerEl.hidden = false;
         } else {
           prevWinnerEl.hidden = true;
@@ -1677,6 +1678,15 @@
       if (playerEl && !playerEl.hidden && stages.game && !stages.game.hidden) {
         playerEl.textContent = newName.toUpperCase();
       }
+      /* El nombre se cambia en pantalla de una vez, sin esperar la respuesta
+         del servidor: la fila propia del top ya está marcada con `is-mine`,
+         así que se reescribe ahí mismo. La consulta que va detrás solo
+         confirma. Sin esto había un parpadeo de varios segundos con el
+         nombre viejo, que es justo lo que se notaba. */
+      if (introLeaderboardListEl) {
+        var mia = introLeaderboardListEl.querySelector("li.is-mine .run-lb-name");
+        if (mia) mia.textContent = newName + " (TÚ)";
+      }
       fetchIntroLeaderboard();
     };
 
@@ -1824,12 +1834,15 @@
     if (recordEl) recordEl.textContent = "🏆 " + Number(localStorage.getItem(RECORD_KEY) || 0);
     showStage("intro");
     fetchIntroLeaderboard();
-    // Se repite mientras la pantalla de inicio esté visible, para que el
-    // contador de las 24h y la disponibilidad del botón de reclamar se
-    // actualicen solos, sin recargar la página.
+    /* Se repite mientras la pantalla de inicio esté visible, para que el
+       contador, el botón de reclamar y los NOMBRES del top se actualicen
+       solos, sin recargar la página — incluso si quien se cambió el nombre
+       fue otra persona desde su propio celular.
+       Cada 3s, el mismo ritmo que la tarjeta y el cronómetro, para que se
+       sienta igual de inmediato en toda la página. */
     setInterval(function () {
       if (stages.intro && !stages.intro.hidden) fetchIntroLeaderboard();
-    }, 6000);
+    }, 3000);
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);

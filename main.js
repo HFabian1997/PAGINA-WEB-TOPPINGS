@@ -347,7 +347,13 @@
               }
               renderHeroGreeting();
               safe(renderPremioSection, "renderPremioSection");
-              if (oldName) renameEverywhere(name, oldName);
+              /* Se avisa al servidor SIEMPRE, aunque no hubiera un nombre
+                 anterior guardado en este celular: el ranking se guarda por
+                 dispositivo, así que puede haber un puntaje suyo con otro
+                 nombre (por ejemplo si borró los datos del navegador). Si solo
+                 se avisaba cuando había nombre viejo, esos casos seguían
+                 mostrando el nombre antiguo en el ranking. */
+              renameEverywhere(name, oldName);
             }, askForName);
           });
         }
