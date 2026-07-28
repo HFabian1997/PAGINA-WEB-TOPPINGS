@@ -675,8 +675,19 @@
       var info = category && data[category];
       if (!info) return;
 
+      /* Las imágenes ocultas desde el panel se guardan aparte, en
+         `hiddenImages`, en vez de cambiar `images` de lista de rutas a lista
+         de objetos: así lo que ya está guardado sigue funcionando igual y
+         una imagen oculta se recupera sin volver a subirla.
+
+         Importante: se recorre la lista COMPLETA y solo se omite el <img> de
+         las ocultas. La posición del carrusel es un índice sobre esa lista
+         completa (es la que se ve en el panel), así que ocultar una imagen no
+         debe correr el carrusel de lugar. */
       var images = info.images || [];
-      if (images.length) {
+      var hidden = info.hiddenImages || [];
+      var visibleCount = images.filter(function (src) { return hidden.indexOf(src) === -1; }).length;
+      if (visibleCount) {
         // El menú se arma por BLOQUES: cada imagen es un bloque y el carrusel
         // (si está activo) es otro bloque más, insertado en la posición que el
         // admin haya elegido. Así se puede poner antes, entre o después de
@@ -686,13 +697,17 @@
         var at = carousel ? Math.max(0, Math.min(images.length, Number(carousel.position) || 0)) : -1;
 
         if (at === 0) insertCategoryCarousel(frame, carousel, category);
+        var shown = 0;
         images.forEach(function (src, i) {
-          var img = document.createElement("img");
-          img.src = src;
-          img.alt = (info.title || category) + " — parte " + (i + 1);
-          img.loading = i === 0 ? "eager" : "lazy";
-          img.decoding = "async";
-          frame.appendChild(img);
+          if (hidden.indexOf(src) === -1) {
+            var img = document.createElement("img");
+            img.src = src;
+            img.alt = (info.title || category) + " — parte " + (shown + 1);
+            img.loading = shown === 0 ? "eager" : "lazy";
+            img.decoding = "async";
+            frame.appendChild(img);
+            shown++;
+          }
           if (at === i + 1) insertCategoryCarousel(frame, carousel, category);
         });
       } else {

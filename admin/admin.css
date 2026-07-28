@@ -198,22 +198,39 @@ a.btn { text-decoration: none; }
   font-size: .82rem; font-weight: 800; line-height: 1;
 }
 
-/* asa de arrastre */
+/* asa de arrastre — es el único punto que captura el gesto, así que tiene
+   que ser cómoda de agarrar con el dedo */
 .image-list-grip {
   display: flex; align-items: center; justify-content: center; gap: .35rem;
-  margin-top: .5rem; padding: .35rem;
+  margin-top: .5rem; padding: .5rem .35rem; min-height: 36px;
   border-radius: 8px; border: 1px dashed var(--line);
+  background: rgba(255,255,255,.04);
   font-size: .72rem; font-weight: 700; letter-spacing: .04em;
   color: var(--ink-mute); text-transform: uppercase;
   cursor: grab; user-select: none;
 }
-.gallery-admin-item:hover .image-list-grip { border-color: var(--accent); color: var(--accent); }
+/* Ocultar: la imagen deja de verse en la página pero sigue guardada */
+.image-list-hide {
+  width: 100%; margin-top: .4rem; padding: .4rem;
+  border-radius: 8px; border: 1px solid var(--line); background: var(--bg-2);
+  color: var(--ink-soft); font-size: .72rem; font-weight: 700; cursor: pointer;
+}
+.image-list-hide:hover { border-color: var(--accent); color: var(--accent); }
+.image-list-hide.is-off { border-color: rgba(255,255,255,.25); color: var(--ink-mute); }
+.gallery-admin-item.is-hidden-image { opacity: .55; border-style: dashed; }
+.gallery-admin-item.is-hidden-image .preview { filter: grayscale(1); }
+
+.image-list-grip:hover { border-color: var(--accent); color: var(--accent); }
+.image-list-grip:active { cursor: grabbing; border-style: solid; border-color: var(--accent); color: var(--accent); }
 
 /* ---- reordenar arrastrando ----
-   `touch-action: none` es obligatorio en los elementos arrastrables: sin eso
-   el navegador del celular se queda con el gesto para hacer scroll y los
-   pointermove nunca llegan. */
-.gallery-admin-item[data-sort-item] { touch-action: none; transition: transform .18s ease, box-shadow .18s ease; }
+   `touch-action: none` va SOLO en el asa, nunca en la tarjeta entera: si se
+   pone en toda la foto, el navegador del celular deja de poder hacer scroll
+   con el dedo encima de una imagen y hay que buscar un hueco vacío para
+   poder bajar. Con el asa aparte, la lista se desplaza normal y el arrastre
+   empieza únicamente donde dice "arrastrar". */
+[data-sort-item] { transition: transform .18s ease, box-shadow .18s ease; }
+.image-list-grip { touch-action: none; }
 .gallery-admin-item.is-sorting {
   cursor: grabbing; opacity: .95; transform: scale(1.04) rotate(1deg);
   box-shadow: 0 18px 40px rgba(0,0,0,.55); border-color: var(--accent);
@@ -294,16 +311,11 @@ body.is-sorting-active { user-select: none; }
   .admin-panel h2 { font-size: 1.15rem; }
   .admin-panel h3 { font-size: .95rem; }
 
-  /* pestañas: fila que se desliza en vez de un bloque de 13 botones */
-  .admin-tabs {
-    flex-wrap: nowrap; overflow-x: auto; gap: .35rem;
-    padding-bottom: .75rem; margin-bottom: 1.25rem;
-    scrollbar-width: none; -webkit-overflow-scrolling: touch;
-  }
-  .admin-tabs::-webkit-scrollbar { display: none; }
-  .admin-tab { flex: 0 0 auto; font-size: .78rem; padding: .45rem .8rem; white-space: nowrap; }
-  /* los títulos de grupo romperían la fila deslizable */
-  .admin-tab-group-label { display: none; }
+  /* Pestañas: TODAS a la vista, sin deslizar, y agrupadas por categoría.
+     Solo se achican para que quepan en la pantalla. */
+  .admin-tabs { gap: .3rem; padding-bottom: .75rem; margin-bottom: 1.25rem; }
+  .admin-tab { font-size: .74rem; padding: .4rem .7rem; }
+  .admin-tab-group-label { font-size: .64rem; margin: .5rem 0 -.1rem; }
 
   /* fotos: dos por renglón y miniatura más baja */
   .gallery-admin-grid { grid-template-columns: 1fr 1fr; gap: .6rem; }
@@ -322,9 +334,13 @@ body.is-sorting-active { user-select: none; }
   .looks-card { padding: .75rem; gap: .5rem; }
   .looks-preview { height: 100px; }
 
-  /* carrusel dentro de cada categoría */
-  .cc-admin-image { gap: .6rem; padding: .5rem; }
-  .cc-admin-image .preview { width: 68px; height: 46px; }
+  /* Carrusel de la categoría: en pantalla angosta la miniatura y los botones
+     no caben en el mismo renglón (el de eliminar se salía de la tarjeta),
+     así que se apilan. */
+  .cc-admin-image { flex-direction: column; align-items: stretch; gap: .5rem; padding: .55rem; }
+  .cc-admin-image .preview { width: 100%; height: 92px; }
+  .cc-admin-image-actions { margin-left: 0; justify-content: space-between; gap: .4rem; }
+  .cc-admin-image-buttons { flex-wrap: wrap; justify-content: flex-end; }
 
   /* premios de la ruleta */
   .ruleta-prize-row { padding: .8rem .85rem; }
@@ -387,7 +403,11 @@ body.is-sorting-active { user-select: none; }
 
 /* ---------------- Carrusel de categoría (dentro de Comidas/Helados/Bebidas) ---------------- */
 .cc-admin-images { display: flex; flex-direction: column; gap: .6rem; margin-bottom: 1rem; }
+/* `position: relative` es obligatorio: el botón de eliminar es
+   `position: absolute` y sin esto se anclaba a un ancestro lejano, con lo
+   que la × terminaba fuera de la fila y parecía que no existiera. */
 .cc-admin-image {
+  position: relative;
   display: flex; align-items: center; gap: .9rem; padding: .6rem .8rem;
   background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
 }
@@ -399,6 +419,17 @@ body.is-sorting-active { user-select: none; }
   background: var(--bg-2); color: var(--ink); cursor: pointer;
 }
 .cc-admin-image-actions button:disabled { opacity: .3; cursor: default; }
+.cc-admin-image-buttons { display: flex; align-items: center; gap: .4rem; }
+/* Botón con texto, no una × diminuta: antes pasaba desapercibido y parecía
+   que las fotos del carrusel solo se pudieran mover u ocultar. */
+.cc-admin-image-actions button.cc-admin-image-delete {
+  width: auto; height: auto; padding: .4rem .7rem; white-space: nowrap;
+  font-size: .75rem; font-weight: 700;
+  border-color: rgba(255,90,90,.5); color: #ff8080;
+}
+.cc-admin-image-actions button.cc-admin-image-delete:hover {
+  background: var(--danger); border-color: var(--danger); color: #fff;
+}
 
 .cc-blocks { display: flex; flex-direction: column; gap: .4rem; margin-bottom: 1rem; }
 .cc-block {

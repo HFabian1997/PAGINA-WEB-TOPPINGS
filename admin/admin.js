@@ -646,6 +646,7 @@
     var placeholder = null;
     var dragging = false;
     var startX = 0, startY = 0, grabX = 0, grabY = 0, fromIdx = 0, isGrid = false;
+    var lastX = 0, lastY = 0, autoScrollTimer = 0, pointerId = null;
 
     function itemsOf() {
       return Array.prototype.filter.call(list.children, function (c) {
@@ -689,10 +690,18 @@
       item.style.pointerEvents = "none";
       grabX = startX - r.left;
       grabY = startY - r.top;
+      lastX = startX;
+      lastY = startY;
       document.body.classList.add("is-sorting-active");
+      // temporizador y no requestAnimationFrame: rAF se congela cuando la
+      // pestaña no está pintando, y aquí interesa que el desplazamiento siga
+      // respondiendo mientras el dedo esté quieto contra el borde
+      if (!autoScrollTimer) autoScrollTimer = setInterval(autoScrollTick, 16);
     }
 
     function moveTo(x, y) {
+      lastX = x;
+      lastY = y;
       item.style.left = (x - grabX) + "px";
       item.style.top = (y - grabY) + "px";
 
@@ -712,8 +721,34 @@
       }
     }
 
+    /* Con la foto agarrada el dedo no puede hacer scroll, así que para
+       llevarla a una posición que no está en pantalla la página se desplaza
+       sola al acercar el dedo al borde de arriba o de abajo. Va más rápido
+       cuanto más cerca del borde. */
+    var EDGE_PX = 90;
+    var MAX_STEP = 14;
+
+    function autoScrollTick() {
+      if (!dragging) return;
+      var step = 0;
+      if (lastY < EDGE_PX) step = -MAX_STEP * (1 - lastY / EDGE_PX);
+      else if (lastY > window.innerHeight - EDGE_PX) {
+        step = MAX_STEP * (1 - (window.innerHeight - lastY) / EDGE_PX);
+      }
+      if (!step) return;
+      var before = window.scrollY;
+      window.scrollBy(0, step);
+      // si de verdad se movió, hay que recalcular dónde cae el placeholder
+      if (window.scrollY !== before) moveTo(lastX, lastY);
+    }
+
     function finish(commit) {
       clearTimeout(holdTimer);
+      if (autoScrollTimer) { clearInterval(autoScrollTimer); autoScrollTimer = 0; }
+      if (pointerId != null) {
+        try { list.releasePointerCapture(pointerId); } catch (err) {}
+        pointerId = null;
+      }
       if (!dragging) { item = null; return; }
 
       var toIdx = fromIdx;
@@ -742,20 +777,41 @@
       if (e.button != null && e.button !== 0) return;
       var target = e.target.closest("[data-sort-item]");
       if (!target || !list.contains(target)) return;
-      // No pisar los controles: ↑ ↓ ×, ni los campos de texto (en la galería
-      // cada foto tiene su descripción — mantener el dedo para escribir no
-      // puede convertirse en un arrastre).
+      // No pisar los controles ni los campos de texto (en la galería cada
+      // foto tiene su descripción).
       if (e.target.closest("button, input, textarea, select, a")) return;
+
+      var onGrip = !!e.target.closest(".image-list-grip");
+
+      /* Con el dedo, el arrastre SOLO empieza desde el asa. Si empezara en
+         cualquier punto de la foto habría que bloquear el gesto del
+         navegador sobre toda la tarjeta, y entonces no se podría deslizar
+         la página con el dedo encima de una imagen. Con mouse sí vale
+         agarrar desde cualquier lado, manteniendo presionado. */
+      if (!onGrip && e.pointerType === "touch") return;
 
       item = target;
       startX = e.clientX;
       startY = e.clientY;
       clearTimeout(holdTimer);
-      holdTimer = setTimeout(function () {
-        if (!item) return;
+
+      /* Capturar el puntero: sin esto, en cuanto el dedo sale del borde de la
+         lista (justo lo que pasa al arrastrar hasta el borde de la pantalla
+         para que se desplace sola) dejan de llegar los pointermove y la foto
+         se queda pegada a mitad de camino. */
+      pointerId = e.pointerId;
+      try { list.setPointerCapture(pointerId); } catch (err) { pointerId = null; }
+
+      if (onGrip) {
         begin();
         moveTo(startX, startY);
-      }, SORT_HOLD_MS);
+      } else {
+        holdTimer = setTimeout(function () {
+          if (!item) return;
+          begin();
+          moveTo(startX, startY);
+        }, SORT_HOLD_MS);
+      }
     });
 
     list.addEventListener("pointermove", function (e) {
@@ -776,6 +832,16 @@
       list.addEventListener(evt, function () { finish(evt === "pointerup"); });
     });
     window.addEventListener("blur", function () { if (item) finish(false); });
+  }
+
+  /* Lista de rutas ocultas de una categoría. Vive al lado de `images`
+     (p. ej. comidas.hiddenImages) para no tener que cambiar el formato de
+     `images`, que hoy es una lista simple de rutas. */
+  function hiddenListFor(parts, arrKey) {
+    var owner = parts.length ? getPath(state.content, parts.join(".")) : state.content;
+    var key = arrKey === "images" ? "hiddenImages" : arrKey + "Hidden";
+    if (!Array.isArray(owner[key])) owner[key] = [];
+    return owner[key];
   }
 
   function renderImageLists() {
@@ -810,12 +876,28 @@
         var upBtn = node.querySelector('[data-role="up"]');
         var downBtn = node.querySelector('[data-role="down"]');
         var removeBtn = node.querySelector('[data-role="remove"]');
+        var hideBtn = node.querySelector('[data-role="hide"]');
 
         setImgSrc(previewImg, src);
         posEl.textContent = (idx + 1) + " / " + items.length;
         numEl.textContent = idx + 1;
         upBtn.disabled = idx === 0;
         downBtn.disabled = idx === items.length - 1;
+
+        /* Ocultar ≠ eliminar: la imagen deja de verse en la página pero sigue
+           guardada, así que se puede volver a mostrar sin subirla de nuevo. */
+        var hiddenList = hiddenListFor(parts, arrKey);
+        var isHidden = hiddenList.indexOf(src) !== -1;
+        node.querySelector("[data-sort-item]").classList.toggle("is-hidden-image", isHidden);
+        hideBtn.textContent = isHidden ? "🙈 Oculta" : "👁️ Se muestra";
+        hideBtn.classList.toggle("is-off", isHidden);
+        hideBtn.onclick = function () {
+          var pos = hiddenList.indexOf(src);
+          if (pos === -1) hiddenList.push(src);
+          else hiddenList.splice(pos, 1);
+          markDirty();
+          renderImageLists();
+        };
 
         upBtn.onclick = function () {
           if (idx === 0) return;
@@ -834,6 +916,9 @@
         removeBtn.onclick = function () {
           if (!confirm("¿Eliminar esta imagen del menú?")) return;
           items.splice(idx, 1);
+          // que no quede la ruta colgada en la lista de ocultas
+          var h = hiddenList.indexOf(src);
+          if (h !== -1) hiddenList.splice(h, 1);
           markDirty();
           renderImageLists();
           renderCarouselAdmins();
@@ -1087,11 +1172,13 @@
       row.innerHTML =
         '<img class="preview" src="' + adminAssetUrl(item.src) + '" alt="">' +
         '<div class="cc-admin-image-actions">' +
-          '<label class="switch-inline"><input type="checkbox" data-role="on"> Activa</label>' +
-          '<button type="button" data-role="up" aria-label="Subir">↑</button>' +
-          '<span class="image-list-pos">' + (idx + 1) + " / " + c.images.length + "</span>" +
-          '<button type="button" data-role="down" aria-label="Bajar">↓</button>' +
-          '<button type="button" class="btn-remove" data-role="remove" aria-label="Eliminar">&times;</button>' +
+          '<label class="switch-inline"><input type="checkbox" data-role="on"> Se muestra</label>' +
+          '<span class="cc-admin-image-buttons">' +
+            '<button type="button" data-role="up" aria-label="Subir">↑</button>' +
+            '<span class="image-list-pos">' + (idx + 1) + " / " + c.images.length + "</span>" +
+            '<button type="button" data-role="down" aria-label="Bajar">↓</button>' +
+            '<button type="button" class="cc-admin-image-delete" data-role="remove">🗑️ Eliminar</button>' +
+          "</span>" +
         "</div>";
 
       var onBox = row.querySelector('[data-role="on"]');
