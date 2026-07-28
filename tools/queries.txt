@@ -1,0 +1,21 @@
+hero|loaded fries cheese sauce street food night|wide|large
+promo-banner|smash burger combo fries neon|wide|large
+zona-secreta-bg|neon arcade game dark|wide|large
+nosotros-local|food truck night street|wide|large
+comida-1|loaded fries salchipapa sausage cheese|square|large
+comida-2|smash burger cheese close up|square|large
+comida-3|hot dog street food loaded|square|large
+comida-4|crispy french fries basket top view|square|large
+comida-5|chicken burger fast food|square|large
+helado-1|soft serve ice cream cup|square|large
+helado-2|chocolate milkshake glass|square|large
+helado-3|ice cream sundae toppings|square|large
+bebida-1|craft soda can cold drink|square|large
+bebida-2|lemonade glass ice mint|square|large
+bebida-3|iced tea glass|square|large
+galeria-1|urban restaurant interior neon dark|wide|large
+galeria-2|graffiti wall urban street art|wide|large
+galeria-3|friends eating street food night|wide|large
+galeria-4|burger fries close up top view|wide|large
+galeria-5|food truck night lights|wide|large
+galeria-6|chef cooking grill fast food|wide|large

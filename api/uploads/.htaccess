@@ -1,0 +1,14 @@
+# Esta carpeta solo debe servir imágenes; nunca ejecutar código.
+Options -Indexes -ExecCGI
+AddHandler default-handler .php .phtml .php3 .php4 .php5 .php7 .php8
+<IfModule mod_authz_core.c>
+  <FilesMatch "\.(php|phtml|php\d)$">
+    Require all denied
+  </FilesMatch>
+</IfModule>
+<IfModule !mod_authz_core.c>
+  <FilesMatch "\.(php|phtml|php\d)$">
+    Order deny,allow
+    Deny from all
+  </FilesMatch>
+</IfModule>

@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Panel TOPPINGS · Administrar contenido</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="admin.css">
+<link rel="stylesheet" href="../lib/cat-carousel.css?v=20260727">
+</head>
+<body>
+
+<header class="admin-header">
+  <div class="admin-header-inner">
+    <span class="admin-brand">TOPPINGS <em>· Panel</em></span>
+    <div class="admin-conn" data-conn-status hidden>
+      <span class="dot is-ok"></span>
+      <span data-site-origin></span>
+      <a class="btn btn-ghost" data-open-visual-editor href="../index.html?editor=1">✏️ Editar página visualmente</a>
+      <button class="btn btn-ghost" data-logout-btn>Cerrar sesión</button>
+    </div>
+  </div>
+</header>
+
+<div class="admin-login" data-login-screen hidden>
+  <div class="admin-login-card">
+    <h2 data-login-title>Entrar al panel</h2>
+    <p class="hint" data-login-hint>Escribe tu clave de administrador.</p>
+    <input type="password" class="admin-login-input" data-login-password placeholder="Clave" autocomplete="current-password">
+    <p class="admin-login-error" data-login-error hidden></p>
+    <button type="button" class="btn btn-primary btn-lg" data-login-submit>Entrar</button>
+  </div>
+</div>
+
+<main class="admin-main" data-admin-main hidden>
+
+  <nav class="admin-tabs" data-tabs>
+    <span class="admin-tab-group-label">📄 Contenido del sitio</span>
+    <button class="admin-tab is-active" data-tab="negocio">Negocio</button>
+    <button class="admin-tab" data-tab="hero">Portada</button>
+    <button class="admin-tab" data-tab="comidas">Comidas</button>
+    <button class="admin-tab" data-tab="helados">Helados</button>
+    <button class="admin-tab" data-tab="bebidas">Bebidas</button>
+    <button class="admin-tab" data-tab="nosotros">Nosotros</button>
+    <button class="admin-tab" data-tab="galeria">Galería</button>
+    <button class="admin-tab" data-tab="zona">Zona Secreta</button>
+
+    <span class="admin-tab-group-label">🎁 Premios y juegos</span>
+    <button class="admin-tab" data-tab="premio">Premio del día</button>
+    <button class="admin-tab" data-tab="ruleta">🎡 Ruleta</button>
+    <button class="admin-tab" data-tab="stikers">Stikers encontrados</button>
+
+    <span class="admin-tab-group-label">⚙️ Configuración general</span>
+    <button class="admin-tab" data-tab="ia">Configuración de IA</button>
+    <button class="admin-tab" data-tab="personalizacion">Personalización</button>
+  </nav>
+
+  <section class="admin-panel" data-panel="negocio">
+    <h2>Información del negocio</h2>
+    <div class="field-grid" data-form="business">
+      <label>Nombre <input type="text" data-field="name"></label>
+      <label class="full">Clave de administrador (para entrar al panel y borrar fotos de stikers) <input type="text" data-field="adminSecret" placeholder="Elige una palabra o clave secreta"></label>
+      <label class="full">Logo (aparece en el encabezado y el pie de página)
+        <input type="file" accept="image/*" data-image-field="business.logo">
+        <img class="preview" data-image-preview="business.logo">
+      </label>
+      <label>Frase / eslogan <textarea data-field="tagline" rows="2"></textarea></label>
+      <label>WhatsApp (solo números, con indicativo de país) <input type="text" data-field="whatsapp" placeholder="573001234567"></label>
+      <label>WhatsApp para mostrar <input type="text" data-field="whatsappDisplay" placeholder="+57 300 123 4567"></label>
+      <label>Mensaje automático de WhatsApp <textarea data-field="whatsappMessage" rows="2"></textarea></label>
+      <label>Dirección <textarea data-field="address" rows="2"></textarea></label>
+      <label>Enlace de Google Maps (para el botón "Cómo llegar") <input type="text" data-field="mapsLink"></label>
+      <label class="full">Enlace para incrustar el mapa (Google Maps → Compartir → Insertar mapa → copiar el link del "src") <input type="text" data-field="mapsEmbedUrl"></label>
+      <label>Instagram <input type="text" data-field="social.instagram"></label>
+      <label>Facebook <input type="text" data-field="social.facebook"></label>
+      <label>TikTok <input type="text" data-field="social.tiktok"></label>
+      <label class="full">Título de la sección "Cuéntanos tu experiencia" <textarea data-field="reviewsTitle" rows="2"></textarea></label>
+      <label class="full">Texto pequeño debajo del título <textarea data-field="reviewsSubtitle" rows="2"></textarea></label>
+      <label>Texto del botón <textarea data-field="reviewsCtaLabel" rows="2"></textarea></label>
+      <label class="full">Enlace a tus reseñas de Google <input type="text" data-field="reviewsUrl"></label>
+    </div>
+
+    <h3>Horario</h3>
+    <div class="repeat-list" data-list="business.hours" data-item-fields="day,time" data-item-labels="Día(s),Horario"></div>
+    <button class="btn btn-ghost" data-add="business.hours">+ Agregar horario</button>
+  </section>
+
+  <section class="admin-panel" data-panel="hero" hidden>
+    <h2>Portada (hero)</h2>
+    <p class="hint">El logo (pestaña Negocio) ocupa el lugar central de la portada. Aquí solo editas los textos de alrededor.</p>
+    <div class="field-grid" data-form="hero">
+      <label>Texto pequeño arriba del logo <textarea data-field="kicker" rows="2"></textarea></label>
+      <label class="full">Frase debajo del logo <textarea data-field="subtitle" rows="2"></textarea></label>
+      <label>Texto botón amarillo <textarea data-field="ctaPrimaryLabel" rows="2"></textarea></label>
+      <label>Texto botón WhatsApp <textarea data-field="ctaSecondaryLabel" rows="2"></textarea></label>
+    </div>
+
+    <h3>👋 Saludo al cliente</h3>
+    <p class="hint">Cuando el cliente ya dio su nombre en cualquier parte del sitio (cronómetro, tarjeta, reto o juego), se lo recuerda con un saludo en la portada.</p>
+    <label class="switch"><input type="checkbox" data-field="customerGreeting.active"> Mostrar el saludo</label>
+    <div class="field-grid" data-form="customerGreeting">
+      <label>Dónde se ubica
+        <select data-field="position">
+          <option value="aboveLogo">Arriba del logo</option>
+          <option value="belowLogo">Debajo del logo (antes de la frase)</option>
+          <option value="afterSubtitle">Después de la frase debajo del logo</option>
+          <option value="afterButtons">Después de los botones</option>
+        </select>
+      </label>
+      <label>¿El cliente puede cambiar su nombre?
+        <select data-field="nameChangeMode" data-name-change-mode-select>
+          <option value="limited">Sí, con límite de veces</option>
+          <option value="unlimited">Sí, sin límite</option>
+          <option value="disabled">No, una vez puesto queda fijo</option>
+        </select>
+      </label>
+      <label data-name-change-field="limited">Número de cambios permitidos <input type="number" min="1" max="20" data-field="maxNameChanges"></label>
+    </div>
+  </section>
+
+  <section class="admin-panel" data-panel="comidas" hidden>
+    <h2>Comidas</h2>
+    <p class="hint">Sube todas las imágenes de tu menú de Comidas, en el orden en que quieres que se vean (una debajo de otra). Puedes subir tantas como quieras.</p>
+    <div class="field-grid" data-form="quickNav.0">
+      <label>Ícono del botón en el menú de arriba <input type="text" data-field="icon"></label>
+      <label>Texto del botón en el menú de arriba <textarea data-field="label" rows="2"></textarea></label>
+    </div>
+    <div class="field-grid" data-form="comidas">
+      <label>Título de la página <textarea data-field="title" rows="2"></textarea></label>
+      <label class="full">Texto pequeño debajo del título <textarea data-field="subtitle" rows="2"></textarea></label>
+    </div>
+    <div class="gallery-admin-grid" data-image-list="comidas.images"></div>
+    <label class="btn btn-primary file-btn">+ Agregar imagen del menú
+      <input type="file" accept="image/*" data-add-image-list="comidas.images" hidden>
+    </label>
+
+    <details class="admin-collapsible">
+      <summary>🎠 Carrusel de Comidas</summary>
+      <div data-carousel-admin="comidas"></div>
+    </details>
+  </section>
+
+  <section class="admin-panel" data-panel="helados" hidden>
+    <h2>Helados</h2>
+    <p class="hint">Sube todas las imágenes de tu menú de Helados, en el orden en que quieres que se vean.</p>
+    <div class="field-grid" data-form="quickNav.1">
+      <label>Ícono del botón en el menú de arriba <input type="text" data-field="icon"></label>
+      <label>Texto del botón en el menú de arriba <textarea data-field="label" rows="2"></textarea></label>
+    </div>
+    <div class="field-grid" data-form="helados">
+      <label>Título de la página <textarea data-field="title" rows="2"></textarea></label>
+      <label class="full">Texto pequeño debajo del título <textarea data-field="subtitle" rows="2"></textarea></label>
+    </div>
+    <div class="gallery-admin-grid" data-image-list="helados.images"></div>
+    <label class="btn btn-primary file-btn">+ Agregar imagen del menú
+      <input type="file" accept="image/*" data-add-image-list="helados.images" hidden>
+    </label>
+
+    <details class="admin-collapsible">
+      <summary>🎠 Carrusel de Helados</summary>
+      <div data-carousel-admin="helados"></div>
+    </details>
+  </section>
+
+  <section class="admin-panel" data-panel="bebidas" hidden>
+    <h2>Bebidas</h2>
+    <p class="hint">Sube todas las imágenes de tu menú de Bebidas, en el orden en que quieres que se vean.</p>
+    <div class="field-grid" data-form="quickNav.2">
+      <label>Ícono del botón en el menú de arriba <input type="text" data-field="icon"></label>
+      <label>Texto del botón en el menú de arriba <textarea data-field="label" rows="2"></textarea></label>
+    </div>
+    <div class="field-grid" data-form="bebidas">
+      <label>Título de la página <textarea data-field="title" rows="2"></textarea></label>
+      <label class="full">Texto pequeño debajo del título <textarea data-field="subtitle" rows="2"></textarea></label>
+    </div>
+    <div class="gallery-admin-grid" data-image-list="bebidas.images"></div>
+    <label class="btn btn-primary file-btn">+ Agregar imagen del menú
+      <input type="file" accept="image/*" data-add-image-list="bebidas.images" hidden>
+    </label>
+
+    <details class="admin-collapsible">
+      <summary>🎠 Carrusel de Bebidas</summary>
+      <div data-carousel-admin="bebidas"></div>
+    </details>
+  </section>
+
+  <section class="admin-panel" data-panel="nosotros" hidden>
+    <h2>Nosotros</h2>
+    <div class="field-grid" data-form="nosotros">
+      <label class="full">Historia <textarea data-field="historia" rows="4"></textarea></label>
+      <label class="full">Misión <textarea data-field="mision" rows="3"></textarea></label>
+      <label class="full">Visión <textarea data-field="vision" rows="3"></textarea></label>
+      <label class="full">Imagen
+        <input type="file" accept="image/*" data-image-field="nosotros.image">
+        <img class="preview" data-image-preview="nosotros.image">
+      </label>
+    </div>
+  </section>
+
+  <section class="admin-panel" data-panel="galeria" hidden>
+    <h2>Galería</h2>
+    <p class="hint">Sube las fotos que quieres mostrar en la galería.</p>
+    <div class="gallery-admin-grid" data-gallery-list></div>
+    <label class="btn btn-primary file-btn">+ Agregar foto
+      <input type="file" accept="image/*" data-add-gallery hidden>
+    </label>
+  </section>
+
+  <section class="admin-panel" data-panel="zona" hidden>
+    <h2>🔥 Zona Secreta</h2>
+    <p class="hint">Esto es su propia página (misterio.html). Un botón amarillo con "?" aparece flotando en todo el sitio a los 5 segundos; al rato sale una burbuja invitando a mirar (el texto de abajo es lo que dice esa burbuja) y si nadie hace clic, la burbuja se esconde sola — el botón se puede volver a presionar para que salga otra vez. Sube aquí la imagen (o imágenes) que se ven al entrar a esa página.</p>
+    <div class="field-grid" data-form="zonaSecreta">
+      <label>Título de la página <textarea data-field="title" rows="2"></textarea></label>
+      <label class="full">Texto pequeño debajo del título <textarea data-field="subtitle" rows="2"></textarea></label>
+      <label class="full">Texto de la burbuja del botón flotante <textarea data-field="bubbleText" placeholder="Promo del día" rows="2"></textarea></label>
+    </div>
+    <div class="gallery-admin-grid" data-image-list="zonaSecreta.images"></div>
+    <label class="btn btn-primary file-btn">+ Agregar imagen
+      <input type="file" accept="image/*" data-add-image-list="zonaSecreta.images" hidden>
+    </label>
+  </section>
+
+  <section class="admin-panel" data-panel="premio" hidden>
+    <h2>Premio del día</h2>
+    <p class="hint">Activa las formas de ganar que quieras: cronómetro, tarjeta de fidelidad y/o reto del día. Si activas más de una, el cliente puede cambiar entre ellas en la web (deslizando o con las flechas). Cada forma es independiente: el cronómetro nunca se bloquea (siempre se puede volver a reclamar). La tarjeta de fidelidad tampoco se bloquea — cada cliente completa y reclama la suya sin afectar a los demás. El reto del día sí tiene un límite de ganadores por día (configurable más abajo). Al reclamar se abre un regalo animado que revela el premio, con un botón para avisar por WhatsApp.</p>
+    <label class="switch"><input type="checkbox" data-field="dailyPrize.active"> Mostrar esta sección en la web</label>
+
+    <div class="field-grid" data-form="deliverySettings">
+      <label>🔒 PIN de empleados (distinto de tu clave de administrador — lo usan para abrir "Entregar premio" en el local) <input type="text" data-field="pin"></label>
+    </div>
+
+    <div class="field-grid" data-form="dailyPrize">
+      <label class="full">Texto arriba de la sección <textarea data-field="kicker" rows="2"></textarea></label>
+      <label class="full">Posición en la página
+        <select data-field="position">
+          <option value="afterHero">Después de la portada (como está ahora)</option>
+          <option value="top">Arriba de todo</option>
+          <option value="afterComidas">Al final, después del menú de Comidas</option>
+        </select>
+      </label>
+      <label>Texto del botón "Reclamar premio" <textarea data-field="claimPrizeButtonLabel" rows="2"></textarea></label>
+      <label>Texto del botón "Entregar premio" <textarea data-field="deliverPrizeButtonLabel" rows="2"></textarea></label>
+      <label>Texto pequeño debajo de "Entregar premio" <textarea data-field="deliverPrizeSubtext" rows="2"></textarea></label>
+    </div>
+
+    <details class="admin-collapsible">
+      <summary>⏱️ Cronómetro</summary>
+      <p class="hint">Un temporizador que se repite solo, igual para todos los que visiten la página. Mientras cuenta, el botón sale en gris (no está listo); al llegar a cero se pone verde y se queda esperando a que alguien lo reclame — le pide su nombre y se restablece por el mismo tiempo, dejando un aviso de quién ganó hoy. Nunca queda bloqueado del todo: siempre vuelve a estar disponible en la siguiente vuelta.</p>
+      <label class="switch"><input type="checkbox" data-field="dailyPrize.cronometro.active"> Activar esta forma de ganar</label>
+      <div class="field-grid" data-form="dailyPrize.cronometro">
+        <label>Nombre en el carrusel <textarea data-field="label" rows="2"></textarea></label>
+        <label class="full">Título de esta sección <textarea data-field="title" rows="2"></textarea></label>
+        <label>Se reinicia cada <input type="number" min="1" data-field="repeatAmount"></label>
+        <label>Unidad
+          <select data-field="repeatUnit">
+            <option value="minutes">Minutos</option>
+            <option value="hours">Horas</option>
+          </select>
+        </label>
+        <label class="full">Premio (lo que ve el cliente al abrir el regalo) <textarea data-field="prizeText" rows="3"></textarea></label>
+        <label>Nombre del premio <textarea data-field="prizeName" rows="2"></textarea></label>
+        <label>Ícono del premio <input type="text" data-field="prizeIcon" maxlength="4"></label>
+        <label>Texto del botón para reclamar <textarea data-field="claimButtonLabel" rows="2"></textarea></label>
+        <label>Tipo de premio
+          <select data-field="rewardType" data-reward-type-select>
+            <option value="direct">Premio directo (el texto de arriba)</option>
+            <option value="wheelSpins">Giro(s) en la Ruleta TOPPINGS</option>
+          </select>
+        </label>
+        <label data-reward-field="direct">Vigencia del premio (horas) <input type="number" min="1" data-field="codeExpiryHours"></label>
+        <label data-reward-field="wheelSpins">Cantidad de tiros <input type="number" min="1" data-field="wheelSpinCount"></label>
+        <label data-reward-field="wheelSpins">Vencimiento del tiro (horas) <input type="number" min="1" data-field="wheelTicketExpiryHours"></label>
+      </div>
+    </details>
+
+    <details class="admin-collapsible">
+      <summary>🎟️ Tarjeta de fidelidad</summary>
+      <p class="hint">El cliente escribe su nombre la primera vez, y luego suma un sello escaneando el código QR que tengas en el local (impreso o en una pantalla) — sin pedir código a nadie. Máximo un sello al día por cliente. Al completar los sellos, puede reclamar su premio — reclamar no bloquea a nadie más: cada cliente completa y reclama la suya, y solo su propia tarjeta se reinicia después.</p>
+      <label class="switch"><input type="checkbox" data-field="dailyPrize.loyalty.active"> Activar esta forma de ganar</label>
+      <div class="field-grid" data-form="dailyPrize.loyalty">
+        <label>Nombre en el carrusel <textarea data-field="label" rows="2"></textarea></label>
+        <label>Sellos necesarios <input type="number" min="1" data-field="stampsRequired"></label>
+        <label>Código del QR (uno cualquiera, no lo ve el cliente) <input type="text" data-field="secretCode"></label>
+        <label class="full">Premio (lo que ve el cliente al abrir el regalo) <textarea data-field="prizeText" rows="3"></textarea></label>
+        <label>Nombre del premio <textarea data-field="prizeName" rows="2"></textarea></label>
+        <label>Ícono del premio <input type="text" data-field="prizeIcon" maxlength="4"></label>
+        <label>Texto del botón para reclamar <textarea data-field="claimButtonLabel" rows="2"></textarea></label>
+        <label class="full">Texto que invita a escanear el QR <textarea data-field="scanHintText" rows="2"></textarea></label>
+        <label>Tipo de premio
+          <select data-field="rewardType" data-reward-type-select>
+            <option value="direct">Premio directo (el texto de arriba)</option>
+            <option value="wheelSpins">Giro(s) en la Ruleta TOPPINGS</option>
+          </select>
+        </label>
+        <label data-reward-field="direct">Vigencia del premio (horas) <input type="number" min="1" data-field="codeExpiryHours"></label>
+        <label data-reward-field="wheelSpins">Cantidad de tiros <input type="number" min="1" data-field="wheelSpinCount"></label>
+        <label data-reward-field="wheelSpins">Vencimiento del tiro (horas) <input type="number" min="1" data-field="wheelTicketExpiryHours"></label>
+      </div>
+      <div class="qr-generator">
+        <button type="button" class="btn btn-ghost" data-generate-qr>📱 Generar código QR para el local</button>
+        <div class="qr-generator-output" data-qr-output hidden>
+          <div data-qr-canvas></div>
+          <p class="hint">Muestra o imprime este código en el local. Al escanearlo con el celular, se abre la página y se suma el sello automáticamente.</p>
+        </div>
+      </div>
+    </details>
+
+    <details class="admin-collapsible">
+      <summary>🎯 Reto del día</summary>
+      <p class="hint">Escribe el reto y, si quieres, una pista de dónde está escondido. Para reclamar el premio, el cliente sube una foto como prueba de que lo encontró (en vez de un código) — la foto se publica sola en "Stikers encontrados", no necesitas subirla tú. Puedes permitir varios ganadores por día, y reiniciarlo manualmente cuando quieras para abrir más cupos el mismo día.</p>
+      <label class="switch"><input type="checkbox" data-field="dailyPrize.challenge.active"> Activar esta forma de ganar</label>
+      <div class="field-grid" data-form="dailyPrize.challenge">
+        <label>Nombre en el carrusel <textarea data-field="label" rows="2"></textarea></label>
+        <label class="full">Reto de hoy <textarea data-field="challengeText" rows="2"></textarea></label>
+        <label class="full">Pista de dónde está escondido (opcional) <textarea data-field="hintText" rows="2"></textarea></label>
+        <label class="full">Premio (lo que ve el cliente al abrir el regalo) <textarea data-field="prizeText" rows="3"></textarea></label>
+        <label>Nombre del premio <textarea data-field="prizeName" rows="2"></textarea></label>
+        <label>Ícono del premio <input type="text" data-field="prizeIcon" maxlength="4"></label>
+        <label>Texto del botón para subir la foto <textarea data-field="photoButtonLabel" rows="2"></textarea></label>
+        <label>Texto del botón para reclamar <textarea data-field="claimButtonLabel" rows="2"></textarea></label>
+        <label>Ganadores permitidos por día <input type="number" min="1" data-field="dailyWinnerLimit"></label>
+        <label>Tipo de premio
+          <select data-field="rewardType" data-reward-type-select>
+            <option value="direct">Premio directo (el texto de arriba)</option>
+            <option value="wheelSpins">Giro(s) en la Ruleta TOPPINGS</option>
+          </select>
+        </label>
+        <label data-reward-field="direct">Vigencia del premio (horas) <input type="number" min="1" data-field="codeExpiryHours"></label>
+        <label data-reward-field="wheelSpins">Cantidad de tiros <input type="number" min="1" data-field="wheelSpinCount"></label>
+        <label data-reward-field="wheelSpins">Vencimiento del tiro (horas) <input type="number" min="1" data-field="wheelTicketExpiryHours"></label>
+      </div>
+      <div class="challenge-status" data-challenge-status>
+        <p class="hint">Cargando estado del reto…</p>
+      </div>
+      <button type="button" class="btn btn-ghost" data-challenge-reset>🔄 Reiniciar reto de hoy</button>
+    </details>
+
+    <details class="admin-collapsible">
+      <summary>🛹 Toppings Run + Ranking</summary>
+      <p class="hint">Un minijuego tipo "corredor infinito" — el cliente esquiva obstáculos con Papa Skater o Helado BMX. Solo el jugador que quede en el puesto #1 del ranking (diario, semanal o por horas, según elijas abajo) puede reclamar el premio; los demás ven el botón deshabilitado.</p>
+      <label class="switch"><input type="checkbox" data-field="dailyPrize.toppingsRun.active"> Activar esta forma de ganar</label>
+      <div class="field-grid" data-form="dailyPrize.toppingsRun">
+        <label>Nombre en el carrusel <textarea data-field="label" rows="2"></textarea></label>
+        <label>Subtítulo (debajo de TOPPINGS RUN) <textarea data-field="tagline" rows="2"></textarea></label>
+        <label class="full">Premio (lo que ve el ganador al reclamar) <textarea data-field="rankingPrizeText" rows="3"></textarea></label>
+        <label>Nombre del premio <textarea data-field="prizeName" rows="2"></textarea></label>
+        <label>Ícono del premio <input type="text" data-field="prizeIcon" maxlength="4"></label>
+        <label>Tipo de premio
+          <select data-field="rewardType" data-reward-type-select>
+            <option value="direct">Premio directo (el texto de arriba)</option>
+            <option value="wheelSpins">Giro(s) en la Ruleta TOPPINGS</option>
+          </select>
+        </label>
+        <label data-reward-field="direct">Vigencia del premio (horas) <input type="number" min="1" data-field="codeExpiryHours"></label>
+        <label data-reward-field="wheelSpins">Cantidad de tiros <input type="number" min="1" data-field="wheelSpinCount"></label>
+        <label data-reward-field="wheelSpins">Vencimiento del tiro (horas) <input type="number" min="1" data-field="wheelTicketExpiryHours"></label>
+        <label class="full">Música de fondo del juego (opcional — si no subes nada, se usa el sonido chiptune generado automáticamente)
+          <input type="file" accept="audio/*,.mp3,.ogg,.wav,.m4a" data-audio-field="dailyPrize.toppingsRun.musicFile">
+          <span class="hint" data-audio-name="dailyPrize.toppingsRun.musicFile">Ningún archivo elegido</span>
+          <audio class="preview" controls data-audio-player="dailyPrize.toppingsRun.musicFile" hidden></audio>
+        </label>
+        <button type="button" class="btn btn-ghost full" data-audio-remove="dailyPrize.toppingsRun.musicFile">Quitar música</button>
+        <label>Volumen de la música (0 = silencio, 1 = máximo) <input type="range" min="0" max="1" step="0.05" data-field="musicVolume"></label>
+      </div>
+
+      <h4>🏆 Configuración del Ranking</h4>
+      <p class="hint">Solo una modalidad puede estar activa a la vez. Al terminar el período, el jugador #1 tiene 24 horas para reclamar el premio; mientras tanto el ranking queda congelado (nadie más puede sumar puntos ni superarlo).</p>
+      <div class="field-grid" data-form="dailyPrize.toppingsRun">
+        <label>Tipo de competencia
+          <select data-field="rankingType">
+            <option value="daily">🟢 Ranking Diario</option>
+            <option value="weekly">🟢 Ranking Semanal</option>
+            <option value="hourly">🟡 Ranking por horas (para pruebas)</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="ranking-status" data-ranking-status>
+        <p class="hint">Cargando estado del ranking…</p>
+      </div>
+      <button type="button" class="btn btn-ghost" data-ranking-reset>🔄 Reiniciar ranking</button>
+
+      <h4>Historial de ganadores</h4>
+      <div class="ranking-history" data-ranking-history>
+        <p class="hint">Sin historial todavía.</p>
+      </div>
+    </details>
+
+    <details class="admin-collapsible">
+      <summary>🎁 Validar / Entregar premios + 📊 Estadísticas</summary>
+      <p class="hint">Cubre TODOS los premios (cronómetro, fidelidad, reto, juego y Ruleta) — un solo lugar para buscar códigos, anular uno si hace falta, y ver las estadísticas completas.</p>
+      <div class="ruleta-search-row">
+        <input type="text" placeholder="Código o nombre del cliente" data-codes-search-input>
+        <select data-codes-status-filter>
+          <option value="">Todos los estados</option>
+          <option value="available">Disponible</option>
+          <option value="waiting">Esperando entrega</option>
+          <option value="delivered">Entregado</option>
+          <option value="expired">Vencido</option>
+          <option value="void">Anulado</option>
+        </select>
+        <button type="button" class="btn btn-ghost" data-codes-search-btn>Buscar</button>
+      </div>
+      <div class="ruleta-search-results" data-codes-search-results></div>
+
+      <h4>📊 Estadísticas</h4>
+      <div class="ruleta-stats-grid" data-codes-stats></div>
+    </details>
+  </section>
+
+  <section class="admin-panel" data-panel="ruleta" hidden>
+    <h2>🎡 Ruleta TOPPINGS</h2>
+    <p class="hint">La ruleta es una recompensa que cualquiera de las 4 formas de ganar de "Premio del día" puede entregar — elige "Giro en la Ruleta" como Tipo de premio ahí. Aquí configuras los premios de la ruleta y el número de WhatsApp para reclamarlos. Para validar códigos y ver estadísticas (incluidos los premios de la Ruleta), ve a la pestaña "Premio del día".</p>
+    <label class="switch"><input type="checkbox" data-ruleta-field="active"> Activar Ruleta</label>
+    <div class="field-grid">
+      <label class="full">Título <input type="text" data-ruleta-field="title"></label>
+      <label>Número de WhatsApp (vacío = usa el de la pestaña Negocio) <input type="text" data-ruleta-field="whatsappNumber"></label>
+      <label>Vigencia del premio ganado (horas) <input type="number" min="1" data-ruleta-field="prizeExpiryHours"></label>
+      <label class="switch-inline"><input type="checkbox" data-ruleta-field="soundEnabled"> Sonido al girar</label>
+      <label class="switch-inline"><input type="checkbox" data-ruleta-field="confettiEnabled"> Confeti al ganar</label>
+    </div>
+
+    <h3>Premios de la ruleta</h3>
+    <p class="ruleta-prob-sum" data-ruleta-prob-sum>Suma de probabilidades activas: 0%</p>
+    <div class="ruleta-prizes-list" data-ruleta-prizes-list></div>
+    <button type="button" class="btn btn-primary" data-ruleta-add-prize>+ Agregar premio</button>
+
+    <div class="ruleta-savebar">
+      <span class="save-status" data-ruleta-save-status></span>
+      <button type="button" class="btn btn-primary" data-ruleta-save-btn>Guardar cambios de la ruleta</button>
+    </div>
+  </section>
+
+  <section class="admin-panel" data-panel="stikers" hidden>
+    <h2>Stikers encontrados</h2>
+    <p class="hint">Estas fotos las suben los clientes solos al reclamar el reto del día — aparecen aquí automáticamente, no tienes que subirlas tú. Necesitas haber escrito una "Clave de administrador" (pestaña Negocio) para poder borrar fotos.</p>
+    <button type="button" class="btn btn-ghost" data-refresh-stikers>🔄 Actualizar lista</button>
+    <p class="hint" data-stikers-status></p>
+    <div class="gallery-admin-grid" data-stiker-gallery-list></div>
+  </section>
+
+  <section class="admin-panel" data-panel="ia" hidden>
+    <h2>🤖 Configuración de IA</h2>
+    <p class="hint">El asistente virtual responde las preguntas de tus clientes (productos, ingredientes, precios, promociones, horarios, domicilios, premios, retos, formas de pago, información del negocio) usando SOLO la información que escribas o subas aquí abajo — nunca inventa datos. Si no encuentra la respuesta, le dice al cliente que se comunique directamente contigo. Actualiza este texto o documento cada vez que cambien precios o productos; no hace falta tocar código ni volver a publicar la página.</p>
+    <label class="switch"><input type="checkbox" data-field="aiAssistant.active"> Activar el asistente en la web</label>
+
+    <div class="field-grid" data-form="aiAssistant">
+      <label class="full">Información para el asistente (menú y precios, ingredientes, promociones, domicilios, formas de pago, etc.)
+        <textarea data-field="knowledgeText" rows="10" placeholder="Ejemplo:&#10;Salchipapa sencilla: $10.000&#10;Salchipapa especial: $15.000&#10;Domicilios: $3.000 dentro de Mocoa&#10;Formas de pago: efectivo, Nequi, tarjeta"></textarea>
+      </label>
+    </div>
+
+    <h3>Documento (opcional)</h3>
+    <p class="hint">Puedes subir un documento (.txt, .pdf o .docx) con el menú completo u otra información — se suma a lo que escribiste arriba. Subir uno nuevo reemplaza al anterior. Recuerda darle a "Guardar cambios" después de subirlo.</p>
+    <p class="hint" data-ai-doc-status></p>
+    <label class="btn btn-primary file-btn">📄 Subir documento
+      <input type="file" accept=".txt,.pdf,.docx" data-ai-doc-upload hidden>
+    </label>
+    <button type="button" class="btn btn-ghost" data-ai-doc-remove>Quitar documento</button>
+  </section>
+
+  <section class="admin-panel" data-panel="personalizacion" hidden>
+    <h2>🎨 Personalización de la página</h2>
+    <p class="hint">Cambia el fondo, los colores y el tamaño de las letras de todo el sitio (todas las páginas). Los valores de aquí abajo son los que ya tenías — cámbialos solo si quieres algo distinto.</p>
+
+    <div class="field-grid" data-form="customization">
+      <label class="full">Fondo de la página
+        <select data-field="backgroundType" data-bg-type-select>
+          <option value="texture">Textura urbana (la de siempre)</option>
+          <option value="color">Color sólido</option>
+          <option value="image">Imagen personalizada</option>
+        </select>
+      </label>
+      <label data-bg-field="color">Color de fondo <input type="color" data-field="backgroundColor"></label>
+      <label class="full" data-bg-field="image">Imagen de fondo
+        <input type="file" accept="image/*" data-image-field="customization.backgroundImage">
+        <img class="preview" data-image-preview="customization.backgroundImage">
+      </label>
+      <button type="button" class="btn btn-ghost" data-bg-field="image" data-image-remove="customization.backgroundImage">Quitar imagen de fondo</button>
+
+      <label>Oscurecer el fondo (0 = transparente, casi 1 = muy oscuro)
+        <input type="range" min="0" max="0.95" step="0.05" data-field="backgroundOverlay">
+      </label>
+
+      <label>Color de acento (botones, precios, resaltados) <input type="color" data-field="accentColor"></label>
+      <label>Color del texto <input type="color" data-field="textColor"></label>
+
+      <label>Tamaño de las letras
+        <select data-field="fontSizeScale">
+          <option value="small">Pequeño</option>
+          <option value="normal">Normal</option>
+          <option value="large">Grande</option>
+        </select>
+      </label>
+    </div>
+
+    <h3>Efectos</h3>
+    <label class="switch"><input type="checkbox" data-field="customization.effects.animations"> Animaciones (movimientos y transiciones)</label>
+    <label class="switch"><input type="checkbox" data-field="customization.effects.glow"> Brillo/resplandor en botones y acentos</label>
+    <label class="switch"><input type="checkbox" data-field="customization.effects.scrollButtons"> Flecha para subir/bajar de página (aparece al deslizar)</label>
+    <label class="switch"><input type="checkbox" data-field="customization.effects.pageNavArrows"> Flechas para cambiar entre Comidas/Helados/Bebidas (aparecen al deslizar)</label>
+
+    <h3>🎵 Música de fondo</h3>
+    <p class="hint">Sube una canción o pista instrumental (mp3, ogg, wav o m4a). El celular del cliente nunca deja que suene sola apenas abre la página — le aparece un botón flotante 🎵 para que la active cuando quiera, y se sigue escuchando si cambia de página sin recargar.</p>
+    <label class="switch"><input type="checkbox" data-field="music.active"> Activar música de fondo</label>
+    <div class="field-grid" data-form="music">
+      <label class="full">Archivo de audio
+        <input type="file" accept="audio/*,.mp3,.ogg,.wav,.m4a" data-audio-field="music.file">
+        <span class="hint" data-audio-name="music.file">Ningún archivo elegido</span>
+        <audio class="preview" controls data-audio-player="music.file" hidden></audio>
+      </label>
+      <button type="button" class="btn btn-ghost full" data-audio-remove="music.file">Quitar audio</button>
+      <label>Volumen (0 = silencio, 1 = máximo)
+        <input type="range" min="0" max="1" step="0.05" data-field="volume">
+      </label>
+    </div>
+  </section>
+
+  <div class="admin-savebar">
+    <span class="save-status" data-save-status></span>
+    <a class="btn btn-ghost" data-preview-link href="../index.html" target="_blank" rel="noopener">Ver sitio</a>
+    <button class="btn btn-primary btn-lg" data-save-btn>Guardar cambios</button>
+  </div>
+
+</main>
+
+<div class="cc-preview-modal" data-cc-preview-modal hidden>
+  <div class="cc-preview-backdrop" data-cc-preview-close></div>
+  <div class="cc-preview-card">
+    <button type="button" class="cc-preview-close" data-cc-preview-close aria-label="Cerrar">&times;</button>
+    <p class="section-kicker">👁️ Vista previa del carrusel</p>
+    <p class="hint">Así se verá en la página, con la animación, el tiempo y el tamaño que configuraste.</p>
+    <div data-cc-preview-body></div>
+  </div>
+</div>
+
+<template id="tpl-repeat-item">
+  <div class="repeat-item"></div>
+</template>
+
+<template id="tpl-image-list-item">
+  <div class="gallery-admin-item">
+    <img class="preview" data-role="preview">
+    <div class="image-list-actions">
+      <button type="button" data-role="up" title="Mover arriba" aria-label="Mover arriba">↑</button>
+      <span class="image-list-pos" data-role="pos"></span>
+      <button type="button" data-role="down" title="Mover abajo" aria-label="Mover abajo">↓</button>
+    </div>
+    <button class="btn-remove" data-role="remove" title="Eliminar imagen" aria-label="Eliminar imagen">&times;</button>
+  </div>
+</template>
+
+<template id="tpl-gallery-item">
+  <div class="gallery-admin-item">
+    <img class="preview" data-role="preview">
+    <label>Descripción <input type="text" data-role="alt"></label>
+    <button class="btn-remove" data-role="remove" title="Eliminar foto" aria-label="Eliminar foto">&times;</button>
+  </div>
+</template>
+
+<template id="tpl-stiker-item">
+  <div class="gallery-admin-item">
+    <img class="preview" data-role="preview">
+    <p class="stiker-item-name" data-role="alt"></p>
+    <span class="hint" data-role="date"></span>
+    <button class="btn-remove" data-role="remove" title="Eliminar foto" aria-label="Eliminar foto">&times;</button>
+  </div>
+</template>
+
+<script src="lib/qrcode.min.js"></script>
+<!-- mismo carrusel que ve el cliente, para que la vista previa sea idéntica -->
+<script src="../lib/cat-carousel.js?v=20260727"></script>
+<script defer src="admin.js"></script>
+</body>
+</html>

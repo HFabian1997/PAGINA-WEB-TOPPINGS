@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TOPPINGS · Comida urbana en Mocoa, Putumayo</title>
+<meta name="description" content="TOPPINGS: las salchipapas, hamburguesas y helados más brutales del Putumayo. Pide por WhatsApp o visítanos en Mocoa.">
+<meta name="theme-color" content="#111111">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap">
+
+<link rel="preload" as="image" href="assets/img/bg-texture.jpg" fetchpriority="high">
+<link rel="stylesheet" href="styles.css?v=20260722b">
+<link rel="stylesheet" href="lib/cat-carousel.css?v=20260727">
+<link rel="stylesheet" href="editor/page-editor.css?v=20260722b">
+<link rel="stylesheet" href="game/toppings-run.css?v=20260722b">
+<link rel="stylesheet" href="game/ruleta.css?v=20260722b">
+
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 fill=%22%23111%22/><text x=%2250%22 y=%2268%22 font-size=%2260%22 text-anchor=%22middle%22 fill=%22%23FFD400%22 font-family=%22sans-serif%22 font-weight=%22900%22>T</text></svg>">
+</head>
+<body data-category="inicio">
+<a class="skip-link" href="#main">Saltar al contenido</a>
+
+<!-- =================== HEADER =================== -->
+<header class="masthead" data-header>
+  <div class="masthead-inner container">
+    <div class="masthead-top-row">
+      <a class="brand" href="#inicio" aria-label="TOPPINGS · Inicio">
+        <span class="brand-mark" data-brand-mark>TOPPINGS</span>
+      </a>
+      <div class="masthead-actions">
+        <button type="button" class="header-gift-btn" data-fab-gift aria-label="Mis premios">🎁<span class="header-gift-badge" data-fab-gift-badge hidden>0</span></button>
+      </div>
+    </div>
+
+    <nav class="nav" data-nav aria-label="Categorías">
+      <a href="comidas.html"><span class="nav-icon">🍔</span><span class="nav-label">Comidas</span></a>
+      <a href="helados.html"><span class="nav-icon">🍦</span><span class="nav-label">Helados</span></a>
+      <a href="bebidas.html"><span class="nav-icon">🥤</span><span class="nav-label">Bebidas</span></a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- =================== HERO =================== -->
+  <section class="hero" id="inicio">
+    <div class="hero-inner container">
+      <p class="hero-kicker" data-hero-kicker>Comida urbana · Mocoa, Putumayo</p>
+      <h1 class="hero-title" data-brand-mark>TOPPINGS</h1>
+      <p class="hero-greeting" data-hero-greeting hidden>
+        <span data-hero-greeting-text></span>
+        <button type="button" class="hero-greeting-edit" data-hero-greeting-edit aria-label="Cambiar nombre">✎</button>
+      </p>
+      <p class="hero-sub" data-hero-sub>Las salchipapas más brutales del Putumayo</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="comidas.html" data-hero-cta-primary>🍟 Ver menú</a>
+        <a class="btn btn-ghost" data-whatsapp-link data-hero-cta-secondary href="#" target="_blank" rel="noopener">📲 Pedir ahora</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================== PREMIO DEL DÍA =================== -->
+  <section class="daily-prize" id="premio-del-dia" data-daily-prize hidden>
+    <div class="container daily-prize-inner">
+      <p class="section-kicker" data-prize-kicker>Premio del día</p>
+
+      <nav class="prize-tabs" data-prize-tabs hidden></nav>
+
+      <div class="prize-switcher">
+        <div class="prize-methods" data-prize-methods>
+          <!-- Método 1: Cronómetro -->
+          <div class="prize-method" data-prize-method="cronometro" hidden>
+            <p class="prize-method-title" data-cronometro-title>⏱️ Cuando se acaba el tiempo</p>
+            <div class="daily-prize-countdown" data-prize-countdown>
+              <div class="prize-time-unit"><span data-prize-days>0</span><small>Días</small></div>
+              <div class="prize-time-unit"><span data-prize-hours>00</span><small>Horas</small></div>
+              <div class="prize-time-unit"><span data-prize-minutes>00</span><small>Min</small></div>
+              <div class="prize-time-unit"><span data-prize-seconds>00</span><small>Seg</small></div>
+            </div>
+            <button type="button" class="btn btn-primary daily-prize-claim" data-prize-claim-btn="cronometro" hidden></button>
+            <p class="prize-crono-claimed" data-crono-claimed hidden></p>
+          </div>
+
+          <!-- Método 2: Tarjeta de fidelidad -->
+          <div class="prize-method" data-prize-method="loyalty" hidden>
+            <p class="prize-method-title">🎟️ Tarjeta de fidelidad</p>
+            <p class="loyalty-greeting" data-loyalty-greeting hidden></p>
+            <div class="loyalty-stamps" data-loyalty-stamps></div>
+            <p class="loyalty-status" data-loyalty-status></p>
+            <p class="loyalty-scan-hint" data-loyalty-scan-hint>Escanea el código QR que está en el local para sumar tu sello de hoy 📱</p>
+            <button type="button" class="btn btn-primary" data-loyalty-scan-btn>📷 Escanear código QR</button>
+            <button type="button" class="btn btn-primary daily-prize-claim" data-prize-claim-btn="loyalty" hidden></button>
+          </div>
+
+          <!-- Método 3: Reto del día -->
+          <div class="prize-method" data-prize-method="challenge" hidden>
+            <p class="prize-method-title">🎯 Reto del día</p>
+            <p class="prize-challenge-text" data-challenge-text></p>
+            <p class="prize-challenge-hint" data-challenge-hint hidden></p>
+            <label class="btn btn-ghost prize-photo-btn">
+              <span data-challenge-photo-label>📷 Subir foto del stiker</span>
+              <input type="file" accept="image/*" capture="environment" data-challenge-photo-input hidden>
+            </label>
+            <img class="prize-photo-preview" data-challenge-photo-preview alt="Tu foto del stiker" hidden>
+            <button type="button" class="btn btn-primary daily-prize-claim" data-prize-claim-btn="challenge" disabled></button>
+          </div>
+
+          <!-- Método 4: TOPPINGS RUN (minijuego) -->
+          <div class="prize-method run-card" data-prize-method="toppingsRun" hidden>
+            <div class="run-stage" data-run-stage="intro">
+              <p class="prize-method-title">🛹 TOPPINGS RUN</p>
+              <p class="run-tagline" data-run-tagline>SKATE O BMX, TÚ ELIGES</p>
+              <p class="run-event-countdown" data-run-event-countdown hidden></p>
+              <div class="run-event-winner" data-run-event-winner hidden>
+                <p class="run-event-winner-title">🏆 Ganador del evento</p>
+                <p class="run-event-winner-name" data-run-event-winner-name></p>
+                <p class="run-event-winner-reset" data-run-event-winner-reset></p>
+              </div>
+              <div class="run-leaderboard" data-run-leaderboard-intro hidden>
+                <p class="run-leaderboard-title" data-run-leaderboard-intro-title>🏆 Top 3</p>
+                <ol class="run-leaderboard-list" data-run-leaderboard-intro-list></ol>
+              </div>
+              <div class="run-claim" data-run-claim hidden>
+                <p class="run-claim-countdown" data-run-claim-countdown hidden></p>
+                <button type="button" class="btn run-claim-btn" data-run-claim-btn disabled>🎁 Reclamar Premio</button>
+                <p class="run-claim-hint" data-run-claim-hint hidden>Solo el jugador que ocupe el puesto #1 puede reclamar este premio.</p>
+              </div>
+              <button type="button" class="btn btn-primary daily-prize-claim" data-run-play>JUGAR AHORA</button>
+            </div>
+
+            <div class="run-stage" data-run-stage="select" hidden>
+              <p class="prize-method-title">Elige tu personaje</p>
+              <div class="run-select-grid">
+                <button type="button" class="run-select-btn" data-run-choose="skate">
+                  <img class="run-select-img" src="game/assets/skate.png" alt="" loading="lazy">
+                  <span>Skate</span>
+                </button>
+                <button type="button" class="run-select-btn" data-run-choose="bmx">
+                  <img class="run-select-img" src="game/assets/bmx.png" alt="" loading="lazy">
+                  <span>BMX</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="run-stage" data-run-stage="name" hidden>
+              <p class="prize-method-title">¿Cómo te llamas?</p>
+              <form class="run-name-form" data-run-name-form>
+                <input type="text" class="run-input" data-run-name-input placeholder="Tu nombre" autocomplete="name">
+                <button type="submit" class="btn btn-primary">Empezar a jugar</button>
+              </form>
+            </div>
+
+            <div class="run-stage" data-run-stage="game" hidden>
+              <button type="button" class="run-exit-btn" data-run-exit aria-label="Salir del juego">✕</button>
+              <div class="run-hud">
+                <span class="run-player" data-run-player></span>
+                <span class="run-lives" data-run-lives></span>
+                <span class="run-coins" data-run-coins>🪙 0</span>
+                <span class="run-score" data-run-score>0</span>
+                <span class="run-multi" data-run-multi hidden></span>
+                <span class="run-record" data-run-record></span>
+              </div>
+              <div class="run-canvas-wrap" data-run-canvas-wrap>
+                <canvas data-run-canvas></canvas>
+                <div class="run-powerup-bar" data-run-powerup-bar></div>
+                <p class="run-hint" data-run-hint>Toca la pantalla para saltar</p>
+                <div class="run-overlay" data-run-overlay hidden>
+                  <p class="run-overlay-title">¡Chocaste!</p>
+                  <p class="run-overlay-score" data-run-final-score>Puntos: 0</p>
+                  <div class="run-leaderboard" data-run-leaderboard hidden>
+                    <p class="run-leaderboard-title">🏆 Top semanal</p>
+                    <ol class="run-leaderboard-list" data-run-leaderboard-list></ol>
+                    <p class="run-leaderboard-countdown" data-run-leaderboard-countdown></p>
+                  </div>
+                  <div class="run-overlay-actions">
+                    <button type="button" class="btn btn-primary" data-run-restart>Jugar de nuevo</button>
+                    <button type="button" class="btn btn-ghost" data-run-home>🏠 Volver al inicio</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="prize-delivery-actions" data-prize-delivery-actions hidden>
+        <div class="container prize-delivery-actions-inner">
+          <div class="btn-deliver-wrap">
+            <button type="button" class="btn-delivery btn-deliver-prize" data-open-deliver-prize></button>
+            <span class="btn-deliver-subtext" data-deliver-prize-subtext></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- =================== FOOTER =================== -->
+<section class="reviews">
+  <div class="container">
+    <h2 class="reviews-title" data-reviews-title>Nos importa mucho lo que piensas</h2>
+    <p class="reviews-sub" data-reviews-sub>Te agradecemos una opinión o sugerencia</p>
+    <a class="btn btn-primary btn-lg" data-reviews-link href="#" target="_blank" rel="noopener">
+      <span data-reviews-cta>★ ¡Cuéntanos tu experiencia!</span>
+    </a>
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="container footer-inner">
+    <span class="brand-mark footer-brand" data-brand-mark>TOPPINGS</span>
+    <ul class="footer-hours" data-hours></ul>
+    <div class="social-row" data-social-footer></div>
+    <a class="footer-whatsapp" data-whatsapp-link href="#" target="_blank" rel="noopener">WhatsApp</a>
+    <p class="footer-address" data-address-footer>Cra 5 # 12-34, Mocoa, Putumayo</p>
+    <p class="footer-rights">© 2026 TOPPINGS. Todos los derechos reservados.</p>
+    <p class="footer-credits">Imágenes bajo Creative Commons. <a href="creditos.html">Créditos fotográficos →</a></p>
+    <a class="footer-admin" href="admin/index.html">Administrar sitio</a>
+  </div>
+</footer>
+
+
+<button type="button" class="fab-pagenav fab-pagenav-prev" data-pagenav="prev" aria-label="Página anterior">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+</button>
+<button type="button" class="fab-pagenav fab-pagenav-next" data-pagenav="next" aria-label="Página siguiente">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+</button>
+
+<div class="fab-scroll-stack" data-scroll-fab>
+  <button type="button" class="fab-scroll is-dir-down" data-scroll-btn aria-label="Ir al inicio o al final de la página">
+    <svg class="icon-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg>
+    <svg class="icon-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+  </button>
+</div>
+
+<div class="fab-stack" data-fab-stack>
+  <div class="fab-mystery-wrap">
+    <a class="fab-bubble" data-fab-bubble href="misterio.html">
+      <span class="fab-bubble-top" data-fab-bubble-text>Promo</span>
+      <span class="fab-bubble-cta">Mirar</span>
+    </a>
+    <button type="button" class="fab fab-mystery" data-fab-mystery aria-label="Ver sorpresa">?</button>
+  </div>
+  <a class="fab fab-whatsapp" data-whatsapp-link href="#" target="_blank" rel="noopener" aria-label="WhatsApp">
+    <svg aria-hidden="true" viewBox="0 0 24 24" width="26" height="26"><path fill="currentColor" d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38a9.9 9.9 0 0 0 4.74 1.21h.01c5.46 0 9.91-4.45 9.91-9.91C21.96 6.45 17.5 2 12.04 2Zm0 18.13a8.2 8.2 0 0 1-4.19-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.2 8.2 0 0 1-1.26-4.36c0-4.55 3.7-8.25 8.25-8.25 4.55 0 8.25 3.7 8.25 8.25 0 4.55-3.7 8.24-8.26 8.24Zm4.52-6.17c-.25-.12-1.46-.72-1.68-.8-.23-.08-.39-.12-.56.13-.17.24-.64.8-.78.96-.15.17-.29.19-.53.06-.25-.12-1.04-.38-1.99-1.22-.73-.66-1.23-1.46-1.37-1.71-.15-.24-.02-.38.11-.5.11-.11.25-.29.37-.44.12-.15.16-.25.24-.42.08-.17.04-.31-.02-.44-.06-.12-.56-1.36-.77-1.86-.2-.48-.41-.42-.56-.42h-.48c-.17 0-.44.06-.67.31-.23.24-.87.86-.87 2.09 0 1.23.9 2.42 1.02 2.59.12.17 1.76 2.69 4.27 3.77.6.26 1.06.41 1.43.53.6.19 1.15.16 1.58.1.48-.07 1.46-.6 1.67-1.17.2-.58.2-1.08.14-1.18-.06-.1-.23-.16-.48-.28Z"/></svg>
+  </a>
+  <button type="button" class="fab fab-music" data-music-toggle aria-label="Reproducir música" hidden>
+    <span class="fab-music-icon-play">🎵</span>
+    <span class="fab-music-icon-pause">⏸️</span>
+  </button>
+</div>
+<audio data-bg-music loop preload="none"></audio>
+<noscript><style>.fab-bubble{opacity:1!important;transform:none!important;pointer-events:auto!important}.fab-mystery{display:none}</style></noscript>
+
+<div class="assistant-fab-wrap" data-assistant-wrap hidden>
+  <button type="button" class="fab-assistant" data-assistant-toggle aria-label="Abrir asistente virtual">💬</button>
+  <div class="assistant-panel" data-assistant-panel hidden>
+    <div class="assistant-panel-header">
+      <span class="assistant-panel-title">Asistente TOPPINGS</span>
+      <button type="button" class="assistant-panel-close" data-assistant-close aria-label="Cerrar">&times;</button>
+    </div>
+    <div class="assistant-messages" data-assistant-messages></div>
+    <form class="assistant-name-form" data-assistant-name-form hidden>
+      <input type="text" class="assistant-input" data-assistant-name-input placeholder="Tu nombre" autocomplete="name">
+      <button type="submit" class="btn btn-primary">Continuar</button>
+    </form>
+    <form class="assistant-chat-form" data-assistant-chat-form hidden>
+      <input type="text" class="assistant-input" data-assistant-chat-input placeholder="Escribe tu pregunta..." autocomplete="off">
+      <button type="submit" class="btn btn-primary" aria-label="Enviar">➤</button>
+    </form>
+  </div>
+</div>
+
+<div class="prize-modal" data-prize-modal hidden>
+  <div class="prize-modal-backdrop" data-prize-modal-close></div>
+  <div class="prize-modal-card">
+    <button type="button" class="prize-modal-close" data-prize-modal-close aria-label="Cerrar">&times;</button>
+    <p class="section-kicker">Premio del día</p>
+    <button type="button" class="gift-box" data-gift-box aria-label="Abrir regalo">🎁</button>
+    <div class="prize-reveal" data-prize-reveal hidden>
+      <p class="prize-reveal-title">🎉 Ganaste el premio</p>
+      <p class="prize-reveal-text" data-prize-text></p>
+      <a class="btn btn-primary btn-lg" data-whatsapp-link data-prize-whatsapp href="#" target="_blank" rel="noopener">📲 Reclamar por WhatsApp</a>
+    </div>
+  </div>
+</div>
+
+<div class="code-modal" data-code-modal hidden>
+  <div class="prize-modal-backdrop" data-code-modal-close></div>
+  <div class="prize-modal-card code-modal-card">
+    <button type="button" class="prize-modal-close" data-code-modal-close aria-label="Cerrar">&times;</button>
+    <p class="code-modal-title" data-code-modal-title>Pídele el código al mesero</p>
+    <input type="text" class="code-modal-input" data-code-modal-input placeholder="Código secreto" autocomplete="off">
+    <p class="code-modal-error" data-code-modal-error hidden>Código incorrecto. Pregúntale de nuevo al mesero.</p>
+    <button type="button" class="btn btn-primary btn-lg" data-code-modal-confirm>Confirmar</button>
+  </div>
+</div>
+
+<div class="scan-modal" data-scan-modal hidden>
+  <div class="prize-modal-backdrop" data-scan-modal-close></div>
+  <div class="prize-modal-card scan-modal-card">
+    <button type="button" class="prize-modal-close" data-scan-modal-close aria-label="Cerrar">&times;</button>
+    <p class="code-modal-title">Apunta al código QR</p>
+    <div class="scan-video-wrap">
+      <video class="scan-video" data-scan-video playsinline muted></video>
+      <div class="scan-frame"></div>
+    </div>
+    <p class="scan-status" data-scan-status>Acércate al código QR del local 📱</p>
+    <canvas data-scan-canvas hidden></canvas>
+  </div>
+</div>
+
+<div class="ruleta-modal" data-ruleta-modal hidden>
+  <div class="prize-modal-backdrop" data-ruleta-close></div>
+  <div class="ruleta-card">
+    <button type="button" class="ruleta-icon-btn ruleta-close" data-ruleta-close aria-label="Cerrar">&times;</button>
+    <button type="button" class="ruleta-icon-btn ruleta-mute" data-ruleta-mute aria-label="Silenciar sonido">🔊</button>
+
+    <h2 class="ruleta-title" data-ruleta-title>RULETA TOPPINGS</h2>
+    <p class="ruleta-tickets" data-ruleta-tickets>Tiros disponibles: 0</p>
+
+    <div class="ruleta-stage" data-ruleta-stage="idle">
+      <div class="ruleta-wheel-wrap">
+        <canvas class="ruleta-canvas" data-ruleta-canvas width="320" height="320"></canvas>
+        <div class="ruleta-pointer"></div>
+      </div>
+      <button type="button" class="btn btn-primary ruleta-spin-btn" data-ruleta-spin>GIRAR</button>
+      <p class="ruleta-hint" data-ruleta-hint hidden>No tienes tiros disponibles. Completa una dinámica para conseguir uno.</p>
+    </div>
+
+    <div class="ruleta-stage" data-ruleta-stage="result" hidden>
+      <p class="ruleta-result-title" data-ruleta-result-title>¡GANASTE!</p>
+      <p class="ruleta-result-name" data-ruleta-result-name></p>
+      <p class="ruleta-result-hint" data-ruleta-result-hint hidden>Puedes ver y reclamar tu premio en el botón de regalo 🎁 (abajo, debajo de WhatsApp). Recuerda: debes estar en el local — no se entrega a domicilio ni para llevar.</p>
+      <div class="ruleta-result-actions" data-ruleta-result-actions hidden>
+        <button type="button" class="btn btn-primary" data-ruleta-view-prizes>🎁 Ver mis premios</button>
+      </div>
+      <button type="button" class="btn btn-ghost" data-ruleta-again>Volver</button>
+    </div>
+
+    <div class="ruleta-stage" data-ruleta-stage="disabled" hidden>
+      <p class="ruleta-hint">La Ruleta TOPPINGS no está disponible en este momento.</p>
+    </div>
+
+    <p class="ruleta-terms">Un tiro se consume por cada giro. El premio debe reclamarse en el local antes de la fecha de vencimiento.</p>
+  </div>
+</div>
+
+<div class="prize-modal claim-prize-modal" data-claim-prize-modal hidden>
+  <div class="prize-modal-backdrop" data-claim-prize-close></div>
+  <div class="prize-modal-card claim-prize-card">
+    <button type="button" class="prize-modal-close" data-claim-prize-close aria-label="Cerrar">&times;</button>
+
+    <div class="claim-prize-stage" data-claim-stage="code">
+      <p class="section-kicker" data-claim-prize-title></p>
+      <p class="claim-prize-hint">Escribe el código que ganaste</p>
+      <input type="text" class="code-modal-input" data-claim-code-input placeholder="TOP-XXXXXX" autocomplete="off" autocapitalize="characters">
+      <p class="claim-prize-error" data-claim-prize-error hidden></p>
+      <button type="button" class="btn btn-primary btn-lg" data-claim-verify-btn>Verificar</button>
+    </div>
+
+    <div class="claim-prize-stage" data-claim-stage="confirm" hidden>
+      <p class="claim-prize-title">🎉 Vas a reclamar:</p>
+      <p class="claim-prize-name" data-claim-prize-name></p>
+      <p class="claim-prize-hint">Presiona el botón para solicitar la entrega. Tienes 24 horas para reclamarlo — se entrega únicamente en el local, no aplica domicilios.</p>
+      <button type="button" class="btn btn-primary btn-lg" data-claim-request-btn>Solicitar premio</button>
+    </div>
+
+    <div class="claim-prize-stage" data-claim-stage="waiting" hidden>
+      <p class="claim-prize-title">🎁 Solicitud enviada.</p>
+      <p class="claim-prize-hint">Espera mientras uno de nuestros empleados confirma tu entrega. Recuerda: debes estar en el local — no se entrega a domicilio ni para llevar.</p>
+      <div class="claim-waiting-spinner" aria-hidden="true"></div>
+    </div>
+
+    <div class="claim-prize-stage" data-claim-stage="delivered" hidden>
+      <p class="claim-prize-title">✅ Tu premio fue entregado correctamente.</p>
+    </div>
+  </div>
+</div>
+
+<div class="prize-modal deliver-prize-modal" data-deliver-prize-modal hidden>
+  <div class="prize-modal-backdrop" data-deliver-prize-close></div>
+  <div class="prize-modal-card deliver-prize-card">
+    <button type="button" class="prize-modal-close" data-deliver-prize-close aria-label="Cerrar">&times;</button>
+
+    <div class="deliver-prize-stage" data-deliver-stage="pin">
+      <p class="section-kicker" data-deliver-prize-title></p>
+      <p class="claim-prize-hint" data-deliver-prize-subtext-2></p>
+      <input type="password" inputmode="numeric" class="code-modal-input" data-deliver-pin-input placeholder="PIN de empleado" autocomplete="off">
+      <input type="text" class="code-modal-input" data-deliver-name-input placeholder="Tu nombre" autocomplete="off">
+      <p class="claim-prize-error" data-deliver-prize-error hidden></p>
+      <button type="button" class="btn btn-primary btn-lg" data-deliver-login-btn>Entrar</button>
+    </div>
+
+    <div class="deliver-prize-stage" data-deliver-stage="pending" hidden>
+      <p class="section-kicker">Premios pendientes</p>
+      <div class="deliver-pending-list" data-deliver-pending-list></div>
+      <p class="claim-prize-hint" data-deliver-pending-empty hidden>No hay premios pendientes por entregar.</p>
+    </div>
+  </div>
+</div>
+
+<div class="prize-modal gift-codes-modal" data-gift-codes-modal hidden>
+  <div class="prize-modal-backdrop" data-gift-codes-close></div>
+  <div class="prize-modal-card gift-codes-card">
+    <button type="button" class="prize-modal-close" data-gift-codes-close aria-label="Cerrar">&times;</button>
+    <p class="section-kicker">🎁 Tus premios</p>
+    <div class="gift-codes-list" data-gift-codes-list></div>
+    <p class="claim-prize-hint" data-gift-codes-empty hidden>No tienes premios pendientes por reclamar.</p>
+    <button type="button" class="btn btn-ghost gift-codes-goto-carousel" data-gift-codes-goto-carousel hidden>🎯 Ver cómo ganar premios</button>
+  </div>
+</div>
+
+<div class="prize-modal name-taken-modal" data-name-taken-modal hidden>
+  <div class="prize-modal-backdrop" data-name-taken-close></div>
+  <div class="prize-modal-card name-taken-card">
+    <p class="section-kicker">ESE NOMBRE YA ESTÁ EN USO</p>
+    <p class="claim-prize-hint">Otra persona ya está usando ese mismo nombre. Puedes continuar igual (cada uno queda con su propio puntaje) o cambiar tu nombre.</p>
+    <div class="name-taken-actions">
+      <button type="button" class="btn btn-primary" data-name-taken-continue>Continuar con este nombre</button>
+      <button type="button" class="btn btn-ghost" data-name-taken-change>Cambiar nombre</button>
+    </div>
+  </div>
+</div>
+
+<!-- libs -->
+<script defer src="lib/gsap.min.js"></script>
+<script defer src="lib/ScrollTrigger.min.js"></script>
+<script defer src="lib/jsQR.js"></script>
+
+<!-- brand data -->
+<script defer src="lib/manifest.js"></script>
+<script defer src="lib/cat-carousel.js?v=20260727"></script>
+
+<!-- entry point -->
+<script defer src="main.js?v=20260722b"></script>
+<script defer src="editor/page-editor.js?v=20260722b"></script>
+<script defer src="game/toppings-run.js?v=20260722b"></script>
+<script defer src="game/ruleta.js?v=20260722b"></script>
+</body>
+</html>

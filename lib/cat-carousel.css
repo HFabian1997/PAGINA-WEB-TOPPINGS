@@ -1,0 +1,54 @@
+/**
+ * Carrusel de categoría — hoja compartida entre el sitio público y la vista
+ * previa del panel de administración, para que se vea igual en los dos lados.
+ */
+.cat-carousel {
+  position: relative; width: 100%; overflow: hidden;
+  border-radius: var(--radius-md);
+}
+.cat-carousel[hidden] { display: none; }
+.cat-carousel-viewport {
+  position: relative; width: 100%; overflow: hidden;
+  transition: height var(--cc-speed, 600ms) cubic-bezier(.22,.61,.36,1);
+}
+.cat-carousel-track {
+  display: flex; width: 100%; align-items: flex-start;
+  transition: transform var(--cc-speed, 600ms) cubic-bezier(.22,.61,.36,1);
+}
+.cat-carousel-slide { flex: 0 0 100%; width: 100%; }
+.cat-carousel-slide img {
+  width: 100%; height: 100%; display: block; object-fit: cover;
+  border: 0; border-radius: 0; box-shadow: none;
+}
+/* Altura automática: la imagen manda (no se deforma) y el alto del carrusel
+   sigue a la imagen que se está mostrando, para que no queden huecos cuando
+   las fotos tienen proporciones distintas. */
+.cat-carousel.is-auto-height .cat-carousel-slide img { height: auto; object-fit: contain; }
+
+.cat-carousel-arrow {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  width: 38px; height: 38px; border-radius: 50%; z-index: 2;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(10,10,10,.55); color: #fff; border: 1px solid rgba(255,255,255,.25);
+  cursor: pointer; font-size: 1.1rem; line-height: 1;
+}
+.cat-carousel-arrow:hover { background: rgba(10,10,10,.8); }
+.cat-carousel-arrow.is-prev { left: .5rem; }
+.cat-carousel-arrow.is-next { right: .5rem; }
+.cat-carousel-arrow[hidden] { display: none; }
+
+.cat-carousel-dots {
+  position: absolute; left: 0; right: 0; bottom: .6rem; z-index: 2;
+  display: flex; justify-content: center; gap: .4rem;
+}
+.cat-carousel-dots[hidden] { display: none; }
+.cat-carousel-dot {
+  width: 8px; height: 8px; border-radius: 50%; padding: 0; cursor: pointer;
+  background: rgba(255,255,255,.45); border: 0;
+}
+.cat-carousel-dot.is-active { background: var(--accent); width: 20px; border-radius: 999px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cat-carousel-track { transition: none; }
+}
+

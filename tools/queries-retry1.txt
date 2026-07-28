@@ -1,0 +1,12 @@
+hero|french fries cheese sauce||large
+promo-banner|burger fries combo||large
+zona-secreta-bg|neon lights night city||large
+nosotros-local|food truck||large
+comida-1|french fries sausage||large
+comida-2|cheeseburger||large
+comida-4|french fries basket||large
+bebida-1|soda can||large
+galeria-1|restaurant interior neon||large
+galeria-2|graffiti wall||large
+galeria-4|burger and fries||large
+galeria-5|food truck night||large

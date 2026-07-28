@@ -1,0 +1,8 @@
+# Nadie debe poder leer este archivo directamente por la web; solo premio.php lo usa.
+<IfModule mod_authz_core.c>
+  Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+  Order deny,allow
+  Deny from all
+</IfModule>

@@ -1,0 +1,137 @@
+/* =============================================================
+   Editor visual — Etapa 1 (entrada, modo edición, selección)
+   Se auto-inicializa desde page-editor.js; no depende de main.js.
+   ============================================================= */
+
+.editor-entry-btn {
+  display: inline-block; margin-top: .35rem;
+  color: var(--ink-mute, rgba(255,255,255,.48)); font-size: .78rem;
+  text-decoration: underline; opacity: .7; cursor: pointer;
+  background: none; border: 0; font-family: inherit;
+}
+.editor-entry-btn:hover { color: var(--accent, #FFD400); opacity: 1; }
+
+/* ---- Modal de contraseña ---- */
+.editor-login-modal {
+  position: fixed; inset: 0; z-index: 10000;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,.72); padding: 1.25rem;
+}
+.editor-login-modal[hidden] { display: none; }
+.editor-login-card {
+  width: 100%; max-width: 340px; background: var(--card, #1c1c1c);
+  border: 1px solid var(--line, rgba(255,255,255,.1)); border-radius: var(--radius-lg, 20px);
+  padding: 1.75rem 1.5rem; text-align: center; color: var(--ink, #fff);
+}
+.editor-login-card h3 { font-size: 1.3rem; margin-bottom: .5rem; }
+.editor-login-card p { color: var(--ink-soft, rgba(255,255,255,.72)); font-size: .85rem; margin-bottom: 1.1rem; }
+.editor-login-input {
+  width: 100%; padding: .8rem 1rem; border-radius: var(--radius-sm, 10px);
+  border: 1px solid var(--line, rgba(255,255,255,.1)); background: rgba(255,255,255,.05);
+  color: var(--ink, #fff); font-size: 1rem; margin-bottom: .75rem;
+}
+.editor-login-error { color: #ff6b6b; font-size: .82rem; margin-bottom: .75rem; }
+.editor-login-error[hidden] { display: none; }
+.editor-login-actions { display: flex; gap: .6rem; }
+.editor-login-actions button { flex: 1; }
+
+/* ---- Barra fija de modo edición ---- */
+.editor-toolbar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 9998;
+  display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
+  padding: .6rem 1rem; background: #111; border-bottom: 2px solid var(--accent, #FFD400);
+  box-shadow: 0 6px 24px rgba(0,0,0,.4);
+}
+.editor-toolbar[hidden] { display: none; }
+.editor-toolbar-title {
+  font-weight: 800; font-size: .82rem; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--accent, #FFD400); margin-right: .5rem; white-space: nowrap;
+}
+.editor-toolbar-btn {
+  padding: .45rem .85rem; border-radius: 999px; font-size: .8rem; font-weight: 700;
+  border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.06); color: #fff;
+  cursor: pointer; white-space: nowrap;
+}
+.editor-toolbar-btn:hover:not(:disabled) { border-color: var(--accent, #FFD400); color: var(--accent, #FFD400); }
+.editor-toolbar-btn:disabled { opacity: .35; cursor: not-allowed; }
+.editor-toolbar-btn.is-exit { background: var(--accent, #FFD400); color: #111; border-color: transparent; margin-left: auto; }
+.editor-toolbar-btn.is-exit:hover { filter: brightness(1.08); color: #111; }
+
+/* Deja espacio para que la barra no tape el header real mientras se edita */
+body.editor-mode { padding-top: 46px; }
+
+/* Aviso de gesto, debajo de la barra */
+.editor-hint {
+  position: fixed; top: 46px; left: 0; right: 0; z-index: 9997;
+  text-align: center; padding: .35rem .75rem; font-size: .72rem;
+  color: rgba(255,255,255,.6); background: rgba(0,0,0,.55);
+  pointer-events: none;
+}
+.editor-hint[hidden] { display: none; }
+
+/* El elemento mientras se está arrastrando */
+.is-editor-dragging {
+  outline: 2px dashed var(--accent, #FFD400) !important;
+  outline-offset: 2px; cursor: grabbing !important; opacity: .92;
+  z-index: 500 !important; transition: none !important;
+}
+/* Texto en edición (contenteditable temporal) */
+.is-editor-editing-text {
+  outline: 2px solid var(--accent, #FFD400) !important;
+  outline-offset: 2px; background: rgba(255,212,0,.08) !important;
+  cursor: text !important;
+}
+.editor-panel-edit-text { width: 100%; margin-top: .3rem; }
+
+/* ---- Resaltados de hover / selección ---- */
+.editor-hover-box, .editor-select-box {
+  position: fixed; z-index: 9997; pointer-events: none;
+  border-radius: 4px; transition: opacity .1s ease;
+}
+.editor-hover-box {
+  border: 2px dashed rgba(255,212,0,.55);
+  background: rgba(255,212,0,.06);
+}
+.editor-select-box {
+  border: 2px solid var(--accent, #FFD400);
+  box-shadow: 0 0 0 3px rgba(255,212,0,.18);
+}
+.editor-hover-box[hidden], .editor-select-box[hidden] { display: none; }
+.editor-select-label {
+  position: absolute; top: -22px; left: -2px;
+  background: var(--accent, #FFD400); color: #111;
+  font-size: .68rem; font-weight: 800; padding: .15rem .5rem; border-radius: 6px 6px 6px 0;
+  white-space: nowrap;
+}
+
+/* ---- Panel lateral de selección ---- */
+.editor-side-panel {
+  position: fixed; right: 0; top: 46px; bottom: 0; z-index: 9998;
+  width: min(300px, 88vw); background: #141414; border-left: 1px solid rgba(255,255,255,.1);
+  padding: 1.1rem 1.1rem 1.5rem; overflow-y: auto; color: #fff;
+  transform: translateX(100%); transition: transform .25s ease;
+}
+.editor-side-panel.is-open { transform: translateX(0); }
+.editor-side-panel-empty { color: rgba(255,255,255,.45); font-size: .85rem; }
+.editor-side-panel h4 {
+  font-size: .75rem; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--accent, #FFD400); margin-bottom: .6rem;
+}
+.editor-side-panel-row { margin-bottom: .9rem; }
+.editor-side-panel-row label {
+  display: block; font-size: .68rem; text-transform: uppercase; letter-spacing: .05em;
+  color: rgba(255,255,255,.45); margin-bottom: .25rem;
+}
+.editor-side-panel-row .val {
+  font-size: .85rem; word-break: break-word; background: rgba(255,255,255,.05);
+  border-radius: 8px; padding: .5rem .6rem; font-family: monospace;
+}
+.editor-side-panel-close {
+  position: absolute; top: .8rem; right: .9rem; background: none; border: 0;
+  color: rgba(255,255,255,.55); font-size: 1.1rem; cursor: pointer;
+}
+.editor-side-panel-close:hover { color: #fff; }
+
+@media (max-width: 640px) {
+  .editor-toolbar-title { display: none; }
+}

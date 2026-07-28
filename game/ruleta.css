@@ -1,0 +1,87 @@
+/* RULETA TOPPINGS — reutiliza las variables (--accent, --line, --radius-*,
+   --bg-2, --shadow-*, --ease-out) ya definidas en :root dentro de
+   styles.css, cargado en la misma página. Mismo patrón que
+   game/toppings-run.css. */
+
+.ruleta-modal {
+  position: fixed; inset: 0; z-index: 600;
+  background: rgba(5,5,5,.94);
+  display: flex; align-items: center; justify-content: center; padding: 1rem;
+}
+.ruleta-modal[hidden] { display: none; }
+
+.ruleta-card {
+  position: relative; z-index: 1; width: 100%; max-width: 420px;
+  max-height: 95vh; overflow-y: auto; text-align: center;
+  background: var(--bg-2); border: 2px solid var(--accent); border-radius: var(--radius-lg);
+  padding: 2.5rem 1.5rem 1.75rem; box-shadow: var(--shadow-md), 0 0 40px rgba(255,212,0,.15);
+}
+
+.ruleta-icon-btn {
+  position: absolute; top: .75rem; width: 32px; height: 32px; border-radius: 50%;
+  background: rgba(255,255,255,.08); border: 1px solid var(--line); color: var(--ink);
+  font-size: 1.1rem; line-height: 1; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: color .25s var(--ease-out), border-color .25s var(--ease-out);
+}
+.ruleta-icon-btn:hover { color: var(--accent); border-color: var(--accent); }
+.ruleta-close { right: .75rem; }
+.ruleta-mute { left: .75rem; font-size: 1rem; }
+.ruleta-mute.is-muted { color: var(--ink-mute); }
+
+.ruleta-title {
+  font-family: var(--display); color: var(--accent); font-size: 1.6rem;
+  letter-spacing: .03em; margin-bottom: .4rem; text-shadow: 0 2px 12px rgba(255,212,0,.35);
+}
+.ruleta-tickets {
+  font-weight: 800; font-size: .85rem; color: var(--ink-soft);
+  background: rgba(255,255,255,.06); border: 1px solid var(--line);
+  border-radius: 999px; padding: .35rem .9rem; display: inline-block; margin-bottom: 1.25rem;
+}
+
+.ruleta-stage[hidden] { display: none; }
+
+.ruleta-wheel-wrap {
+  position: relative; width: min(80vw, 300px); aspect-ratio: 1; margin: 0 auto 1.5rem;
+}
+.ruleta-canvas { width: 100%; height: 100%; display: block; filter: drop-shadow(0 8px 24px rgba(0,0,0,.5)); }
+.ruleta-pointer {
+  position: absolute; top: -6px; left: 50%; translate: -50% 0; z-index: 2;
+  width: 0; height: 0; border-left: 14px solid transparent; border-right: 14px solid transparent;
+  border-top: 24px solid var(--accent); filter: drop-shadow(0 2px 6px rgba(0,0,0,.5));
+}
+
+.ruleta-spin-btn {
+  width: 100%; max-width: 240px; font-size: 1.05rem; letter-spacing: .04em;
+  padding-block: 1rem;
+}
+.ruleta-spin-btn:disabled { opacity: .5; cursor: not-allowed; animation: none; }
+.ruleta-hint { color: var(--ink-mute); font-size: .85rem; margin-top: 1rem; max-width: 30ch; margin-inline: auto; }
+
+.ruleta-result-title {
+  font-family: var(--display); font-size: 1.8rem; color: var(--accent); margin-bottom: .5rem;
+  animation: ruletaResultPop .5s var(--ease-out);
+}
+@keyframes ruletaResultPop {
+  0% { transform: scale(.7); opacity: 0; }
+  60% { transform: scale(1.06); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+.ruleta-result-name { font-size: 1.15rem; font-weight: 800; color: var(--ink); margin-bottom: .75rem; }
+.ruleta-result-code {
+  font-family: monospace; font-size: 1.3rem; font-weight: 800; letter-spacing: .08em;
+  color: #06331c; background: var(--accent); border-radius: var(--radius-sm);
+  padding: .5rem 1rem; display: inline-block; margin-bottom: .5rem;
+}
+.ruleta-result-code[hidden], .ruleta-result-expiry[hidden] { display: none; }
+.ruleta-result-expiry { color: var(--ink-mute); font-size: .82rem; margin-bottom: 1.25rem; }
+.ruleta-result-actions { display: flex; flex-wrap: wrap; gap: .6rem; justify-content: center; margin-bottom: 1rem; }
+.ruleta-result-actions[hidden] { display: none; }
+.ruleta-result-hint { color: var(--accent); font-size: .82rem; max-width: 32ch; margin: 0 auto 1rem; }
+.ruleta-result-hint[hidden] { display: none; }
+
+.ruleta-terms { color: var(--ink-mute); font-size: .68rem; margin-top: 1.5rem; }
+/* El confeti del resultado reutiliza la clase .confetti-piece ya definida
+   en styles.css (misma función burstConfetti() que usan los otros premios). */
+
+body.no-animations .ruleta-result-title { animation: none !important; }

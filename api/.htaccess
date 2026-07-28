@@ -1,0 +1,12 @@
+# ai-config.php guarda la clave de la API de IA — nunca debe poder leerse
+# directamente por la web. El archivo ya no imprime nada por sí solo (solo
+# hace "return"), pero esto es una capa extra de seguridad.
+<Files "ai-config.php">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order deny,allow
+    Deny from all
+  </IfModule>
+</Files>

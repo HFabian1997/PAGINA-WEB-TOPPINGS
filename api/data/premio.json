@@ -1,0 +1,26 @@
+{
+    "day": "2026-07-27",
+    "cronometro": {
+        "lastClaimName": "FABIAN-CEL",
+        "lastClaimDevice": null,
+        "lastClaimAt": 1785196141353
+    },
+    "loyalty": {
+        "claimed": false,
+        "name": null,
+        "deviceId": null,
+        "claimedAt": null
+    },
+    "challenge": {
+        "claims": []
+    },
+    "stikers": [
+        {
+            "id": "stk_6a668b1d2e80f7.99081987",
+            "image": "api/uploads/stiker-20260726-173301-35033a32.jpg",
+            "alt": "David",
+            "deviceId": null,
+            "date": "2026-07-26"
+        }
+    ]
+}

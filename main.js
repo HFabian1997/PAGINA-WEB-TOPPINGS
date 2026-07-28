@@ -1,0 +1,2335 @@
+(function () {
+  "use strict";
+
+  var data = window.__BRAND__ || {};
+  var reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  var $  = function (sel, scope) { return (scope || document).querySelector(sel); };
+  var $$ = function (sel, scope) { return Array.prototype.slice.call((scope || document).querySelectorAll(sel)); };
+  var escHTML = function (s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  };
+  function safe(fn, name) {
+    try { fn(); } catch (e) { console.warn("[" + name + "] failed:", e); }
+  }
+
+  /* ---------------- Personalización (fondo, colores, tamaño de letra, efectos) ----------------
+     Se corre primero que cualquier otra cosa en boot(), para que el resto de
+     la página ya pinte con los valores elegidos desde el panel y no haya un
+     "flash" del tema por defecto más de lo necesario. */
+  function applyCustomization() {
+    var c = data.customization;
+    if (!c) return;
+    var root = document.documentElement;
+
+    if (c.accentColor) root.style.setProperty("--accent", c.accentColor);
+    if (c.textColor) root.style.setProperty("--ink", c.textColor);
+    if (typeof c.backgroundOverlay === "number") {
+      root.style.setProperty("--overlay-alpha", String(c.backgroundOverlay));
+    }
+
+    var FONT_SCALE = { small: "15px", normal: "16px", large: "18px" };
+    root.style.fontSize = FONT_SCALE[c.fontSizeScale] || FONT_SCALE.normal;
+
+    if (c.backgroundType === "color" && c.backgroundColor) {
+      root.style.background = c.backgroundColor;
+    } else if (c.backgroundType === "image" && c.backgroundImage) {
+      root.style.background = "#0a0a0a url('" + c.backgroundImage + "') center / cover no-repeat fixed";
+    }
+    // backgroundType "texture" (o sin definir): se deja la textura urbana de siempre.
+
+    if (c.effects) {
+      document.body.classList.toggle("no-animations", c.effects.animations === false);
+      document.body.classList.toggle("no-glow", c.effects.glow === false);
+      var scrollFab = $("[data-scroll-fab]");
+      if (scrollFab) scrollFab.hidden = c.effects.scrollButtons === false;
+      if (c.effects.pageNavArrows === false) {
+        $$("[data-pagenav]").forEach(function (b) { b.hidden = true; });
+      }
+    }
+  }
+
+  /* ---------------- WhatsApp links ---------------- */
+  function buildWhatsAppUrl(extraText) {
+    var biz = data.business || {};
+    var phone = (biz.whatsapp || "").replace(/[^0-9]/g, "");
+    var msg = extraText || biz.whatsappMessage || "Hola TOPPINGS!";
+    return "https://wa.me/" + phone + "?text=" + encodeURIComponent(msg);
+  }
+  function initWhatsappLinks() {
+    var url = buildWhatsAppUrl();
+    $$("[data-whatsapp-link]").forEach(function (a) { a.href = url; });
+  }
+
+  /* ---------------- Identificador del dispositivo (compartido con el juego) ----------------
+     Misma llave de localStorage que usa game/toppings-run.js — así el mismo
+     dispositivo se reconoce en cualquier parte del sitio, sin cuentas ni
+     login. Es lo único que el servidor usa para comprobar que un cambio de
+     nombre lo pide de verdad el dueño del registro, no cualquiera. */
+  var DEVICE_KEY = "toppings_run_device_id";
+  function getDeviceId() {
+    try {
+      var id = localStorage.getItem(DEVICE_KEY);
+      if (!id) {
+        id = "d_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+        localStorage.setItem(DEVICE_KEY, id);
+      }
+      return id;
+    } catch (e) { return ""; }
+  }
+
+  /* ---------------- Saludo en el inicio (posición configurable desde admin) ----------------
+     Recuerda el mismo nombre que usa el cronómetro, la tarjeta, el reto y el
+     juego. Al cambiarlo, se lo avisa al servidor para que el nombre nuevo
+     quede también en el ranking y en el historial de premios — no solo en
+     este celular. El límite de cambios (o si se puede cambiar) se configura
+     desde el panel — el primer nombre que da un cliente nunca cuenta como
+     "cambio". ---- */
+  var NAME_CHANGE_COUNT_KEY = "toppings_name_change_count";
+  var RUN_API = "api/run-leaderboard.php";
+
+  /* Mueve el saludo a donde el admin haya elegido dentro de la portada —
+     mismo patrón que positionDailyPrize. */
+  function positionHeroGreeting() {
+    var el = $("[data-hero-greeting]");
+    var hero = $(".hero-inner");
+    if (!el || !hero) return;
+    var cfg = data.customerGreeting || {};
+    var position = cfg.position || "belowLogo";
+    var kicker = $(".hero-kicker", hero);
+    var title = $(".hero-title", hero);
+    var sub = $(".hero-sub", hero);
+    var actions = $(".hero-actions", hero);
+
+    if (position === "aboveLogo" && kicker) hero.insertBefore(el, kicker);
+    else if (position === "afterSubtitle" && sub) sub.parentNode.insertBefore(el, sub.nextSibling);
+    else if (position === "afterButtons" && actions) actions.parentNode.insertBefore(el, actions.nextSibling);
+    else if (title) title.parentNode.insertBefore(el, title.nextSibling); // "belowLogo" (por defecto)
+  }
+
+  function renderHeroGreeting() {
+    var el = $("[data-hero-greeting]");
+    if (!el) return;
+    var cfg = data.customerGreeting || {};
+    if (cfg.active === false) { el.hidden = true; return; }
+    var textEl = $("[data-hero-greeting-text]", el);
+    var editBtn = $("[data-hero-greeting-edit]", el);
+    var name = localStorage.getItem(LOYALTY_NAME_KEY) || "";
+    if (name) {
+      el.hidden = false;
+      if (textEl) textEl.textContent = "👋 Hola, " + name;
+      if (editBtn) editBtn.hidden = cfg.nameChangeMode === "disabled";
+    } else {
+      el.hidden = true;
+    }
+  }
+  window.__renderHeroGreeting = renderHeroGreeting;
+
+  /* Avisa a los dos servicios (premios y ranking) para que el nombre nuevo
+     reemplace al viejo en cualquier registro que ya tuviera este mismo
+     dispositivo — sin esto, el cambio solo se vería en este celular. */
+  function renameEverywhere(newName, oldName) {
+    var deviceId = getDeviceId();
+    var body = JSON.stringify({ action: "rename", deviceId: deviceId, newName: newName, oldName: oldName || "" });
+    fetch(PRIZE_API, { method: "POST", headers: { "Content-Type": "application/json" }, body: body })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res && res.state) premioState = res.state;
+        safe(renderPremioSection, "renderPremioSection");
+      })
+      .catch(function (e) { console.warn("[rename] premio.php:", e); });
+    // Importante: el ranking solo se refresca DESPUÉS de que el propio
+    // cambio de nombre ya se guardó en el servidor — si se piden los dos al
+    // mismo tiempo, la consulta del ranking puede llegar primero y mostrar
+    // todavía el nombre viejo (por eso antes solo se veía actualizado al
+    // volver a jugar, que sí hace su propia consulta después).
+    fetch(RUN_API, { method: "POST", headers: { "Content-Type": "application/json" }, body: body })
+      .then(function () { if (window.__renameGameName) window.__renameGameName(newName); })
+      .catch(function (e) {
+        console.warn("[rename] run-leaderboard.php:", e);
+        if (window.__renameGameName) window.__renameGameName(newName);
+      });
+  }
+
+  /* ---- Aviso de "ese nombre ya está en uso" — antes de guardar un nombre
+     nuevo (por primera vez en el juego, o al cambiarlo desde el saludo) se
+     consulta si otro dispositivo ya lo tiene en el ranking; si es así, se
+     pregunta si continuar igual o cambiar de nombre. Es solo una advertencia
+     — si la consulta falla por internet, sigue igual que si no estuviera
+     en uso, sin bloquear al cliente. ---- */
+  function showNameTakenModal(onContinue, onChangeName) {
+    var modal = $("[data-name-taken-modal]");
+    if (!modal) { onContinue(); return; }
+    modal.hidden = false;
+    var continueBtn = $("[data-name-taken-continue]", modal);
+    var changeBtn = $("[data-name-taken-change]", modal);
+    var backdrop = $("[data-name-taken-close]", modal);
+    function cleanup() {
+      modal.hidden = true;
+      if (continueBtn) continueBtn.onclick = null;
+      if (changeBtn) changeBtn.onclick = null;
+      if (backdrop) backdrop.onclick = null;
+    }
+    function dismiss() { cleanup(); if (onChangeName) onChangeName(); }
+    if (continueBtn) continueBtn.onclick = function () { cleanup(); onContinue(); };
+    if (changeBtn) changeBtn.onclick = dismiss;
+    if (backdrop) backdrop.onclick = dismiss;
+  }
+
+  function checkNameThenProceed(name, onContinue, onChangeName) {
+    var deviceId = getDeviceId();
+    fetch(RUN_API + "?action=check-name&name=" + encodeURIComponent(name) + "&deviceId=" + encodeURIComponent(deviceId), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res && res.ok && res.taken) showNameTakenModal(onContinue, onChangeName);
+        else onContinue();
+      })
+      .catch(function () { onContinue(); });
+  }
+  window.__checkNameThenProceed = checkNameThenProceed;
+
+  /* Guarda el nombre en este dispositivo Y lo deja registrado en el servidor.
+     Todo punto donde el cliente escribe su nombre (saludo, juego, cronómetro,
+     tarjeta, reto, asistente) pasa por aquí — así el aviso de "ese nombre ya
+     está en uso" funciona para todos, no solo para quienes juegan. */
+  var REGISTERED_NAME_KEY = "toppings_registered_name";
+  function setCustomerName(name) {
+    name = (name || "").trim();
+    if (!name) return;
+    try { localStorage.setItem(LOYALTY_NAME_KEY, name); } catch (e) {}
+    registerNameOnce(name);
+  }
+  /* Solo le avisa al servidor cuando el nombre cambió de verdad — así
+     reclamar el cronómetro cada rato no reescribe el registro una y otra vez. */
+  function registerNameOnce(name) {
+    var already = null;
+    try { already = localStorage.getItem(REGISTERED_NAME_KEY); } catch (e) {}
+    if (name === already) return;
+    fetch(RUN_API + "?action=register-name", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deviceId: getDeviceId(), name: name })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        // solo se da por registrado si el servidor lo confirmó — si falla,
+        // se vuelve a intentar la próxima vez en vez de quedar a medias
+        if (res && res.ok) {
+          try { localStorage.setItem(REGISTERED_NAME_KEY, name); } catch (e) {}
+        }
+      })
+      .catch(function () {});
+  }
+  /* Quien ya tenía su nombre guardado de antes (de cualquier dinámica) entra
+     al registro la primera vez que abre la página, para que el aviso de
+     nombre repetido tenga en cuenta a todos, no solo a los nuevos. */
+  function registerExistingName() {
+    var saved = "";
+    try { saved = localStorage.getItem(LOYALTY_NAME_KEY) || ""; } catch (e) {}
+    if (saved) registerNameOnce(saved);
+  }
+  window.__setCustomerName = setCustomerName;
+
+  /* Pide un nombre y, si ya lo usa otra persona, muestra el aviso con las
+     opciones de continuar igual o volver a escribir otro. */
+  function askNameWithCheck(onDone) {
+    function ask() {
+      openNameModal(function (name) {
+        name = (name || "").trim();
+        if (!name) { onDone(""); return; }
+        checkNameThenProceed(name, function () { setCustomerName(name); onDone(name); }, ask);
+      });
+    }
+    ask();
+  }
+
+  function initHeroGreeting() {
+    var el = $("[data-hero-greeting]");
+    if (!el) return;
+    var editBtn = $("[data-hero-greeting-edit]", el);
+    renderHeroGreeting();
+
+    if (editBtn) {
+      editBtn.addEventListener("click", function () {
+        var cfg = data.customerGreeting || {};
+        var mode = cfg.nameChangeMode || "limited";
+        if (mode === "disabled") return; // el botón ya está oculto, esto es solo un respaldo
+
+        if (mode === "limited") {
+          var maxChanges = Number(cfg.maxNameChanges) || 2;
+          var used = parseInt(localStorage.getItem(NAME_CHANGE_COUNT_KEY) || "0", 10);
+          var remaining = maxChanges - used;
+          if (remaining <= 0) {
+            alert("Ya usaste tus " + maxChanges + " cambios de nombre disponibles.");
+            return;
+          }
+          var plural = remaining === 1 ? "" : "s";
+          var ok = confirm("Solo puedes cambiar tu nombre " + maxChanges + " veces en total. Te queda" + plural + " " + remaining + " cambio" + plural + ". ¿Quieres continuar?");
+          if (!ok) return;
+        }
+
+        var oldName = localStorage.getItem(LOYALTY_NAME_KEY) || "";
+        // Se define como función con nombre para poder volver a abrirse a sí
+        // misma cuando el cliente elige "Cambiar nombre" en el aviso de
+        // nombre repetido — igual que en el juego, que lo deja escribiendo otro.
+        function askForName() {
+          openNameModal(function (name) {
+            if (!name || name === oldName) return;
+            checkNameThenProceed(name, function () {
+              setCustomerName(name);
+              if (mode === "limited") {
+                var usedNow = parseInt(localStorage.getItem(NAME_CHANGE_COUNT_KEY) || "0", 10);
+                localStorage.setItem(NAME_CHANGE_COUNT_KEY, String(usedNow + 1));
+              }
+              renderHeroGreeting();
+              safe(renderPremioSection, "renderPremioSection");
+              if (oldName) renameEverywhere(name, oldName);
+            }, askForName);
+          });
+        }
+        askForName();
+      });
+    }
+  }
+
+  /* ---------------- Música de fondo (opcional, se activa desde Personalización) ----------------
+     El navegador nunca deja reproducir sonido sin que el cliente toque algo
+     primero, así que arranca en pausa siempre: el botón flotante es la
+     única forma de iniciarla. Recuerda si el cliente la había puesto a
+     sonar para no volver a pedirle que la active en cada página. */
+  function initBackgroundMusic() {
+    var music = data.music || {};
+    var btn = $("[data-music-toggle]");
+    var audioEl = $("[data-bg-music]");
+    if (!btn || !audioEl) return;
+    if (!music.active || !music.file) { btn.hidden = true; return; }
+
+    audioEl.src = music.file;
+    audioEl.loop = true;
+    audioEl.volume = typeof music.volume === "number" ? music.volume : 0.5;
+    btn.hidden = false;
+
+    var PLAY_KEY = "toppings_music_playing";
+    function setPlaying(on) {
+      btn.classList.toggle("is-playing", on);
+      btn.setAttribute("aria-label", on ? "Pausar música" : "Reproducir música");
+    }
+    btn.addEventListener("click", function () {
+      if (audioEl.paused) {
+        audioEl.play().then(function () {
+          setPlaying(true);
+          try { sessionStorage.setItem(PLAY_KEY, "1"); } catch (e) {}
+        }).catch(function () {});
+      } else {
+        audioEl.pause();
+        setPlaying(false);
+        try { sessionStorage.removeItem(PLAY_KEY); } catch (e) {}
+      }
+    });
+
+    // Si venía sonando en la página anterior (misma pestaña/sesión), la
+    // retoma sola — esto SÍ lo permite el navegador porque ya hubo un
+    // gesto del cliente antes, en esta misma sesión de navegación.
+    try {
+      if (sessionStorage.getItem(PLAY_KEY) === "1") {
+        audioEl.play().then(function () { setPlaying(true); }).catch(function () {});
+      }
+    } catch (e) {}
+  }
+
+  /* ---------------- Sonido + confeti al reclamar un premio ---------------- */
+  function playPrizeChime() {
+    try {
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      var ctx = new Ctx();
+      var notes = [523.25, 659.25, 783.99, 1046.5];
+      notes.forEach(function (freq, i) {
+        var osc = ctx.createOscillator();
+        var gain = ctx.createGain();
+        osc.type = "triangle";
+        osc.frequency.value = freq;
+        var start = ctx.currentTime + i * 0.09;
+        gain.gain.setValueAtTime(0, start);
+        gain.gain.linearRampToValueAtTime(0.22, start + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.35);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(start);
+        osc.stop(start + 0.4);
+      });
+      setTimeout(function () { ctx.close(); }, 900);
+    } catch (e) {}
+  }
+
+  function burstConfetti(targetEl) {
+    if (!targetEl || reduced || document.body.classList.contains("no-animations")) return;
+    var colors = ["#ffd400", "#ff5252", "#2ecc71", "#4fc3f7", "#ffffff"];
+    var pieces = [];
+    var frag = document.createDocumentFragment();
+    for (var i = 0; i < 16; i++) {
+      var piece = document.createElement("span");
+      piece.className = "confetti-piece";
+      piece.style.setProperty("--c", colors[i % colors.length]);
+      piece.style.setProperty("--x", (Math.random() * 200 - 100) + "px");
+      piece.style.setProperty("--rot", (Math.random() * 480 - 240) + "deg");
+      piece.style.left = (42 + Math.random() * 16) + "%";
+      piece.style.animationDelay = (Math.random() * 0.15) + "s";
+      frag.appendChild(piece);
+      pieces.push(piece);
+    }
+    targetEl.appendChild(frag);
+    setTimeout(function () {
+      pieces.forEach(function (p) { if (p.parentNode) p.parentNode.removeChild(p); });
+    }, 1300);
+  }
+  window.__playPrizeChime = playPrizeChime;
+  window.__burstConfetti = burstConfetti;
+
+  /* ---------------- Header + mobile nav ---------------- */
+  function initNav() {
+    var header = $("[data-header]");
+    if (header) {
+      var onScroll = function () {
+        header.classList.toggle("is-scrolled", window.scrollY > 8);
+      };
+      onScroll();
+      window.addEventListener("scroll", onScroll, { passive: true });
+    }
+  }
+
+  /* ---------------- Flecha: ir al inicio o al final de la página (según dónde estés) ---------------- */
+  function initScrollButtons() {
+    var stack = $("[data-scroll-fab]");
+    var btn = $("[data-scroll-btn]");
+    if (!stack || !btn) return;
+
+    var updateDirection = function () {
+      var atTop = window.scrollY < 120;
+      btn.classList.toggle("is-dir-down", atTop);
+      btn.classList.toggle("is-dir-up", !atTop);
+    };
+    updateDirection();
+
+    btn.addEventListener("click", function () {
+      if (btn.classList.contains("is-dir-down")) {
+        window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" });
+      } else {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    });
+
+    var hideTimer;
+    var onScroll = function () {
+      updateDirection();
+      stack.classList.add("is-visible");
+      clearTimeout(hideTimer);
+      hideTimer = setTimeout(function () { stack.classList.remove("is-visible"); }, 1100);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+  }
+
+  /* ---------------- Flechas + deslizar: cambiar entre Inicio / Comidas / Helados / Bebidas ---------------- */
+  var PAGE_ORDER = ["inicio", "comidas", "helados", "bebidas"];
+  var PAGE_URL = { inicio: "index.html", comidas: "comidas.html", helados: "helados.html", bebidas: "bebidas.html" };
+  var PAGE_SCROLL_KEY = "toppings_page_scroll_";
+  var PAGE_SLIDE_KEY = "toppings_page_slide_dir";
+  // Zonas con su propio manejo de deslizar/scroll horizontal — nunca deben
+  // interpretarse como "cambiar de página" (carrusel del premio, el juego,
+  // la galería ampliada, el chat). La barra de categorías (.nav) YA NO se
+  // excluye: solo 3 pestañas, nunca necesita su propio scroll horizontal,
+  // así que deslizar también funciona empezando justo encima de ella.
+  var PAGE_SWIPE_EXCLUDE = "[data-prize-methods], .run-canvas-wrap, [data-lightbox], .assistant-panel, #nav-mobile, .run-overlay, [data-cat-carousel]";
+
+  function slideMainOut(direction, onDone) {
+    var main = $("#main");
+    if (!main) { onDone(); return; }
+    main.classList.add("is-sliding");
+    void main.offsetWidth; // fuerza reflow para que la transición se aplique
+    main.style.transform = direction === "next" ? "translateX(-100%)" : "translateX(100%)";
+    var done = false;
+    var finish = function () { if (done) return; done = true; onDone(); };
+    main.addEventListener("transitionend", finish, { once: true });
+    setTimeout(finish, 420); // respaldo si el navegador no dispara transitionend
+  }
+
+  function applyIncomingSlide() {
+    var main = $("#main");
+    var dir;
+    try { dir = sessionStorage.getItem(PAGE_SLIDE_KEY); } catch (e) { dir = null; }
+    if (!dir || !main) return;
+    try { sessionStorage.removeItem(PAGE_SLIDE_KEY); } catch (e) {}
+    main.style.transition = "none";
+    main.style.transform = dir === "next" ? "translateX(100%)" : "translateX(-100%)";
+
+    // Nunca debe quedar a medio deslizar: si requestAnimationFrame se
+    // retrasa (pestaña en segundo plano, etc.) o transitionend no llega,
+    // este respaldo garantiza que #main siempre termine en su posición
+    // normal (sin transform), aunque no se vea la animación.
+    var settled = false;
+    var settle = function () {
+      if (settled) return;
+      settled = true;
+      main.classList.remove("is-sliding");
+      main.style.transform = "";
+      main.style.transition = "";
+    };
+    setTimeout(settle, 700);
+
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        main.style.transition = "";
+        main.classList.add("is-sliding");
+        main.style.transform = "translateX(0)";
+        main.addEventListener("transitionend", settle, { once: true });
+      });
+    });
+  }
+
+  function initPageNav() {
+    var current = document.body.getAttribute("data-category");
+    var idx = PAGE_ORDER.indexOf(current);
+    if (idx === -1) return; // misterio.html, creditos.html, admin: sin esta función
+
+    applyIncomingSlide();
+
+    var prevKey = idx > 0 ? PAGE_ORDER[idx - 1] : null;
+    var nextKey = idx < PAGE_ORDER.length - 1 ? PAGE_ORDER[idx + 1] : null;
+
+    var goTo = function (key, direction) {
+      try { sessionStorage.setItem(PAGE_SCROLL_KEY + current, String(window.scrollY)); } catch (e) {}
+      try { sessionStorage.setItem(PAGE_SLIDE_KEY, direction); } catch (e) {}
+      slideMainOut(direction, function () { location.href = PAGE_URL[key]; });
+    };
+
+    var prevBtn = $("[data-pagenav='prev']");
+    var nextBtn = $("[data-pagenav='next']");
+    if (prevBtn) {
+      if (!prevKey) prevBtn.hidden = true;
+      else prevBtn.addEventListener("click", function () { goTo(prevKey, "prev"); });
+    }
+    if (nextBtn) {
+      if (!nextKey) nextBtn.hidden = true;
+      else nextBtn.addEventListener("click", function () { goTo(nextKey, "next"); });
+    }
+
+    // El logo (vuelve a Inicio) y las pestañas Comida/Helados/Bebidas del
+    // header son OTRA forma de cambiar de página — deben guardar/recordar
+    // el scroll exactamente igual que las flechas y que deslizar el dedo,
+    // así que también pasan por goTo() en vez de navegar de forma directa.
+    $$(".nav a[href], .brand[href]").forEach(function (a) {
+      var href = a.getAttribute("href") || "";
+      var base = href.split("#")[0].split("/").pop();
+      var targetKey = null;
+      for (var k in PAGE_URL) { if (PAGE_URL[k] === base) { targetKey = k; break; } }
+      if (!targetKey || targetKey === current) return;
+      var direction = PAGE_ORDER.indexOf(targetKey) > idx ? "next" : "prev";
+      a.addEventListener("click", function (e) {
+        e.preventDefault();
+        goTo(targetKey, direction);
+      });
+    });
+
+    try {
+      var saved = sessionStorage.getItem(PAGE_SCROLL_KEY + current);
+      if (saved != null) {
+        var savedY = parseInt(saved, 10) || 0;
+        window.scrollTo(0, savedY);
+        // Las imágenes del menú aún pueden estar cargando: el alto real de la
+        // página crece después de este primer intento, así que se reintenta
+        // cuando cada imagen termina de cargar y una última vez en "load".
+        var reapply = function () { window.scrollTo(0, savedY); };
+        $$("[data-menu-image] img").forEach(function (img) {
+          if (!img.complete) img.addEventListener("load", reapply, { once: true });
+        });
+        window.addEventListener("load", reapply, { once: true });
+      }
+    } catch (e) {}
+
+    // Las flechas de página (prev/next) son siempre visibles mientras la
+    // función esté activada (a diferencia de la flecha de subir/bajar, que
+    // sí aparece solo al deslizar) — su único control es el interruptor del
+    // admin. El deslizar con el dedo funciona aparte, sin depender de ellas.
+
+    // Deslizar con el dedo (o el mouse) hacia los lados para cambiar de página.
+    var touchStartX = 0, touchStartY = 0, touching = false, excluded = false;
+    document.addEventListener("touchstart", function (e) {
+      if (e.touches.length !== 1) return;
+      excluded = !!e.target.closest(PAGE_SWIPE_EXCLUDE);
+      if (excluded) return;
+      touching = true;
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+    }, { passive: true });
+
+    document.addEventListener("touchend", function (e) {
+      if (!touching || excluded) { touching = false; return; }
+      touching = false;
+      var t = e.changedTouches[0];
+      var dx = t.clientX - touchStartX;
+      var dy = t.clientY - touchStartY;
+      if (Math.abs(dx) < 45 || Math.abs(dx) < Math.abs(dy) * 1.15) return;
+      if (dx < 0 && nextKey) goTo(nextKey, "next");
+      else if (dx > 0 && prevKey) goTo(prevKey, "prev");
+    }, { passive: true });
+  }
+
+  /* ---------------- Hero text (Inicio only) ---------------- */
+  function mountHero() {
+    var hero = data.hero;
+    if (!hero) return;
+    var kickerEl = $("[data-hero-kicker]");
+    if (kickerEl && hero.kicker) kickerEl.textContent = hero.kicker;
+    var subEl = $("[data-hero-sub]");
+    if (subEl && hero.subtitle) subEl.textContent = hero.subtitle;
+    var ctaPrimary = $("[data-hero-cta-primary]");
+    if (ctaPrimary && hero.ctaPrimaryLabel) ctaPrimary.textContent = hero.ctaPrimaryLabel;
+    var ctaSecondary = $("[data-hero-cta-secondary]");
+    if (ctaSecondary && hero.ctaSecondaryLabel) ctaSecondary.textContent = hero.ctaSecondaryLabel;
+  }
+
+  /* ---------------- Header quick-nav labels (Comidas/Helados/Bebidas) ---------------- */
+  function mountQuickNav() {
+    var items = data.quickNav || [];
+    if (!items.length) return;
+    $$("[data-nav] a").forEach(function (a) {
+      var href = a.getAttribute("href") || "";
+      var base = href.split("#")[0].split("/").pop();
+      var match = items.filter(function (it) { return it.target === base; })[0];
+      if (!match) return;
+      var iconEl = $(".nav-icon", a);
+      var labelEl = $(".nav-label", a);
+      if (iconEl && match.icon) iconEl.textContent = match.icon;
+      if (labelEl && match.label) labelEl.textContent = match.label;
+    });
+  }
+
+  /* ---------------- Category menu (image list, one or more frames per page) ---------------- */
+  function mountCategoryMenu() {
+    var bodyCategory = document.body.getAttribute("data-category");
+    if (bodyCategory) {
+      var bodyInfo = data[bodyCategory];
+      if (bodyInfo) {
+        var titleEl = $("[data-category-title]");
+        if (titleEl && bodyInfo.title) titleEl.textContent = bodyInfo.title;
+        var subEl = $("[data-category-subtitle]");
+        if (subEl && bodyInfo.subtitle) subEl.textContent = bodyInfo.subtitle;
+      }
+    }
+
+    $$("[data-menu-image]").forEach(function (frame) {
+      var category = frame.getAttribute("data-menu-category") || bodyCategory;
+      var info = category && data[category];
+      if (!info) return;
+
+      var images = info.images || [];
+      if (images.length) {
+        // El menú se arma por BLOQUES: cada imagen es un bloque y el carrusel
+        // (si está activo) es otro bloque más, insertado en la posición que el
+        // admin haya elegido. Así se puede poner antes, entre o después de
+        // cualquier imagen sin tocar código.
+        frame.innerHTML = "";
+        var carousel = activeCarouselFor(info);
+        var at = carousel ? Math.max(0, Math.min(images.length, Number(carousel.position) || 0)) : -1;
+
+        if (at === 0) insertCategoryCarousel(frame, carousel, category);
+        images.forEach(function (src, i) {
+          var img = document.createElement("img");
+          img.src = src;
+          img.alt = (info.title || category) + " — parte " + (i + 1);
+          img.loading = i === 0 ? "eager" : "lazy";
+          img.decoding = "async";
+          frame.appendChild(img);
+          if (at === i + 1) insertCategoryCarousel(frame, carousel, category);
+        });
+      } else {
+        var emptyMsg = frame.getAttribute("data-empty-msg") ||
+          ("Todavía no hemos subido el menú de " + (info.title || category).toLowerCase() + ".");
+        frame.innerHTML =
+          '<div class="menu-empty">' +
+          "<p>" + escHTML(emptyMsg) + "</p>" +
+          '<p>Escríbenos por WhatsApp y te contamos qué tenemos hoy.</p>' +
+          "</div>";
+      }
+    });
+  }
+
+  /* ---------------- Carrusel de categoría (diapositivas) ----------------
+     La implementación vive en lib/cat-carousel.js porque el panel de
+     administración la reutiliza para su vista previa — así lo que se ve al
+     configurar es exactamente lo que verá el cliente. */
+  function activeCarouselFor(info) {
+    return window.__catCarousel ? window.__catCarousel.activeConfig(info) : null;
+  }
+  function insertCategoryCarousel(frame, cfg, category) {
+    if (window.__catCarousel) window.__catCarousel.insert(frame, cfg, category);
+  }
+
+  /* ---------------- Mystery floating button ---------------- */
+  function initMysteryFab() {
+    var btn = $("[data-fab-mystery]");
+    var bubble = $("[data-fab-bubble]");
+    if (!btn || !bubble) return;
+
+    var zona = data.zonaSecreta || {};
+    var textEl = $("[data-fab-bubble-text]", bubble);
+    if (textEl && zona.bubbleText) textEl.textContent = zona.bubbleText;
+
+    var AUTO_HIDE_MS = 6000;
+    var hideTimer = null;
+    function showBubble() {
+      bubble.classList.add("is-visible");
+      clearTimeout(hideTimer);
+      hideTimer = setTimeout(function () {
+        bubble.classList.remove("is-visible");
+      }, AUTO_HIDE_MS);
+    }
+
+    setTimeout(function () {
+      btn.classList.add("is-visible");
+      if (!reduced) btn.classList.add("is-pulsing");
+      showBubble();
+    }, 5000);
+
+    btn.addEventListener("click", showBubble);
+  }
+
+  /* ---------------- Asistente virtual (IA) ---------------- */
+  var ASSISTANT_API = "api/assistant.php";
+  var ASSISTANT_GREETED_KEY = "toppings_assistant_greeted";
+
+  function initAssistant() {
+    var ai = data.aiAssistant;
+    if (!ai || !ai.active) return;
+
+    var wrap = $("[data-assistant-wrap]");
+    var toggleBtn = $("[data-assistant-toggle]");
+    var panel = $("[data-assistant-panel]");
+    var closeBtn = $("[data-assistant-close]");
+    var messagesEl = $("[data-assistant-messages]");
+    var nameForm = $("[data-assistant-name-form]");
+    var nameInput = $("[data-assistant-name-input]");
+    var chatForm = $("[data-assistant-chat-form]");
+    var chatInput = $("[data-assistant-chat-input]");
+    if (!wrap || !toggleBtn || !panel || !messagesEl) return;
+    wrap.hidden = false;
+
+    var history = [];
+    var busy = false;
+
+    function addMessage(role, text) {
+      var el = document.createElement("div");
+      el.className = "assistant-msg " + (role === "user" ? "is-user" : "is-bot");
+      el.textContent = text;
+      messagesEl.appendChild(el);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+      return el;
+    }
+
+    function openPanel() { panel.hidden = false; }
+    function closePanel() { panel.hidden = true; }
+
+    function showChatMode() {
+      if (nameForm) nameForm.hidden = true;
+      if (chatForm) chatForm.hidden = false;
+      if (chatInput && !reduced) chatInput.focus();
+    }
+    function showNameMode() {
+      if (chatForm) chatForm.hidden = true;
+      if (nameForm) nameForm.hidden = false;
+      if (nameInput && !reduced) nameInput.focus();
+    }
+
+    toggleBtn.addEventListener("click", function () {
+      if (panel.hidden) openPanel(); else closePanel();
+    });
+    if (closeBtn) closeBtn.addEventListener("click", closePanel);
+
+    // El saludo (de bienvenida o de pedir el nombre) solo se agrega al chat
+    // y se abre solo una vez por sesión — cambiar de sección (otra página)
+    // no debe repetirlo ni volver a abrir el panel solo.
+    var alreadyGreetedThisSession = !!sessionStorage.getItem(ASSISTANT_GREETED_KEY);
+    var savedName = localStorage.getItem(LOYALTY_NAME_KEY) || "";
+
+    if (!savedName) {
+      addMessage("bot", "👋 ¡Hola! Antes de comenzar, ¿cómo te llamas?");
+      showNameMode();
+    } else if (!alreadyGreetedThisSession) {
+      addMessage("bot", "👋 Hola, " + savedName + ". ¡Bienvenido nuevamente a Toppings! Si necesitas saber algo, solo pregúntame. 😊");
+      showChatMode();
+    } else {
+      showChatMode();
+    }
+
+    if (!alreadyGreetedThisSession) {
+      sessionStorage.setItem(ASSISTANT_GREETED_KEY, "1");
+      setTimeout(function () { if (panel.hidden) openPanel(); }, 1600);
+    }
+
+    if (nameForm) {
+      nameForm.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var name = (nameInput.value || "").trim();
+        if (!name) return;
+        // mismo aviso que en el resto del sitio si el nombre ya lo usa otra
+        // persona: "continuar" lo deja igual, "cambiar" lo devuelve al campo
+        checkNameThenProceed(name, function () {
+          setCustomerName(name);
+          nameInput.value = "";
+          addMessage("user", name);
+          addMessage("bot", "👋 ¡Mucho gusto, " + name + "! Aquí estoy para ayudarte. Si tienes cualquier duda sobre Toppings, solo pregúntame. 😊");
+          showChatMode();
+        }, function () { nameInput.select(); nameInput.focus(); });
+      });
+    }
+
+    function sendMessage(text) {
+      if (busy) return;
+      busy = true;
+      addMessage("user", text);
+      var typingEl = addMessage("bot", "Escribiendo…");
+      typingEl.classList.add("is-typing");
+
+      fetch(ASSISTANT_API + "?action=chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text, name: localStorage.getItem(LOYALTY_NAME_KEY) || "", history: history })
+      }).then(function (r) { return r.json(); })
+        .then(function (res) {
+          typingEl.remove();
+          busy = false;
+          if (res && res.ok) {
+            history.push({ role: "user", content: text });
+            history.push({ role: "assistant", content: res.reply });
+            if (history.length > 16) history = history.slice(-16);
+            addMessage("bot", res.reply);
+          } else {
+            addMessage("bot", (res && res.error) || "No tengo esa información confirmada. Puedes comunicarte directamente con el equipo de Toppings.");
+          }
+        })
+        .catch(function () {
+          typingEl.remove();
+          busy = false;
+          addMessage("bot", "No se pudo conectar. Intenta de nuevo en un momento.");
+        });
+    }
+
+    if (chatForm) {
+      chatForm.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var text = (chatInput.value || "").trim();
+        if (!text) return;
+        chatInput.value = "";
+        sendMessage(text);
+      });
+    }
+
+    setTimeout(function () { wrap.classList.add("is-ready"); }, 400);
+  }
+
+  /* ---------------- Gallery + lightbox ---------------- */
+  function mountGallery() {
+    var grid = $("[data-gallery]");
+    if (!grid) return;
+    var items = data.galeria || [];
+    grid.innerHTML = items.map(function (g, i) {
+      return '<button class="gallery-item" data-reveal data-index="' + i + '" aria-label="Ampliar imagen: ' + escHTML(g.alt || "") + '">' +
+        '<img src="' + escHTML(g.image) + '" alt="' + escHTML(g.alt || "") + '" loading="lazy" decoding="async"></button>';
+    }).join("");
+  }
+
+  /* ---------------- Galería de stikers encontrados (reto del día) ---------------- */
+  function isSameDay(isoDate) {
+    if (!isoDate) return false;
+    var d = new Date(isoDate + "T00:00:00");
+    var now = new Date();
+    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  }
+
+  function renderStikerItems(grid, items) {
+    if (!items.length) {
+      grid.innerHTML = '<p class="noscript-note">Todavía no hay stikers encontrados. ¡Sé el primero en cumplir el reto!</p>';
+      return;
+    }
+    grid.innerHTML = items.slice().reverse().map(function (item) {
+      var foundToday = isSameDay(item.date);
+      return '<div class="stiker-item">' +
+        (foundToday ? '<span class="stiker-badge">¡Encontrado hoy!</span>' : "") +
+        '<img src="' + escHTML(item.image) + '" alt="' + escHTML(item.alt || "Stiker encontrado") + '" loading="lazy" decoding="async">' +
+        (item.alt ? '<p class="stiker-name">' + escHTML(item.alt) + "</p>" : "") +
+        "</div>";
+    }).join("");
+  }
+
+  function mountStikerGallery() {
+    var grid = $("[data-stiker-gallery]");
+    if (!grid) return;
+    grid.innerHTML = '<p class="noscript-note">Cargando…</p>';
+    fetch(PRIZE_API + "?action=status", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        var items = (res && res.ok && res.state && res.state.stikers) || [];
+        renderStikerItems(grid, items);
+      })
+      .catch(function (e) {
+        console.warn("[stikers] no se pudo cargar la galería:", e);
+        grid.innerHTML = '<p class="noscript-note">No se pudo cargar la galería. Intenta de nuevo más tarde.</p>';
+      });
+  }
+
+  function initLightbox() {
+    var box = $("[data-lightbox]");
+    var img = $("[data-lightbox-img]");
+    var closeBtn = $("[data-lightbox-close]");
+    if (!box || !img) return;
+    var items = data.galeria || [];
+
+    document.addEventListener("click", function (e) {
+      var trigger = e.target.closest("[data-gallery] .gallery-item");
+      if (!trigger) return;
+      var idx = Number(trigger.getAttribute("data-index"));
+      var g = items[idx];
+      if (!g) return;
+      img.src = g.image;
+      img.alt = g.alt || "";
+      box.hidden = false;
+    });
+
+    function close() { box.hidden = true; img.src = ""; }
+    if (closeBtn) closeBtn.addEventListener("click", close);
+    box.addEventListener("click", function (e) { if (e.target === box) close(); });
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
+  }
+
+  /* ---------------- Hours + social + address ---------------- */
+  function mountBusinessInfo() {
+    var biz = data.business || {};
+
+    if (biz.logo) {
+      $$("[data-brand-mark]").forEach(function (el) {
+        el.innerHTML = '<img class="brand-logo-img" src="' + escHTML(biz.logo) + '" alt="' + escHTML(biz.name || "TOPPINGS") + '">';
+      });
+    }
+
+    var hoursList = $("[data-hours]");
+    if (hoursList && biz.hours) {
+      hoursList.innerHTML = biz.hours.map(function (h) {
+        return "<li><span>" + escHTML(h.day) + "</span><span>" + escHTML(h.time) + "</span></li>";
+      }).join("");
+    }
+
+    var socialRows = $$("[data-social], [data-social-footer]");
+    var socialLabels = { instagram: "IG", facebook: "FB", tiktok: "TT" };
+    if (biz.social) {
+      var html = Object.keys(biz.social).map(function (key) {
+        var url = biz.social[key];
+        if (!url) return "";
+        return '<a href="' + escHTML(url) + '" target="_blank" rel="noopener" aria-label="' + escHTML(key) + '">' + (socialLabels[key] || key.slice(0, 2).toUpperCase()) + "</a>";
+      }).join("");
+      socialRows.forEach(function (row) { row.innerHTML = html; });
+    }
+
+    $$("[data-address], [data-address-footer]").forEach(function (el) {
+      if (biz.address) el.textContent = biz.address;
+    });
+
+    var mapEl = $("[data-maps-embed]");
+    if (mapEl && biz.mapsEmbedUrl) mapEl.src = biz.mapsEmbedUrl;
+
+    var reviewsTitleEl = $("[data-reviews-title]");
+    if (reviewsTitleEl && biz.reviewsTitle) reviewsTitleEl.textContent = biz.reviewsTitle;
+    var reviewsSubEl = $("[data-reviews-sub]");
+    if (reviewsSubEl && biz.reviewsSubtitle) reviewsSubEl.textContent = biz.reviewsSubtitle;
+    var reviewsCtaEl = $("[data-reviews-cta]");
+    if (reviewsCtaEl && biz.reviewsCtaLabel) reviewsCtaEl.textContent = biz.reviewsCtaLabel;
+    var reviewsLinkEl = $("[data-reviews-link]");
+    if (reviewsLinkEl && biz.reviewsUrl) reviewsLinkEl.href = biz.reviewsUrl;
+  }
+
+  /* ---------------- Reveal on scroll ---------------- */
+  function initReveals() {
+    var targets = $$("[data-reveal]");
+    if (!targets.length) return;
+    if (!("IntersectionObserver" in window) || reduced) {
+      targets.forEach(function (t) { t.classList.add("is-visible"); });
+      return;
+    }
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add("is-visible");
+          io.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.05, rootMargin: "0px 0px -40px 0px" });
+    targets.forEach(function (t) { io.observe(t); });
+
+    // Safety net: reveal everything after a delay in case observer misfires
+    setTimeout(function () {
+      targets.forEach(function (t) { t.classList.add("is-visible"); });
+    }, 4000);
+  }
+
+  /* ---------------- Posición del premio del día en la página ---------------- */
+  function positionDailyPrize() {
+    var main = document.getElementById("main");
+    var section = $("[data-daily-prize]");
+    if (!main || !section) return; // solo existe en index.html
+
+    var info = data.dailyPrize;
+    var position = (info && info.position) || "afterHero";
+    var hero = $(".hero", main);
+    var comidasSection = $(".menu-page", main);
+
+    function moveBefore(ref) { if (ref) main.insertBefore(section, ref); }
+    function moveAfter(ref) {
+      if (!ref) return;
+      var next = ref.nextSibling;
+      if (next) main.insertBefore(section, next);
+      else main.appendChild(section);
+    }
+
+    if (position === "top") {
+      moveBefore(main.firstElementChild);
+    } else if (position === "afterComidas" && comidasSection) {
+      moveAfter(comidasSection);
+    } else if (hero) {
+      moveAfter(hero);
+    }
+  }
+
+  /* ---------------- Premio del día (3 formas de ganar + regalo) ---------------- */
+  function todayKey() {
+    var d = new Date();
+    return d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate();
+  }
+
+  /* ---- Estado compartido del premio del día (api/premio.php, sin base de datos) ----
+     Cada forma de ganar es independiente: la tarjeta de fidelidad y el reto del
+     día se bloquean cada uno por su cuenta al reclamarse, sin afectar al otro.
+     El cronómetro nunca se bloquea — no usa este estado en absoluto. */
+  var PRIZE_API = "api/premio.php";
+  var CODES_API = "api/codes.php";
+  var RULETA_API_MAIN = "api/ruleta.php";
+  var premioState = null;
+  var premioPollTimer = null;
+  var cronometroGen = 0;
+
+  // El reloj del celular puede estar adelantado o atrasado respecto al del
+  // servidor (el que de verdad decide cuándo se puede reclamar). Cada vez
+  // que llega una respuesta con "serverNow" se recalcula el desfase, y
+  // serverAdjustedNow() se usa en vez de Date.now() para que el botón nunca
+  // se ponga verde antes (o después) de lo que el servidor permite.
+  var clockSkewMs = 0;
+  function applyServerClock(state) {
+    if (state && typeof state.serverNow === "number") clockSkewMs = state.serverNow - Date.now();
+  }
+  function serverAdjustedNow() { return Date.now() + clockSkewMs; }
+
+  function fetchPremioStatus(cb) {
+    // "&_=" con la hora actual evita que un caché intermedio (del hosting u
+    // otro) devuelva una respuesta vieja — "cache: no-store" solo controla
+    // el caché del propio navegador, no cachés entre el navegador y el
+    // servidor, y eso causaba que el botón se viera "listo" con datos de
+    // una ronda anterior aunque el cronómetro real todavía no llegara a 0.
+    fetch(PRIZE_API + "?action=status&_=" + Date.now(), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res && res.ok) { premioState = res.state; applyServerClock(res.state); if (cb) cb(res.state); }
+      })
+      .catch(function (e) { console.warn("[premio] no se pudo consultar el estado:", e); });
+  }
+
+  function attemptClaim(claimMethod, opts, done) {
+    opts = opts || {};
+    fetch(PRIZE_API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "claim", method: claimMethod, name: opts.name || "", photo: opts.photo || "", deviceId: getDeviceId() })
+    }).then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res && res.state) { premioState = res.state; applyServerClock(res.state); }
+        done(res);
+      })
+      .catch(function (e) {
+        console.warn("[premio] no se pudo reclamar:", e);
+        done(null);
+      });
+  }
+
+  /* El reto del día puede tener varios ganadores por día (admin-configurable) —
+     a diferencia de la tarjeta/cronómetro, aquí sí se muestra bloqueado una
+     vez alcanzado el límite, listando a todos los que ya ganaron hoy. */
+  function renderChallengeLockedCard(card, challengeText, claims) {
+    claims = claims || [];
+    var names = claims.map(function (c) { return escHTML(c.name || "Un cliente"); }).join(", ");
+    var lastPhoto = claims.length ? claims[claims.length - 1].photo : null;
+    var verb = claims.length > 1 ? "ya ganaron" : "ya ganó";
+    card.innerHTML =
+      '<p class="prize-method-title">🔒 Ya se alcanzó el número de ganadores de hoy</p>' +
+      (challengeText ? '<p class="prize-locked-detail">' + escHTML(challengeText) + '</p>' : "") +
+      (lastPhoto ? '<img class="prize-locked-photo" src="' + escHTML(lastPhoto) + '" alt="Foto de un ganador" loading="lazy">' : "") +
+      '<p class="prize-locked-text">' + (names || "Ya se ganó el reto de hoy") + (names ? " " + verb : "") + '. ¡Vuelve mañana para una nueva oportunidad! 🎉</p>';
+  }
+
+  /* Textos de los 2 botones grandes (Reclamar/Entregar premio) y de los
+     títulos de sus modales — todos editables desde el admin. */
+  function applyDeliveryLabels(info) {
+    var claimBtn = $("[data-open-claim-prize]");
+    var deliverBtn = $("[data-open-deliver-prize]");
+    var deliverSubtext = $("[data-deliver-prize-subtext]");
+    var claimTitle = $("[data-claim-prize-title]");
+    var deliverTitle = $("[data-deliver-prize-title]");
+    var deliverSubtext2 = $("[data-deliver-prize-subtext-2]");
+    var claimLabel = info.claimPrizeButtonLabel || "🎁 Reclamar premio";
+    var deliverLabel = info.deliverPrizeButtonLabel || "🔒 Entregar premio";
+    var deliverSub = info.deliverPrizeSubtext || "Solo empleados";
+    if (claimBtn) claimBtn.textContent = claimLabel;
+    if (deliverBtn) deliverBtn.textContent = deliverLabel;
+    if (deliverSubtext) deliverSubtext.textContent = deliverSub;
+    if (claimTitle) claimTitle.textContent = claimLabel;
+    if (deliverTitle) deliverTitle.textContent = deliverLabel;
+    if (deliverSubtext2) deliverSubtext2.textContent = deliverSub;
+  }
+
+  function renderPremioSection() {
+    safe(renderHeroGreeting, "renderHeroGreeting");
+    var section = $("[data-daily-prize]");
+    var deliveryActions = $("[data-prize-delivery-actions]");
+    if (!section) return;
+    var info = data.dailyPrize;
+    if (!info || !info.active) {
+      section.hidden = true;
+      if (deliveryActions) deliveryActions.hidden = true;
+      return;
+    }
+
+    var methods = [
+      { key: "cronometro", data: info.cronometro || {} },
+      { key: "loyalty", data: info.loyalty || {} },
+      { key: "challenge", data: info.challenge || {} },
+      { key: "toppingsRun", data: info.toppingsRun || {} }
+    ].filter(function (m) { return m.data.active; });
+
+    if (!methods.length) {
+      section.hidden = true;
+      if (deliveryActions) deliveryActions.hidden = true;
+      return;
+    }
+
+    var kickerEl = $("[data-prize-kicker]", section);
+    if (kickerEl && info.kicker) kickerEl.textContent = info.kicker;
+    section.hidden = false;
+    if (deliveryActions) deliveryActions.hidden = false;
+    safe(function () { applyDeliveryLabels(info); }, "applyDeliveryLabels");
+
+    $$("[data-prize-method]", section).forEach(function (card) { card.hidden = true; });
+
+    methods.forEach(function (m) {
+      if (m.key === "cronometro") safe(function () { mountPrizeCronometro(section, m.data); }, "mountPrizeCronometro");
+      else if (m.key === "loyalty") safe(function () { mountPrizeLoyalty(section, m.data); }, "mountPrizeLoyalty");
+      else if (m.key === "challenge") safe(function () { mountPrizeChallenge(section, m.data); }, "mountPrizeChallenge");
+      else if (m.key === "toppingsRun") safe(function () { mountPrizeToppingsRun(section, m.data); }, "mountPrizeToppingsRun");
+    });
+
+    safe(function () { initPrizeSwitcher(section, methods); }, "initPrizeSwitcher");
+  }
+
+  function pollPremioStatus() {
+    var section = $("[data-daily-prize]");
+    if (!section) return;
+    var prevChallengeClaims = (premioState && premioState.challenge && premioState.challenge.claims && premioState.challenge.claims.length) || 0;
+    var prevCronoClaimAt = premioState && premioState.cronometro && premioState.cronometro.lastClaimAt;
+    fetchPremioStatus(function (state) {
+      var newChallengeClaims = (state && state.challenge && state.challenge.claims && state.challenge.claims.length) || 0;
+      var newCronoClaimAt = state && state.cronometro && state.cronometro.lastClaimAt;
+      var info = data.dailyPrize || {};
+      if (newChallengeClaims !== prevChallengeClaims && info.challenge && info.challenge.active) {
+        safe(function () { mountPrizeChallenge(section, info.challenge); }, "mountPrizeChallenge");
+      }
+      if (newCronoClaimAt !== prevCronoClaimAt && info.cronometro && info.cronometro.active) {
+        safe(function () { mountPrizeCronometro(section, info.cronometro); }, "mountPrizeCronometro");
+      }
+    });
+  }
+
+  function mountDailyPrize() {
+    var section = $("[data-daily-prize]");
+    if (!section) return;
+    var info = data.dailyPrize;
+    if (!info || !info.active) { section.hidden = true; return; }
+
+    // Se muestra primero en el estado "sin reclamar" (optimista) para no dejar
+    // la sección vacía mientras se consulta el servidor, y se corrige apenas responda.
+    renderPremioSection();
+    fetchPremioStatus(function () { renderPremioSection(); });
+
+    if (premioPollTimer) clearInterval(premioPollTimer);
+    // 3s en vez de 20s: para que el botón se ponga gris para todos los
+    // celulares casi al instante apenas alguien reclama, sin recargar la
+    // página (requisito de sincronización en tiempo real).
+    premioPollTimer = setInterval(pollPremioStatus, 3000);
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) pollPremioStatus();
+    });
+  }
+
+  /* ---- Selector entre formas de ganar (el cliente elige) ----
+     Pestañas fijas abajo (con ícono + nombre) en vez de puntos y flechas —
+     mismo carrusel de scroll-snap por debajo, solo cambia el control. */
+  var PRIZE_TAB_META = {
+    cronometro: { icon: "⏱️", label: "Cronómetro" },
+    loyalty: { icon: "🎟️", label: "Fidelidad" },
+    challenge: { icon: "🎯", label: "Reto" },
+    toppingsRun: { icon: "🎮", label: "Toppings Run" }
+  };
+
+  function initPrizeSwitcher(section, methods) {
+    var wrap = $("[data-prize-methods]", section);
+    var tabsWrap = $("[data-prize-tabs]", section);
+    if (!wrap) return;
+
+    var activeKeys = methods.map(function (m) { return m.key; });
+
+    if (activeKeys.length <= 1) {
+      if (tabsWrap) tabsWrap.hidden = true;
+      return;
+    }
+
+    if (tabsWrap) {
+      tabsWrap.hidden = false;
+      tabsWrap.innerHTML = methods.map(function (m, i) {
+        var key = m.key;
+        var meta = PRIZE_TAB_META[key] || { icon: "•", label: key };
+        var label = (m.data && m.data.label && m.data.label.trim()) || meta.label;
+        return '<button type="button" class="prize-tab' + (i === 0 ? " is-active" : "") + '" data-prize-tab="' + i + '">' +
+          '<span class="prize-tab-icon">' + meta.icon + '</span><span class="prize-tab-label">' + escHTML(label) + '</span></button>';
+      }).join("");
+    }
+
+    function updateTabs(i) {
+      if (!tabsWrap) return;
+      $$(".prize-tab", tabsWrap).forEach(function (t, idx) { t.classList.toggle("is-active", idx === i); });
+    }
+    function currentIndex() {
+      var w = wrap.clientWidth || 1;
+      return Math.round(wrap.scrollLeft / w);
+    }
+    function goTo(i) {
+      // Ciclo infinito: pasar del último vuelve al primero, y al revés.
+      i = ((i % activeKeys.length) + activeKeys.length) % activeKeys.length;
+      wrap.scrollTo({ left: i * wrap.clientWidth, behavior: reduced ? "auto" : "smooth" });
+      updateTabs(i);
+    }
+
+    if (tabsWrap) {
+      $$(".prize-tab", tabsWrap).forEach(function (tab, i) {
+        tab.addEventListener("click", function () { goTo(i); });
+      });
+    }
+    var scrollTimer = null;
+    wrap.addEventListener("scroll", function () {
+      clearTimeout(scrollTimer);
+      scrollTimer = setTimeout(function () { updateTabs(currentIndex()); }, 100);
+    });
+  }
+
+  /* ---- Método 1: Cronómetro (misma fecha para todos los visitantes, se repite solo) ---- */
+  function cronometroRepeatMs(info) {
+    var amount = Number(info.repeatAmount) || 0;
+    if (!amount) return 0;
+    var unitMs = info.repeatUnit === "minutes" ? 60000 : 3600000;
+    return amount * unitMs;
+  }
+
+  function mountPrizeCronometro(section, info) {
+    var card = $('[data-prize-method="cronometro"]', section);
+    if (!card) return;
+    var repeatMs = cronometroRepeatMs(info);
+    if (repeatMs <= 0) { card.hidden = true; return; }
+
+    var titleEl = $("[data-cronometro-title]", card);
+    if (titleEl && info.title) titleEl.textContent = info.title;
+    var countdownEl = $("[data-prize-countdown]", card);
+    var claimBtn = $('[data-prize-claim-btn="cronometro"]', card);
+    var claimedMsgEl = $("[data-crono-claimed]", card);
+    var daysEl = $("[data-prize-days]", card);
+    var hoursEl = $("[data-prize-hours]", card);
+    var minutesEl = $("[data-prize-minutes]", card);
+    var secondsEl = $("[data-prize-seconds]", card);
+    function pad(n) { return (n < 10 ? "0" : "") + n; }
+
+    card.hidden = false;
+    if (claimBtn) { claimBtn.hidden = false; claimBtn.textContent = info.claimButtonLabel || "🎁 Reclamar premio"; }
+
+    // Sin fecha configurable: el temporizador arranca cada día a medianoche
+    // (mismo momento para todos), o desde el último reclamo de hoy si ya
+    // hubo uno. El servidor calcula "unlocksAtMs" — el instante EXACTO en
+    // que se puede volver a reclamar — con su propio reloj y zona horaria
+    // (America/Bogota), nunca con la hora ni la zona horaria de cada
+    // celular (que puede estar mal puesta o distinta entre dispositivos).
+    // Así todos cuentan regresiva hacia el mismo instante, como un
+    // cronómetro de transmisión en vivo — nunca de forma local. Cuando
+    // llega ahí el botón se pone verde y el conteo se congela en cero —
+    // así se queda hasta que alguien reclame, momento en el que se
+    // restablece por el mismo tiempo y queda un aviso de quién ganó hoy.
+    var cronoState = (premioState && premioState.cronometro) || {};
+    if (claimedMsgEl) {
+      if (cronoState.lastClaimName) {
+        claimedMsgEl.hidden = false;
+        claimedMsgEl.textContent = "🏆 Hoy " + cronoState.lastClaimName + " ya ganó con el cronómetro.";
+      } else {
+        claimedMsgEl.hidden = true;
+      }
+    }
+
+    // Antes de recibir datos del servidor (primer render optimista) no hay
+    // "unlocksAtMs" todavía — se corrige apenas responda la consulta real.
+    var unlocksAtMs = cronoState.unlocksAtMs || (serverAdjustedNow() + repeatMs);
+
+    cronometroGen++;
+    var myGen = cronometroGen;
+
+    function tick() {
+      if (myGen !== cronometroGen) return;
+      var now = serverAdjustedNow();
+      var diff = Math.max(0, unlocksAtMs - now);
+      var unlocked = diff <= 0;
+      if (claimBtn) {
+        claimBtn.disabled = !unlocked;
+        claimBtn.classList.toggle("is-ready", unlocked);
+        claimBtn.classList.toggle("is-locked", !unlocked);
+      }
+
+      if (countdownEl) countdownEl.hidden = false;
+      var totalSeconds = Math.floor(diff / 1000);
+      if (daysEl) daysEl.textContent = String(Math.floor(totalSeconds / 86400));
+      if (hoursEl) hoursEl.textContent = pad(Math.floor((totalSeconds % 86400) / 3600));
+      if (minutesEl) minutesEl.textContent = pad(Math.floor((totalSeconds % 3600) / 60));
+      if (secondsEl) secondsEl.textContent = pad(totalSeconds % 60);
+      if (!unlocked) setTimeout(tick, 1000);
+    }
+    tick();
+
+    if (claimBtn) {
+      claimBtn.onclick = function () {
+        function doClaim(name) {
+          if (name) setCustomerName(name);
+          claimBtn.disabled = true;
+          attemptClaim("cronometro", { name: name || "" }, function (res) {
+            if (res && res.ok) {
+              openClaimResult(res, info.prizeText, "Hola TOPPINGS! Quiero reclamar el premio del cronómetro 🎁 Mi nombre es " + (name || ""), { icon: info.prizeIcon });
+              safe(function () { mountPrizeCronometro(section, info); }, "mountPrizeCronometro");
+            } else if (res && res.alreadyClaimed) {
+              alert("¡Todavía no está listo, o alguien se te adelantó justo ahora!");
+              safe(function () { mountPrizeCronometro(section, info); }, "mountPrizeCronometro");
+            } else {
+              claimBtn.disabled = false;
+              alert("No se pudo reclamar el premio. Revisa tu conexión e intenta de nuevo.");
+            }
+          });
+        }
+        var existingName = localStorage.getItem(LOYALTY_NAME_KEY);
+        if (existingName) doClaim(existingName);
+        else askNameWithCheck(function (name) { doClaim(name || "Cliente"); });
+      };
+    }
+  }
+
+  /* ---- Método 2: Tarjeta de fidelidad (sellada escaneando un QR en el local) ---- */
+  var LOYALTY_STAMPS_KEY = "toppings_loyalty_stamps";
+  var LOYALTY_LAST_DAY_KEY = "toppings_loyalty_last_day";
+  var LOYALTY_NAME_KEY = "toppings_loyalty_name";
+
+  function mountPrizeLoyalty(section, info) {
+    var card = $('[data-prize-method="loyalty"]', section);
+    if (!card) return;
+    var required = Number(info.stampsRequired) || 8;
+    if (!required) { card.hidden = true; return; }
+    card.hidden = false;
+
+    // La tarjeta de fidelidad no se bloquea para nadie: cada cliente
+    // completa y reclama la suya (sellos guardados en su propio celular)
+    // sin afectar a los demás clientes.
+    var stampsEl = $("[data-loyalty-stamps]", card);
+    var statusEl = $("[data-loyalty-status]", card);
+    var scanHintEl = $("[data-loyalty-scan-hint]", card);
+    var scanBtn = $("[data-loyalty-scan-btn]", card);
+    var greetingEl = $("[data-loyalty-greeting]", card);
+    var claimBtn = $('[data-prize-claim-btn="loyalty"]', card);
+    if (scanBtn) scanBtn.onclick = openLoyaltyScanModal;
+    if (scanHintEl) scanHintEl.textContent = info.scanHintText || "Escanea el código QR que está en el local para sumar tu sello de hoy 📱";
+    if (claimBtn) claimBtn.textContent = info.claimButtonLabel || "🎁 Reclamar premio";
+
+    function getStamps() { return Math.min(required, Number(localStorage.getItem(LOYALTY_STAMPS_KEY) || 0)); }
+
+    function render() {
+      var name = localStorage.getItem(LOYALTY_NAME_KEY) || "";
+      if (greetingEl) {
+        if (name) { greetingEl.hidden = false; greetingEl.textContent = "Hola, " + name + " 👋"; }
+        else greetingEl.hidden = true;
+      }
+      var stamps = getStamps();
+      var full = stamps >= required;
+      if (stampsEl) {
+        stampsEl.innerHTML = "";
+        for (var i = 0; i < required; i++) {
+          var dot = document.createElement("span");
+          dot.className = "loyalty-stamp" + (i < stamps ? " is-filled" : "");
+          dot.textContent = i < stamps ? "★" : "";
+          stampsEl.appendChild(dot);
+        }
+      }
+      if (full) {
+        if (statusEl) statusEl.hidden = true;
+        if (scanHintEl) scanHintEl.hidden = true;
+        if (scanBtn) scanBtn.hidden = true;
+        if (claimBtn) claimBtn.hidden = false;
+      } else {
+        if (claimBtn) claimBtn.hidden = true;
+        if (scanHintEl) scanHintEl.hidden = false;
+        if (scanBtn) scanBtn.hidden = false;
+        if (statusEl) {
+          statusEl.hidden = false;
+          statusEl.textContent = stamps + " de " + required + " sellos";
+        }
+      }
+    }
+    render();
+
+    if (claimBtn) {
+      claimBtn.onclick = function () {
+        claimBtn.disabled = true;
+        var name = localStorage.getItem(LOYALTY_NAME_KEY) || "";
+        attemptClaim("loyalty", { name: name }, function (res) {
+          if (res && res.ok) {
+            claimBtn.disabled = false;
+            localStorage.setItem(LOYALTY_STAMPS_KEY, "0");
+            openClaimResult(res, info.prizeText, "Hola TOPPINGS! Completé mi tarjeta de fidelidad 🎟️ Mi nombre es " + name, { icon: info.prizeIcon });
+          } else {
+            claimBtn.disabled = false;
+            alert("No se pudo reclamar el premio. Revisa tu conexión e intenta de nuevo.");
+          }
+        });
+      };
+    }
+  }
+
+  /* Si el QR trae una URL completa (ej. https://sitio.com/?sello=1), toma solo
+     el código; si ya es el código pelado (lo que lee la cámara de un QR
+     simple), lo usa tal cual. Así funciona sin importar qué haya impreso el
+     negocio en su QR físico. */
+  function extractLoyaltyCode(raw) {
+    raw = (raw || "").trim();
+    if (!raw) return "";
+    try {
+      if (/^https?:\/\//i.test(raw)) {
+        var fromParam = new URL(raw).searchParams.get("sello");
+        if (fromParam) return fromParam.trim();
+      }
+    } catch (e) {}
+    return raw;
+  }
+
+  /* Intenta sumar un sello con el código dado (venga de la URL o de la
+     cámara) — devuelve por qué falló para poder avisarle al cliente. */
+  function tryRedeemLoyaltyCode(rawCode) {
+    var info = data.dailyPrize && data.dailyPrize.loyalty;
+    if (!info || !info.active) return { ok: false, reason: "inactive" };
+    var expected = (info.secretCode || "").trim();
+    var scanned = extractLoyaltyCode(rawCode);
+    if (!expected || !scanned || scanned.toLowerCase() !== expected.toLowerCase()) {
+      return { ok: false, reason: "mismatch" };
+    }
+    if (localStorage.getItem(LOYALTY_LAST_DAY_KEY) === todayKey()) {
+      return { ok: false, reason: "already-today" };
+    }
+
+    function addStamp() {
+      var required = Number(info.stampsRequired) || 8;
+      var stamps = Math.min(required, Number(localStorage.getItem(LOYALTY_STAMPS_KEY) || 0) + 1);
+      localStorage.setItem(LOYALTY_STAMPS_KEY, String(stamps));
+      localStorage.setItem(LOYALTY_LAST_DAY_KEY, todayKey());
+      var section = $("[data-daily-prize]");
+      if (section) {
+        renderPremioSection();
+        section.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
+      }
+    }
+
+    if (localStorage.getItem(LOYALTY_NAME_KEY)) {
+      addStamp();
+    } else {
+      askNameWithCheck(function (name) {
+        setCustomerName(name || "Cliente");
+        addStamp();
+      });
+    }
+    return { ok: true };
+  }
+
+  /* Escanea el QR del local desde un enlace (ej. si el celular lo abre con
+     su propia app de cámara) -> agrega un sello automáticamente. */
+  function initLoyaltyQrStamp() {
+    var params = new URLSearchParams(location.search);
+    var scanned = params.get("sello");
+    if (!scanned) return;
+    // limpia el parámetro de la URL para que no se vuelva a procesar al recargar
+    var cleanUrl = location.pathname + location.hash;
+    if (window.history && history.replaceState) history.replaceState(null, "", cleanUrl);
+    tryRedeemLoyaltyCode(scanned);
+  }
+
+  /* Escanea el QR sin salir de la página: abre la cámara del celular dentro
+     de un modal y lee el código con jsQR (librería local, sin depender de
+     un servicio externo ni de que el celular tenga su propio lector). */
+  var loyaltyScanStream = null;
+  var loyaltyScanRafId = null;
+
+  function stopLoyaltyScan() {
+    if (loyaltyScanRafId) cancelAnimationFrame(loyaltyScanRafId);
+    loyaltyScanRafId = null;
+    if (loyaltyScanStream) {
+      loyaltyScanStream.getTracks().forEach(function (t) { t.stop(); });
+      loyaltyScanStream = null;
+    }
+    var modal = $("[data-scan-modal]");
+    var video = $("[data-scan-video]", modal);
+    if (video) video.srcObject = null;
+    if (modal) modal.hidden = true;
+  }
+
+  function openLoyaltyScanModal() {
+    var modal = $("[data-scan-modal]");
+    if (!modal) return;
+    var video = $("[data-scan-video]", modal);
+    var canvas = $("[data-scan-canvas]", modal);
+    var statusEl = $("[data-scan-status]", modal);
+    if (!video || !canvas) return;
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert("Tu navegador no permite usar la cámara aquí. Abre la app de cámara de tu celular y apunta al código QR directamente.");
+      return;
+    }
+    if (!window.jsQR) {
+      alert("No se pudo cargar el lector de códigos. Recarga la página e intenta de nuevo.");
+      return;
+    }
+
+    modal.hidden = false;
+    if (statusEl) statusEl.textContent = "Acércate al código QR del local 📱";
+    var ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+    function scanFrame() {
+      if (!loyaltyScanStream) return;
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        var imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        var result = window.jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: "dontInvert" });
+        if (result && result.data) { handleScan(result.data); return; }
+      }
+      loyaltyScanRafId = requestAnimationFrame(scanFrame);
+    }
+
+    function handleScan(raw) {
+      var res = tryRedeemLoyaltyCode(raw);
+      if (res.ok) {
+        if (statusEl) statusEl.textContent = "¡Sello agregado! 🎉";
+        setTimeout(stopLoyaltyScan, 700);
+      } else if (res.reason === "already-today") {
+        if (statusEl) statusEl.textContent = "Ya sumaste tu sello de hoy — vuelve mañana.";
+        setTimeout(stopLoyaltyScan, 1600);
+      } else {
+        if (statusEl) statusEl.textContent = "Ese código no es válido — sigue apuntando…";
+        loyaltyScanRafId = requestAnimationFrame(scanFrame);
+      }
+    }
+
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+      .then(function (stream) {
+        loyaltyScanStream = stream;
+        video.srcObject = stream;
+        video.play();
+        loyaltyScanRafId = requestAnimationFrame(scanFrame);
+      })
+      .catch(function () {
+        if (statusEl) statusEl.textContent = "No se pudo acceder a la cámara. Revisa los permisos del navegador e intenta de nuevo.";
+      });
+  }
+
+  function initLoyaltyScanModalClose() {
+    var modal = $("[data-scan-modal]");
+    if (!modal) return;
+    $$("[data-scan-modal-close]", modal).forEach(function (el) {
+      el.addEventListener("click", stopLoyaltyScan);
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && !modal.hidden) stopLoyaltyScan();
+    });
+  }
+
+  /* ---- Método 3: Reto del día (sube una foto como prueba, no un código) ---- */
+  var CHALLENGE_MAX_DIM = 1280;
+
+  function readAndCompressImage(file, cb) {
+    var reader = new FileReader();
+    reader.onload = function () {
+      var img = new Image();
+      img.onload = function () {
+        var scale = Math.min(1, CHALLENGE_MAX_DIM / Math.max(img.width, img.height));
+        var w = Math.max(1, Math.round(img.width * scale));
+        var h = Math.max(1, Math.round(img.height * scale));
+        var canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        var ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, w, h);
+        cb(canvas.toDataURL("image/jpeg", 0.82));
+      };
+      img.onerror = function () { cb(reader.result); };
+      img.src = reader.result;
+    };
+    reader.onerror = function () { cb(null); };
+    reader.readAsDataURL(file);
+  }
+
+  function mountPrizeChallenge(section, info) {
+    var card = $('[data-prize-method="challenge"]', section);
+    if (!card) return;
+    if (!info.challengeText) { card.hidden = true; return; }
+    card.hidden = false;
+
+    var challengeInfo = (premioState && premioState.challenge) || { claims: [], limit: 1, remaining: 1 };
+    if (challengeInfo.remaining <= 0) {
+      renderChallengeLockedCard(card, info.challengeText, challengeInfo.claims);
+      return;
+    }
+
+    var textEl = $("[data-challenge-text]", card);
+    var hintEl = $("[data-challenge-hint]", card);
+    var photoInput = $("[data-challenge-photo-input]", card);
+    var photoPreview = $("[data-challenge-photo-preview]", card);
+    var claimBtn = $('[data-prize-claim-btn="challenge"]', card);
+    var photoLabelEl = $("[data-challenge-photo-label]", card);
+    if (textEl) textEl.textContent = info.challengeText;
+    if (hintEl) {
+      if (info.hintText) { hintEl.hidden = false; hintEl.textContent = "💡 Pista: " + info.hintText; }
+      else hintEl.hidden = true;
+    }
+    if (photoLabelEl) photoLabelEl.textContent = info.photoButtonLabel || "📷 Subir foto del stiker";
+    if (claimBtn) claimBtn.textContent = info.claimButtonLabel || "✅ Ya cumplí, reclamar";
+
+    var photoDataUrl = "";
+    if (claimBtn) claimBtn.disabled = true;
+    if (photoPreview) photoPreview.hidden = true;
+
+    if (photoInput) {
+      photoInput.value = "";
+      photoInput.onchange = function () {
+        var file = photoInput.files && photoInput.files[0];
+        if (!file) return;
+        readAndCompressImage(file, function (dataUrl) {
+          if (!dataUrl) return;
+          photoDataUrl = dataUrl;
+          if (photoPreview) { photoPreview.src = photoDataUrl; photoPreview.hidden = false; }
+          if (claimBtn) claimBtn.disabled = false;
+        });
+      };
+    }
+
+    if (claimBtn) {
+      claimBtn.onclick = function () {
+        if (!photoDataUrl) return;
+        function doClaim(name) {
+          if (name) setCustomerName(name);
+          claimBtn.disabled = true;
+          attemptClaim("challenge", { name: name || "", photo: photoDataUrl }, function (res) {
+            if (res && res.ok) {
+              openClaimResult(res, info.prizeText, "Hola TOPPINGS! Cumplí el reto del día 🎯 Les envío la foto de mi stiker para reclamar el premio.", { icon: info.prizeIcon });
+            } else if (res && res.alreadyClaimed) {
+              alert("¡Justo se te adelantaron! Ya se alcanzó el número de ganadores de hoy para el reto.");
+              var chInfo = (res.state && res.state.challenge) || { claims: [], limit: 1, remaining: 0 };
+              renderChallengeLockedCard(card, info.challengeText, chInfo.claims);
+            } else {
+              claimBtn.disabled = false;
+              alert("No se pudo reclamar el premio. Revisa tu conexión e intenta de nuevo.");
+            }
+          });
+        }
+        var existingName = localStorage.getItem(LOYALTY_NAME_KEY);
+        if (existingName) doClaim(existingName);
+        else askNameWithCheck(function (name) { doClaim(name || "Cliente"); });
+      };
+    }
+  }
+
+  /* ---- Método 4: TOPPINGS RUN (minijuego, sin estado de servidor todavía) ----
+     Este método solo muestra la tarjeta — toda la lógica del juego vive en su
+     propio archivo (game/toppings-run.js), separado de main.js a propósito. */
+  function mountPrizeToppingsRun(section, info) {
+    var card = $('[data-prize-method="toppingsRun"]', section);
+    if (!card) return;
+    card.hidden = false;
+    var taglineEl = $("[data-run-tagline]", card);
+    if (taglineEl && info.tagline) taglineEl.textContent = info.tagline;
+  }
+
+  /* actionOverride opcional {label, onClick}: reemplaza el botón de WhatsApp
+     de la revelación por una acción distinta (ej. "ABRIR RULETA" cuando el
+     premio de esta dinámica es un giro en vez de un premio directo). */
+  function openPrizeModal(prizeText, claimMessage, onRevealed, actionOverride) {
+    var modal = $("[data-prize-modal]");
+    if (!modal) return;
+    var giftBox = $("[data-gift-box]", modal);
+    var reveal = $("[data-prize-reveal]", modal);
+    var textEl = $("[data-prize-text]", modal);
+    var whatsappEl = $("[data-prize-whatsapp]", modal);
+
+    giftBox.hidden = false;
+    giftBox.classList.remove("is-open");
+    reveal.hidden = true;
+    if (textEl) textEl.textContent = prizeText || "";
+    if (whatsappEl) {
+      if (actionOverride) {
+        whatsappEl.textContent = actionOverride.label;
+        whatsappEl.removeAttribute("target");
+        whatsappEl.href = "#";
+        whatsappEl.onclick = function (e) { e.preventDefault(); actionOverride.onClick(); };
+      } else {
+        whatsappEl.textContent = "📲 Reclamar por WhatsApp";
+        whatsappEl.target = "_blank";
+        whatsappEl.onclick = null;
+        whatsappEl.href = buildWhatsAppUrl(claimMessage || "Hola TOPPINGS! Quiero reclamar el premio del día 🎁");
+      }
+    }
+
+    modal.hidden = false;
+
+    function openGift() {
+      giftBox.removeEventListener("click", openGift);
+      function finish() {
+        giftBox.hidden = true;
+        reveal.hidden = false;
+        playPrizeChime();
+        burstConfetti($(".prize-modal-card", modal));
+        if (onRevealed) onRevealed();
+      }
+      if (reduced) { finish(); return; }
+      giftBox.classList.add("is-open");
+      setTimeout(finish, 550);
+    }
+    giftBox.addEventListener("click", openGift);
+  }
+  window.__openPrizeModal = openPrizeModal;
+
+  /* Después de un reclamo exitoso: si la dinámica está configurada como
+     premio directo, revela el prizeText de siempre. Si está configurada
+     como "Giro en la Ruleta", en vez de eso avisa que ganó tiro(s) y ofrece
+     abrir la ruleta — el tiro ya quedó otorgado en el servidor. */
+  function openClaimResult(res, prizeText, claimMessage, prizeMeta) {
+    if (res && res.wheelGranted) {
+      var count = res.wheelGranted.count || 1;
+      var msg = "¡FELICIDADES!\nHas ganado " + count + (count > 1 ? " tiros" : " tiro") + " en la Ruleta TOPPINGS.";
+      openPrizeModal(msg, claimMessage, null, {
+        label: "🎡 ABRIR RULETA",
+        onClick: function () {
+          var modal = $("[data-prize-modal]");
+          if (modal) modal.hidden = true;
+          if (window.__openRuletaModal) window.__openRuletaModal();
+        }
+      });
+    } else if (res && res.codeGranted) {
+      var g = res.codeGranted;
+      var icon = (prizeMeta && prizeMeta.icon) || g.prizeIcon || "🎁";
+      var durationTxt = g.expiresAt ? formatDuration(g.expiresAt - Date.now()) : "24 horas";
+      var msg2 = icon + " ¡Felicidades! Ganaste " + (g.prizeName || "un premio") +
+        ".\n\nTienes " + durationTxt + " para reclamarlo. Puedes ver tus premios en el botón de regalo 🎁 (abajo, debajo de WhatsApp)." +
+        "\n\nRecuerda: para reclamar tu premio debes estar en el local — no se entrega a domicilio ni para llevar. Acércate al local y pídele al mesero que vas a reclamar un premio.";
+      openPrizeModal(msg2, claimMessage, null, {
+        label: "🎁 VER MIS PREMIOS",
+        onClick: function () {
+          var modal = $("[data-prize-modal]");
+          if (modal) modal.hidden = true;
+          safe(refreshGiftFab, "refreshGiftFab");
+          var giftModal = $("[data-gift-codes-modal]");
+          if (giftModal) giftModal.hidden = false;
+        }
+      });
+      safe(refreshGiftFab, "refreshGiftFab");
+    } else {
+      openPrizeModal(prizeText, claimMessage);
+    }
+  }
+  window.__openClaimResult = openClaimResult;
+
+  function initPrizeModalClose() {
+    var modal = $("[data-prize-modal]");
+    if (!modal) return;
+    $$("[data-prize-modal-close]", modal).forEach(function (el) {
+      el.addEventListener("click", function () { modal.hidden = true; });
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && !modal.hidden) modal.hidden = true;
+    });
+  }
+
+  /* ---- Reclamar premio (cliente): un solo flujo para TODAS las dinámicas
+     (cronómetro, fidelidad, reto, juego, Ruleta) — el cliente escribe su
+     código, el servidor lo valida, y al solicitar la entrega queda
+     "esperando" hasta que un empleado la confirme desde "Entregar premio". ---- */
+  var claimPollTimer = null;
+  var currentClaimCode = "";
+
+  function stopClaimPoll() { if (claimPollTimer) clearInterval(claimPollTimer); claimPollTimer = null; }
+
+  function showClaimStage(modal, stage) {
+    $$("[data-claim-stage]", modal).forEach(function (el) {
+      el.hidden = el.getAttribute("data-claim-stage") !== stage;
+    });
+  }
+
+  function showClaimError(modal, msg) {
+    var errorEl = $("[data-claim-prize-error]", modal);
+    if (errorEl) { errorEl.textContent = msg; errorEl.hidden = false; }
+  }
+
+  function startClaimPoll(modal, code) {
+    stopClaimPoll();
+    var deviceId = getDeviceId();
+    claimPollTimer = setInterval(function () {
+      fetch(CODES_API + "?action=my-status&code=" + encodeURIComponent(code) + "&deviceId=" + encodeURIComponent(deviceId) + "&_=" + Date.now(), { cache: "no-store" })
+        .then(function (r) { return r.json(); })
+        .then(function (res) {
+          if (res && res.ok && res.status === "delivered") {
+            stopClaimPoll();
+            showClaimStage(modal, "delivered");
+            safe(refreshGiftFab, "refreshGiftFab");
+          }
+        })
+        .catch(function () {});
+    }, 3000);
+  }
+
+  function verifyClaimCode(modal, code) {
+    var nameEl = $("[data-claim-prize-name]", modal);
+    var errorEl = $("[data-claim-prize-error]", modal);
+    if (errorEl) errorEl.hidden = true;
+    var deviceId = getDeviceId();
+    fetch(CODES_API + "?action=lookup&code=" + encodeURIComponent(code) + "&deviceId=" + encodeURIComponent(deviceId) + "&_=" + Date.now(), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (!res || !res.ok) { showClaimError(modal, "No se pudo verificar el código. Intenta de nuevo."); return; }
+        if (res.reason === "already_waiting") {
+          currentClaimCode = code;
+          showClaimStage(modal, "waiting");
+          startClaimPoll(modal, code);
+          return;
+        }
+        if (res.reason === "already_delivered") { showClaimStage(modal, "delivered"); return; }
+        var REASON_MSG = {
+          not_found: "Ese código no existe. Revísalo e intenta de nuevo.",
+          wrong_device: "Este código no fue ganado desde este dispositivo.",
+          void: "Este código fue anulado.",
+          expired: "Este código ya venció."
+        };
+        if (res.reason !== "ok") { showClaimError(modal, REASON_MSG[res.reason] || "No se pudo verificar el código."); return; }
+        currentClaimCode = code;
+        if (nameEl) nameEl.textContent = (res.prize.prizeIcon || "🎁") + " " + res.prize.prizeName;
+        showClaimStage(modal, "confirm");
+      })
+      .catch(function () { showClaimError(modal, "No se pudo conectar con el servidor."); });
+  }
+
+  /* Abre el modal de reclamo con un código ya escrito — usado por el botón
+     flotante de regalo y por el enlace "?claim=CODIGO" (cuando el botón
+     flotante se toca desde una página que no tiene este modal). */
+  function openClaimModalWithCode(code, autoVerify) {
+    var modal = $("[data-claim-prize-modal]");
+    if (!modal) {
+      location.href = "index.html?claim=" + encodeURIComponent(code || "");
+      return;
+    }
+    var input = $("[data-claim-code-input]", modal);
+    stopClaimPoll();
+    showClaimStage(modal, "code");
+    var errorEl = $("[data-claim-prize-error]", modal);
+    if (errorEl) errorEl.hidden = true;
+    if (input) input.value = code || "";
+    modal.hidden = false;
+    if (autoVerify && code) verifyClaimCode(modal, code);
+  }
+  window.__openClaimModalWithCode = openClaimModalWithCode;
+
+  function initClaimPrizeFlow() {
+    var modal = $("[data-claim-prize-modal]");
+    if (!modal) return;
+    var openBtn = $("[data-open-claim-prize]");
+    if (openBtn) openBtn.addEventListener("click", function () { openClaimModalWithCode(""); });
+    $$("[data-claim-prize-close]", modal).forEach(function (el) {
+      el.addEventListener("click", function () { modal.hidden = true; stopClaimPoll(); });
+    });
+    var input = $("[data-claim-code-input]", modal);
+    var verifyBtn = $("[data-claim-verify-btn]", modal);
+    if (verifyBtn) {
+      verifyBtn.addEventListener("click", function () {
+        var code = (input ? input.value : "").trim();
+        if (code) verifyClaimCode(modal, code);
+      });
+    }
+    if (input) input.addEventListener("keydown", function (e) { if (e.key === "Enter" && verifyBtn) verifyBtn.click(); });
+
+    var requestBtn = $("[data-claim-request-btn]", modal);
+    if (requestBtn) {
+      requestBtn.addEventListener("click", function () {
+        if (!currentClaimCode) return;
+        requestBtn.disabled = true;
+        var name = localStorage.getItem(LOYALTY_NAME_KEY) || "";
+        fetch(CODES_API + "?action=request-delivery", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: currentClaimCode, deviceId: getDeviceId(), name: name })
+        }).then(function (r) { return r.json(); })
+          .then(function (res) {
+            requestBtn.disabled = false;
+            if (res && res.ok) {
+              showClaimStage(modal, "waiting");
+              startClaimPoll(modal, currentClaimCode);
+              safe(refreshGiftFab, "refreshGiftFab");
+            } else {
+              showClaimStage(modal, "code");
+              showClaimError(modal, "No se pudo enviar la solicitud. Intenta de nuevo.");
+            }
+          })
+          .catch(function () {
+            requestBtn.disabled = false;
+            showClaimStage(modal, "code");
+            showClaimError(modal, "No se pudo conectar con el servidor.");
+          });
+      });
+    }
+
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && !modal.hidden) { modal.hidden = true; stopClaimPoll(); }
+    });
+
+    // Si llega ?claim=CODIGO en la URL (el botón flotante de regalo navega
+    // así desde una página que no tiene este modal), lo abre y verifica solo.
+    var params = new URLSearchParams(location.search);
+    var claimParam = params.get("claim");
+    if (claimParam) {
+      var cleanUrl = location.pathname + location.hash;
+      if (window.history && history.replaceState) history.replaceState(null, "", cleanUrl);
+      openClaimModalWithCode(claimParam, true);
+    }
+  }
+
+  /* ---- Entregar premio (empleado): PIN propio del negocio, distinto del
+     admin, que se revalida en el servidor en cada acción — no queda
+     "recordado" en el navegador entre visitas. ---- */
+  function initDeliverPrizeFlow() {
+    var modal = $("[data-deliver-prize-modal]");
+    if (!modal) return;
+    var openBtn = $("[data-open-deliver-prize]");
+    var pinInput = $("[data-deliver-pin-input]", modal);
+    var nameInput = $("[data-deliver-name-input]", modal);
+    var errorEl = $("[data-deliver-prize-error]", modal);
+    var loginBtn = $("[data-deliver-login-btn]", modal);
+    var pendingList = $("[data-deliver-pending-list]", modal);
+    var pendingEmpty = $("[data-deliver-pending-empty]", modal);
+    var currentPin = "";
+    var currentEmployeeName = "";
+    var pendingPollTimer = null;
+
+    function stopPendingPoll() { if (pendingPollTimer) clearInterval(pendingPollTimer); pendingPollTimer = null; }
+
+    function showStage(stage) {
+      $$("[data-deliver-stage]", modal).forEach(function (el) {
+        el.hidden = el.getAttribute("data-deliver-stage") !== stage;
+      });
+    }
+
+    function closeModal() {
+      modal.hidden = true;
+      stopPendingPoll();
+      currentPin = "";
+      currentEmployeeName = "";
+      if (pinInput) pinInput.value = "";
+    }
+
+    function fetchPending() {
+      fetch(CODES_API + "?action=employee-pending", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin: currentPin })
+      }).then(function (r) { return r.json(); })
+        .then(function (res) { if (res && res.ok) renderPending(res.pending); })
+        .catch(function () {});
+    }
+
+    function renderPending(list) {
+      if (!pendingList) return;
+      if (!list.length) {
+        pendingList.innerHTML = "";
+        if (pendingEmpty) pendingEmpty.hidden = false;
+        return;
+      }
+      if (pendingEmpty) pendingEmpty.hidden = true;
+      pendingList.innerHTML = list.map(function (p) {
+        var d = new Date(p.requestedAt);
+        return '<div class="deliver-pending-row">' +
+          '<strong>' + escHTML(p.name || "—") + '</strong> — ' + (p.prizeIcon || "🎁") + " " + escHTML(p.prizeName) +
+          '<br><code>' + escHTML(p.code) + '</code> · <span class="hint">' + d.toLocaleTimeString() + '</span>' +
+          '<button type="button" class="btn btn-primary deliver-confirm-btn" data-code="' + escHTML(p.code) + '">Entregar premio</button>' +
+        '</div>';
+      }).join("");
+      $$(".deliver-confirm-btn", pendingList).forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var code = btn.getAttribute("data-code");
+          if (!confirm("¿Confirmas que entregaste este premio?")) return;
+          btn.disabled = true;
+          fetch(CODES_API + "?action=employee-deliver", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ pin: currentPin, code: code, employeeName: currentEmployeeName })
+          }).then(function (r) { return r.json(); })
+            .then(function (res) {
+              if (res && res.ok) fetchPending();
+              else { alert((res && res.error) || "No se pudo entregar el premio."); btn.disabled = false; }
+            })
+            .catch(function () { alert("No se pudo conectar con el servidor."); btn.disabled = false; });
+        });
+      });
+    }
+
+    if (openBtn) {
+      openBtn.addEventListener("click", function () {
+        showStage("pin");
+        if (errorEl) errorEl.hidden = true;
+        if (pinInput) pinInput.value = "";
+        if (nameInput) nameInput.value = "";
+        modal.hidden = false;
+        if (pinInput) pinInput.focus();
+      });
+    }
+    $$("[data-deliver-prize-close]", modal).forEach(function (el) { el.addEventListener("click", closeModal); });
+    if (loginBtn) {
+      loginBtn.addEventListener("click", function () {
+        var pin = (pinInput ? pinInput.value : "").trim();
+        var employeeName = (nameInput ? nameInput.value : "").trim();
+        if (!pin) return;
+        loginBtn.disabled = true;
+        fetch(CODES_API + "?action=employee-pending", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pin: pin })
+        }).then(function (r) { return r.json(); })
+          .then(function (res) {
+            loginBtn.disabled = false;
+            if (res && res.ok) {
+              currentPin = pin;
+              currentEmployeeName = employeeName || "Empleado";
+              showStage("pending");
+              renderPending(res.pending);
+              stopPendingPoll();
+              pendingPollTimer = setInterval(fetchPending, 5000);
+            } else if (errorEl) {
+              errorEl.textContent = (res && res.error) || "PIN incorrecto."; errorEl.hidden = false;
+            }
+          })
+          .catch(function () {
+            loginBtn.disabled = false;
+            if (errorEl) { errorEl.textContent = "No se pudo conectar con el servidor."; errorEl.hidden = false; }
+          });
+      });
+    }
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !modal.hidden) closeModal(); });
+  }
+
+  /* ---- Botón flotante 🎁 (todas las páginas): recordatorio de los premios
+     disponibles/esperando entrega de este dispositivo, con acceso directo
+     al mismo flujo de "Reclamar premio". Los códigos nunca se muestran al
+     cliente — solo viajan por dentro para accionar el "Reclamar". ---- */
+  var DISMISSED_CODES_KEY = "toppings_dismissed_codes";
+  var lastGiftCodes = [];
+  var lastGiftTickets = [];
+  var seenGiftCodes = {}; // code -> { status, prizeName, prizeIcon }
+
+  function getDismissedCodes() {
+    try { return JSON.parse(localStorage.getItem(DISMISSED_CODES_KEY) || "[]"); } catch (e) { return []; }
+  }
+  function dismissCode(code) {
+    var list = getDismissedCodes();
+    if (list.indexOf(code) === -1) {
+      list.push(code);
+      try { localStorage.setItem(DISMISSED_CODES_KEY, JSON.stringify(list)); } catch (e) {}
+    }
+  }
+  // Formateador de duración compartido — el mensaje de "ganaste" y la cuenta
+  // regresiva del panel del 🎁 usan el mismo texto para la misma duración.
+  function formatDuration(ms) {
+    var totalMin = Math.max(1, Math.round(ms / 60000));
+    var days = Math.floor(totalMin / 1440);
+    var hours = Math.floor((totalMin % 1440) / 60);
+    var mins = totalMin % 60;
+    if (days > 0) {
+      var dayPart = days + (days === 1 ? " día" : " días");
+      return hours > 0 ? dayPart + " y " + hours + (hours === 1 ? " hora" : " horas") : dayPart;
+    }
+    if (hours > 0) {
+      var hourPart = hours + (hours === 1 ? " hora" : " horas");
+      return (mins > 0 && hours < 3) ? hourPart + " y " + mins + (mins === 1 ? " minuto" : " minutos") : hourPart;
+    }
+    return mins + (mins === 1 ? " minuto" : " minutos");
+  }
+
+  function formatCountdown(ms) {
+    if (ms <= 0) return "Por vencer";
+    return "Vence en " + formatDuration(ms);
+  }
+  window.__formatDuration = formatDuration;
+
+  function renderGiftCodesList(codes, tickets) {
+    var list = $("[data-gift-codes-list]");
+    var empty = $("[data-gift-codes-empty]");
+    var gotoBtn = $("[data-gift-codes-goto-carousel]");
+    if (!list) return;
+    tickets = tickets || lastGiftTickets || [];
+    var dismissed = getDismissedCodes();
+    var visible = codes.filter(function (c) { return dismissed.indexOf(c.code) === -1; });
+    if (!visible.length && !tickets.length) {
+      list.innerHTML = "";
+      if (empty) empty.hidden = false;
+      if (gotoBtn) gotoBtn.hidden = false;
+      return;
+    }
+    if (empty) empty.hidden = true;
+    if (gotoBtn) gotoBtn.hidden = true;
+    // Los tiros de ruleta sin usar van primero: quedan guardados aquí para
+    // girarlos cuando el cliente quiera (aunque haya cerrado la ruleta sin jugar).
+    var ticketsHtml = tickets.map(function (t) {
+      return '<div class="gift-code-row is-pending">' +
+        '<span class="gift-code-icon">🎡</span>' +
+        '<span class="gift-code-info"><strong>Tiro en la Ruleta</strong><br>' +
+        '<span class="hint">Sin usar · ' + formatCountdown(t.expiresAt - Date.now()) + '</span></span>' +
+        '<button type="button" class="btn btn-primary gift-code-claim-btn" data-spin-ticket="' + escHTML(t.id) + '">Girar</button>' +
+      '</div>';
+    }).join("");
+    list.innerHTML = ticketsHtml + visible.map(function (c) {
+      if (c.status === "expired") {
+        return '<div class="gift-code-row is-expired">' +
+          '<span class="gift-code-icon">' + (c.prizeIcon || "🎁") + '</span>' +
+          '<span class="gift-code-info"><strong>' + escHTML(c.prizeName) + '</strong><br>' +
+          '<span class="hint">Este premio venció</span></span>' +
+          '<button type="button" class="btn gift-code-claim-btn is-expired-btn" disabled>VENCIDO</button>' +
+          '<button type="button" class="gift-code-dismiss-btn" data-dismiss-code="' + escHTML(c.code) + '" aria-label="Cerrar">&times;</button>' +
+        '</div>';
+      }
+      var statusLabel = c.status === "waiting" ? "Esperando entrega" : "Disponible";
+      var countdown = formatCountdown(c.expiresAt - Date.now());
+      return '<div class="gift-code-row is-pending">' +
+        '<span class="gift-code-icon">' + (c.prizeIcon || "🎁") + '</span>' +
+        '<span class="gift-code-info"><strong>' + escHTML(c.prizeName) + '</strong><br>' +
+        '<span class="hint">' + statusLabel + ' · ' + countdown + '</span></span>' +
+        '<button type="button" class="btn btn-primary gift-code-claim-btn" data-code="' + escHTML(c.code) + '">Reclamar</button>' +
+      '</div>';
+    }).join("");
+    $$(".gift-code-claim-btn[data-code]", list).forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var code = btn.getAttribute("data-code");
+        var giftModal = $("[data-gift-codes-modal]");
+        if (giftModal) giftModal.hidden = true;
+        openClaimModalWithCode(code, true);
+      });
+    });
+    $$(".gift-code-claim-btn[data-spin-ticket]", list).forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var giftModal = $("[data-gift-codes-modal]");
+        if (giftModal) giftModal.hidden = true;
+        if (window.__openRuletaModal) window.__openRuletaModal();
+      });
+    });
+    $$(".gift-code-dismiss-btn", list).forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var code = btn.getAttribute("data-dismiss-code");
+        var found = null;
+        for (var i = 0; i < lastGiftCodes.length; i++) { if (lastGiftCodes[i].code === code) { found = lastGiftCodes[i]; break; } }
+        dismissCode(code);
+        delete seenGiftCodes[code];
+        if (found) alert((found.prizeIcon || "🎁") + " " + found.prizeName + " ya cumplió el tiempo y no puede ser reclamado.");
+        renderGiftCodesList(lastGiftCodes, lastGiftTickets);
+        var badge = $("[data-fab-gift-badge]", $("[data-fab-gift]"));
+        var stillVisible = lastGiftCodes.filter(function (c) { return getDismissedCodes().indexOf(c.code) === -1; });
+        var total = stillVisible.length + lastGiftTickets.length;
+        if (badge) {
+          badge.hidden = !total;
+          if (total) badge.textContent = String(total);
+        }
+      });
+    });
+  }
+
+  function refreshGiftFab() {
+    var btn = $("[data-fab-gift]");
+    if (!btn) return;
+    var deviceId = getDeviceId();
+    var codesReq = fetch(CODES_API + "?action=mine&deviceId=" + encodeURIComponent(deviceId) + "&_=" + Date.now(), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .catch(function () { return null; });
+    // Los tiros de ruleta sin usar viven en su propio archivo (ruleta.json) —
+    // se piden aparte para mostrarlos junto a los premios en el mismo panel.
+    var ticketsReq = fetch(RULETA_API_MAIN + "?action=status&deviceId=" + encodeURIComponent(deviceId) + "&_=" + Date.now(), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .catch(function () { return null; });
+
+    Promise.all([codesReq, ticketsReq])
+      .then(function (both) {
+        var res = both[0];
+        var rul = both[1];
+        var codes = (res && res.ok && res.codes) || [];
+        var tickets = (rul && rul.ok && rul.active && rul.myTickets) || [];
+        var dismissed = getDismissedCodes();
+
+        // premios que ya veíamos vencidos (en rojo) y que ahora desaparecieron
+        // del todo -> se les acabó la ventana de 24h sin que el cliente los
+        // cerrara a mano; se avisa una sola vez
+        var stillPresent = {};
+        codes.forEach(function (c) { stillPresent[c.code] = true; });
+        Object.keys(seenGiftCodes).forEach(function (code) {
+          var info = seenGiftCodes[code];
+          if (info.status === "expired" && !stillPresent[code] && dismissed.indexOf(code) === -1) {
+            alert((info.prizeIcon || "🎁") + " " + info.prizeName + " ya cumplió el tiempo y no puede ser reclamado.");
+          }
+        });
+        seenGiftCodes = {};
+        codes.forEach(function (c) { seenGiftCodes[c.code] = { status: c.status, prizeName: c.prizeName, prizeIcon: c.prizeIcon }; });
+
+        lastGiftCodes = codes;
+        lastGiftTickets = tickets;
+        // el botón ahora vive en el header (reemplaza al menú) — siempre
+        // queda visible, solo el numerito rojo aparece/desaparece
+        var visible = codes.filter(function (c) { return dismissed.indexOf(c.code) === -1; });
+        var total = visible.length + tickets.length;
+        var badge = $("[data-fab-gift-badge]", btn);
+        if (badge) {
+          badge.hidden = !total;
+          if (total) badge.textContent = String(total);
+        }
+        renderGiftCodesList(codes, tickets);
+      })
+      .catch(function () {});
+  }
+
+  function initGiftFab() {
+    var btn = $("[data-fab-gift]");
+    var modal = $("[data-gift-codes-modal]");
+    if (!btn || !modal) return;
+    btn.addEventListener("click", function () { refreshGiftFab(); modal.hidden = false; });
+    $$("[data-gift-codes-close]", modal).forEach(function (el) {
+      el.addEventListener("click", function () { modal.hidden = true; });
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && !modal.hidden) modal.hidden = true;
+    });
+    var gotoBtn = $("[data-gift-codes-goto-carousel]", modal);
+    if (gotoBtn) {
+      gotoBtn.addEventListener("click", function () {
+        modal.hidden = true;
+        var section = document.getElementById("premio-del-dia");
+        // el carrusel de premios solo vive en index.html — desde otra
+        // página se navega ahí directo a esa sección
+        if (section) section.scrollIntoView({ behavior: "smooth" });
+        else window.location.href = "index.html#premio-del-dia";
+      });
+    }
+    // recalcula solo el texto de la cuenta regresiva mientras el panel está
+    // abierto, sin volver a pedirle al servidor (eso ya lo hace el poll de
+    // refreshGiftFab por separado)
+    setInterval(function () {
+      if (!modal.hidden) renderGiftCodesList(lastGiftCodes);
+    }, 60000);
+  }
+
+  // Punto de entrada compartido para abrir el panel de premios desde
+  // cualquier otro módulo (ej. la ruleta, tras un giro ganador).
+  window.__openGiftPanel = function () {
+    refreshGiftFab();
+    var modal = $("[data-gift-codes-modal]");
+    if (modal) modal.hidden = false;
+  };
+
+  /* ---- Modal genérico de texto (hoy se usa para pedir el nombre del cliente) ---- */
+  function openNameModal(onSubmit) {
+    var modal = $("[data-code-modal]");
+    if (!modal) { onSubmit(""); return; }
+    var titleEl = $("[data-code-modal-title]", modal);
+    var input = $("[data-code-modal-input]", modal);
+    var errorEl = $("[data-code-modal-error]", modal);
+    var confirmBtn = $("[data-code-modal-confirm]", modal);
+
+    if (titleEl) titleEl.textContent = "¿Cuál es tu nombre?";
+    if (input) { input.value = ""; input.placeholder = "Tu nombre"; }
+    if (errorEl) errorEl.hidden = true;
+    modal.hidden = false;
+    if (input) input.focus();
+
+    function submit() {
+      var value = (input ? input.value : "").trim();
+      modal.hidden = true;
+      onSubmit(value);
+    }
+    // .onclick/.onkeydown (not addEventListener) so each call replaces the previous handler instead of stacking
+    if (confirmBtn) confirmBtn.onclick = submit;
+    if (input) input.onkeydown = function (e) { if (e.key === "Enter") submit(); };
+  }
+
+  function initCodeModalClose() {
+    var modal = $("[data-code-modal]");
+    if (!modal) return;
+    $$("[data-code-modal-close]", modal).forEach(function (el) {
+      el.addEventListener("click", function () { modal.hidden = true; });
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && !modal.hidden) modal.hidden = true;
+    });
+  }
+
+  /* ---------------- Boot ---------------- */
+  function boot() {
+    safe(applyCustomization, "applyCustomization");
+    safe(mountHero, "mountHero");
+    safe(positionHeroGreeting, "positionHeroGreeting");
+    safe(initHeroGreeting, "initHeroGreeting");
+    safe(registerExistingName, "registerExistingName");
+    safe(mountQuickNav, "mountQuickNav");
+    safe(mountCategoryMenu, "mountCategoryMenu");
+    safe(initMysteryFab, "initMysteryFab");
+    safe(initAssistant, "initAssistant");
+    safe(mountGallery, "mountGallery");
+    safe(mountBusinessInfo, "mountBusinessInfo");
+    safe(initWhatsappLinks, "initWhatsappLinks");
+    safe(initBackgroundMusic, "initBackgroundMusic");
+    safe(initNav, "initNav");
+    safe(initScrollButtons, "initScrollButtons");
+    safe(initPageNav, "initPageNav");
+    safe(initLightbox, "initLightbox");
+    safe(initReveals, "initReveals");
+    safe(positionDailyPrize, "positionDailyPrize");
+    safe(mountDailyPrize, "mountDailyPrize");
+    safe(initLoyaltyQrStamp, "initLoyaltyQrStamp");
+    safe(initLoyaltyScanModalClose, "initLoyaltyScanModalClose");
+    safe(initPrizeModalClose, "initPrizeModalClose");
+    safe(initCodeModalClose, "initCodeModalClose");
+    safe(mountStikerGallery, "mountStikerGallery");
+    safe(initClaimPrizeFlow, "initClaimPrizeFlow");
+    safe(initDeliverPrizeFlow, "initDeliverPrizeFlow");
+    safe(initGiftFab, "initGiftFab");
+    safe(refreshGiftFab, "refreshGiftFab");
+    setInterval(function () { safe(refreshGiftFab, "refreshGiftFab"); }, 30000);
+
+    document.documentElement.classList.add("is-ready");
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot);
+  } else {
+    boot();
+  }
+})();

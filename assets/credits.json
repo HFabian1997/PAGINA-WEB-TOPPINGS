@@ -1,0 +1,112 @@
+{
+  "hero": {
+    "src": "assets/img/hero.jpg",
+    "title": "Smažený hermelín, tatarská omáčka, hranolky, obloha",
+    "creator": "Dezidor",
+    "creator_url": "https://cs.wikipedia.org/wiki/User:Dezidor",
+    "license": "by",
+    "license_version": "3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0/",
+    "foreign_landing_url": "https://commons.wikimedia.org/w/index.php?curid=4588690",
+    "source": "wikimedia"
+  },
+  "promo-banner": {
+    "src": "assets/img/promo-banner.jpg",
+    "title": "Homemade cheese-burger with fries",
+    "creator": "anax44",
+    "creator_url": "https://www.flickr.com/photos/anax44",
+    "license": "by-sa",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by-sa/2.0/",
+    "foreign_landing_url": "https://www.flickr.com/photos/anax44/6942702647",
+    "source": "flickr"
+  },
+  "zona-secreta-bg": {
+    "src": "assets/img/zona-secreta-bg.jpg",
+    "title": "Mr D's Route 66 Diner in the dusk",
+    "creator": "Desconocido",
+    "creator_url": "https://commons.wikimedia.org/w/index.php?curid=116327216",
+    "license": "cc0",
+    "license_version": "1.0",
+    "license_url": "https://creativecommons.org/publicdomain/zero/1.0/deed.en/",
+    "foreign_landing_url": "https://commons.wikimedia.org/w/index.php?curid=116327216",
+    "source": "wikimedia"
+  },
+  "nosotros-local": {
+    "src": "assets/img/nosotros-local.jpg",
+    "title": "Jumbo Restaurant Kitchen",
+    "creator": "Tracy Hunter",
+    "creator_url": "https://www.flickr.com/photos/11121785@N00",
+    "license": "by",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0/",
+    "foreign_landing_url": "https://www.flickr.com/photos/11121785@N00/104441232",
+    "source": "flickr"
+  },
+  "galeria-1": {
+    "src": "assets/img/galeria-1.jpg",
+    "title": "Sunday Dinner Neon",
+    "creator": "Random Retail",
+    "creator_url": "https://www.flickr.com/photos/67408512@N03",
+    "license": "by",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0/",
+    "foreign_landing_url": "https://www.flickr.com/photos/67408512@N03/12854877443",
+    "source": "flickr"
+  },
+  "galeria-2": {
+    "src": "assets/img/galeria-2.jpg",
+    "title": "UmOne JDI LosAngeles Graffiti Art",
+    "creator": "anarchosyn",
+    "creator_url": "https://www.flickr.com/photos/24293932@N00",
+    "license": "by-sa",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by-sa/2.0/",
+    "foreign_landing_url": "https://www.flickr.com/photos/24293932@N00/496980189",
+    "source": "flickr"
+  },
+  "galeria-3": {
+    "src": "assets/img/galeria-3.jpg",
+    "title": "Friends sharing food",
+    "creator": "Michel Curi",
+    "creator_url": "https://www.flickr.com/photos/23945183@N02",
+    "license": "by",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0/",
+    "foreign_landing_url": "https://www.flickr.com/photos/23945183@N02/23707279629",
+    "source": "flickr"
+  },
+  "galeria-4": {
+    "src": "assets/img/galeria-4.jpg",
+    "title": "Five Guys Burgers and Fries",
+    "creator": "chief_huddleston",
+    "creator_url": "https://www.flickr.com/photos/9265232@N04",
+    "license": "by",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0/",
+    "foreign_landing_url": "https://www.flickr.com/photos/9265232@N04/7025300923",
+    "source": "flickr"
+  },
+  "galeria-5": {
+    "src": "assets/img/galeria-5.jpg",
+    "title": "MOGU @ Food Trucks + Street food festival in Vancouver BC Canada",
+    "creator": "Geoff Peters from Vancouver, BC, Canada",
+    "creator_url": "https://www.flickr.com/people/54359128@N00",
+    "license": "by",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0/",
+    "foreign_landing_url": "https://commons.wikimedia.org/w/index.php?curid=80213173",
+    "source": "wikimedia"
+  },
+  "galeria-6": {
+    "src": "assets/img/galeria-6.jpg",
+    "title": "Barbie's BBQ",
+    "creator": "bugeaters",
+    "creator_url": "https://www.flickr.com/photos/34590710@N00",
+    "license": "by",
+    "license_version": "2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0/",
+    "foreign_landing_url": "https://www.flickr.com/photos/34590710@N00/1313218304",
+    "source": "flickr"
+  }
+}

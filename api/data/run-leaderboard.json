@@ -1,0 +1,27 @@
+{
+    "rankingType": "hourly",
+    "periodStart": "2026-07-27 20:00",
+    "periodEndAtMs": 1785204000000,
+    "scores": {},
+    "names": {},
+    "winner": null,
+    "claim": {
+        "status": "waiting",
+        "windowEndsAtMs": null,
+        "claimedAt": null,
+        "claimedName": null,
+        "claimedDevice": null
+    },
+    "history": [
+        { "name": "FABIAN-CEL", "score": 1141, "rankingType": "hourly", "periodStart": "2026-07-27 18:00", "outcome": "claimed", "endedAt": 1785196800000, "claimedAt": 1785200307861 },
+        { "name": "David", "score": 383, "rankingType": "hourly", "periodStart": "2026-07-26 17:00", "outcome": "expired", "endedAt": 1785106800000, "claimedAt": null },
+        { "name": "Heidy", "score": 248, "rankingType": "hourly", "periodStart": "2026-07-26 11:00", "outcome": "claimed", "endedAt": 1785085200000, "claimedAt": 1785103214371 },
+        { "name": "FABIAN", "score": 543, "rankingType": "hourly", "periodStart": "2026-07-25 01:00", "outcome": "expired", "endedAt": 1784962800000, "claimedAt": null },
+        { "name": "FABIAN PRUEBA 2", "score": 769, "rankingType": "hourly", "periodStart": "2026-07-25 00:00", "outcome": "claimed", "endedAt": 1784959200000, "claimedAt": 1784959772381 },
+        { "name": "FABIAN PRUEBA 2", "score": 198, "rankingType": "hourly", "periodStart": "2026-07-24 21:00", "outcome": "claimed", "endedAt": 1784948400000, "claimedAt": 1784957933394 },
+        { "name": "FABIAN", "score": 261, "rankingType": "hourly", "periodStart": "2026-07-24 19:00", "outcome": "claimed", "endedAt": 1784941200000, "claimedAt": 1784945945090 },
+        { "name": "FABIAN", "score": 5750, "rankingType": "daily", "periodStart": "2026-07-23", "outcome": "admin-reset", "endedAt": 1784869200000, "claimedAt": null },
+        { "name": "FABIAN", "score": 4007, "rankingType": "daily", "periodStart": "2026-07-22", "outcome": "claimed", "endedAt": 1784782800000, "claimedAt": 1784784696759 },
+        { "name": "Fabian", "score": 2593, "rankingType": "daily", "periodStart": "2026-07-21", "outcome": "admin-reset", "endedAt": 1784696400000, "claimedAt": null }
+    ]
+}
