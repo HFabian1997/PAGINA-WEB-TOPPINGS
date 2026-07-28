@@ -201,16 +201,40 @@ a.btn { text-decoration: none; }
   font-size: .82rem; font-weight: 800; line-height: 1;
 }
 
-/* asa de arrastre — es el único punto que captura el gesto, así que tiene
-   que ser cómoda de agarrar con el dedo */
+/* Esquina superior derecha: arrastrar y eliminar, juntos y discretos. */
+.image-list-corner {
+  position: absolute; top: .4rem; right: .4rem; z-index: 3;
+  display: flex; align-items: center; gap: .3rem;
+}
+.image-list-corner .btn-remove { position: static; }
+
+/* Asa de arrastre — es el único punto que captura el gesto del dedo, así que
+   aunque se vea discreta necesita un área cómoda de tocar (32px). */
 .image-list-grip {
-  display: flex; align-items: center; justify-content: center; gap: .35rem;
-  margin-top: .5rem; padding: .5rem .35rem; min-height: 36px;
-  border-radius: 8px; border: 1px dashed var(--line);
-  background: rgba(255,255,255,.04);
-  font-size: .72rem; font-weight: 700; letter-spacing: .04em;
-  color: var(--ink-mute); text-transform: uppercase;
+  display: flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; flex: none;
+  border-radius: 50%; border: 1px solid var(--line);
+  background: rgba(0,0,0,.55);
+  font-size: .9rem; color: var(--ink-mute);
   cursor: grab; user-select: none;
+}
+
+/* Reemplazar la foto conservando su posición. Va donde antes estaba el asa. */
+.image-list-replace {
+  width: 100%; margin-top: .4rem; padding: .45rem;
+  border-radius: 8px; border: 1px solid var(--line); background: var(--bg-2);
+  color: var(--ink-soft); font-size: .72rem; font-weight: 700; cursor: pointer;
+}
+.image-list-replace:hover { border-color: var(--accent); color: var(--accent); }
+.image-list-replace:disabled { opacity: .5; cursor: default; }
+
+/* Mismo asa en la esquina para las demás listas que se pueden reordenar.
+   En estas la × ya ocupa la esquina, así que el asa va justo a su izquierda. */
+.repeat-item, .ruleta-prize-row, .cc-admin-image { position: relative; }
+.repeat-item > .image-list-grip,
+.ruleta-prize-row > .image-list-grip,
+.cc-admin-image .image-list-grip {
+  position: absolute; top: .45rem; right: 2.6rem; z-index: 3; margin: 0;
 }
 /* Ocultar: la imagen deja de verse en la página pero sigue guardada */
 .image-list-hide {
@@ -224,7 +248,7 @@ a.btn { text-decoration: none; }
 .gallery-admin-item.is-hidden-image .preview { filter: grayscale(1); }
 
 .image-list-grip:hover { border-color: var(--accent); color: var(--accent); }
-.image-list-grip:active { cursor: grabbing; border-style: solid; border-color: var(--accent); color: var(--accent); }
+.image-list-grip:active { cursor: grabbing; border-color: var(--accent); color: var(--accent); background: rgba(255,212,0,.18); }
 
 /* ---- reordenar arrastrando ----
    `touch-action: none` va SOLO en el asa, nunca en la tarjeta entera: si se
@@ -329,7 +353,7 @@ body.is-sorting-active { user-select: none; }
   .image-list-actions { gap: .4rem; margin-top: .4rem; }
   .image-list-actions button { width: 34px; height: 34px; }
   .image-list-pos { font-size: .68rem; }
-  .image-list-grip { font-size: .62rem; padding: .3rem; }
+  .image-list-replace { font-size: .68rem; }
   .btn-remove { width: 24px; height: 24px; font-size: .95rem; top: .35rem; right: .35rem; }
 
   /* "Imagen del sitio" */
@@ -342,6 +366,7 @@ body.is-sorting-active { user-select: none; }
      así que se apilan. */
   .cc-admin-image { flex-direction: column; align-items: stretch; gap: .5rem; padding: .55rem; }
   .cc-admin-image .preview { width: 100%; height: 92px; }
+  .cc-admin-image .image-list-grip { top: .5rem; right: 2.5rem; }
   .cc-admin-image-actions { margin-left: 0; justify-content: space-between; gap: .4rem; }
   .cc-admin-image-buttons { flex-wrap: wrap; justify-content: flex-end; }
 

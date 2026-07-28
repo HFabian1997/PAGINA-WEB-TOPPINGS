@@ -475,7 +475,7 @@
 
     <div class="field-grid" data-form="aiAssistant">
       <label class="full">Información para el asistente (menú y precios, ingredientes, promociones, domicilios, formas de pago, etc.)
-        <textarea data-field="knowledgeText" rows="10" placeholder="Ejemplo:&#10;Salchipapa sencilla: $10.000&#10;Salchipapa especial: $15.000&#10;Domicilios: $3.000 dentro de Mocoa&#10;Formas de pago: efectivo, Nequi, tarjeta"></textarea>
+        <textarea data-field="knowledgeText" rows="10" placeholder="Ejemplo:&#10;Salchipapa sencilla: $10.000&#10;Salchipapa especial: $15.000&#10;Domicilios: $3.000 dentro de Colón&#10;Formas de pago: efectivo, Nequi, tarjeta"></textarea>
       </label>
     </div>
 
@@ -584,6 +584,10 @@
 <template id="tpl-image-list-item">
   <div class="gallery-admin-item" data-sort-item>
     <span class="image-list-num" data-role="num"></span>
+    <span class="image-list-corner">
+      <span class="image-list-grip" data-role="grip" title="Arrastrá desde aquí para mover">⠿</span>
+      <button class="btn-remove" data-role="remove" title="Eliminar imagen" aria-label="Eliminar imagen">&times;</button>
+    </span>
     <img class="preview" data-role="preview">
     <div class="image-list-actions">
       <button type="button" data-role="up" title="Mover arriba" aria-label="Mover arriba">↑</button>
@@ -591,17 +595,21 @@
       <button type="button" data-role="down" title="Mover abajo" aria-label="Mover abajo">↓</button>
     </div>
     <button type="button" class="image-list-hide" data-role="hide"></button>
-    <span class="image-list-grip" data-role="grip" title="Arrastrá desde aquí para mover">⠿ arrastrar</span>
-    <button class="btn-remove" data-role="remove" title="Eliminar imagen" aria-label="Eliminar imagen">&times;</button>
+    <button type="button" class="image-list-replace" data-role="replace">🔄 Reemplazar imagen</button>
+    <input type="file" accept="image/*" data-role="replace-input" hidden>
   </div>
 </template>
 
 <template id="tpl-gallery-item">
   <div class="gallery-admin-item" data-sort-item>
+    <span class="image-list-corner">
+      <span class="image-list-grip" data-role="grip" title="Arrastrá desde aquí para mover">⠿</span>
+      <button class="btn-remove" data-role="remove" title="Eliminar foto" aria-label="Eliminar foto">&times;</button>
+    </span>
     <img class="preview" data-role="preview">
     <label>Descripción <input type="text" data-role="alt"></label>
-    <span class="image-list-grip" data-role="grip" title="Mantené presionado y arrastrá para mover">⠿ arrastrar</span>
-    <button class="btn-remove" data-role="remove" title="Eliminar foto" aria-label="Eliminar foto">&times;</button>
+    <button type="button" class="image-list-replace" data-role="replace">🔄 Reemplazar imagen</button>
+    <input type="file" accept="image/*" data-role="replace-input" hidden>
   </div>
 </template>
 

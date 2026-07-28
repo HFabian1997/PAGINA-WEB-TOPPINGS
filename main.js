@@ -767,21 +767,35 @@
 
     var AUTO_HIDE_MS = 6000;
     var hideTimer = null;
-    function showBubble() {
+
+    function showBubble(autoHide) {
       bubble.classList.add("is-visible");
       clearTimeout(hideTimer);
-      hideTimer = setTimeout(function () {
-        bubble.classList.remove("is-visible");
-      }, AUTO_HIDE_MS);
+      // Solo se esconde sola la primera vez, la que aparece al entrar. Si fue
+      // el cliente quien la abrió, se queda hasta que él la cierre.
+      if (autoHide) {
+        hideTimer = setTimeout(function () {
+          bubble.classList.remove("is-visible");
+        }, AUTO_HIDE_MS);
+      }
+    }
+
+    function hideBubble() {
+      clearTimeout(hideTimer);
+      bubble.classList.remove("is-visible");
     }
 
     setTimeout(function () {
       btn.classList.add("is-visible");
       if (!reduced) btn.classList.add("is-pulsing");
-      showBubble();
+      showBubble(true);
     }, 5000);
 
-    btn.addEventListener("click", showBubble);
+    // Un clic muestra el mensaje y otro lo esconde.
+    btn.addEventListener("click", function () {
+      if (bubble.classList.contains("is-visible")) hideBubble();
+      else showBubble(false);
+    });
   }
 
   /* ---------------- Asistente virtual (IA) ---------------- */

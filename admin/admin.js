@@ -340,6 +340,25 @@
         markDirty();
         renderGallery();
       };
+
+      // Reemplazar conservando la posición y la descripción ya escrita
+      var replaceBtn = node.querySelector('[data-role="replace"]');
+      var replaceInput = node.querySelector('[data-role="replace-input"]');
+      replaceBtn.onclick = function () { replaceInput.click(); };
+      replaceInput.onchange = function () {
+        var file = replaceInput.files[0];
+        if (!file) return;
+        replaceBtn.disabled = true;
+        replaceBtn.textContent = "Subiendo…";
+        uploadImage(file, function (rel) {
+          replaceInput.value = "";
+          if (!rel) { replaceBtn.disabled = false; replaceBtn.textContent = "🔄 Reemplazar imagen"; return; }
+          item.image = rel;
+          markDirty();
+          renderGallery();
+        });
+      };
+
       list.appendChild(node);
     });
   }
@@ -924,6 +943,29 @@
           renderCarouselAdmins();
         };
 
+        /* Reemplazar: cambia la foto conservando su POSICIÓN. Antes había que
+           borrar y volver a subir, y la nueva quedaba al final de la lista. */
+        var replaceBtn = node.querySelector('[data-role="replace"]');
+        var replaceInput = node.querySelector('[data-role="replace-input"]');
+        replaceBtn.onclick = function () { replaceInput.click(); };
+        replaceInput.onchange = function () {
+          var file = replaceInput.files[0];
+          if (!file) return;
+          replaceBtn.disabled = true;
+          replaceBtn.textContent = "Subiendo…";
+          uploadImage(file, function (rel) {
+            replaceInput.value = "";
+            if (!rel) { replaceBtn.disabled = false; replaceBtn.textContent = "🔄 Reemplazar imagen"; return; }
+            items[idx] = rel;
+            // si estaba oculta, la nueva hereda ese estado
+            var pos = hiddenList.indexOf(src);
+            if (pos !== -1) hiddenList[pos] = rel;
+            markDirty();
+            renderImageLists();
+            renderCarouselAdmins();
+          });
+        };
+
         list.appendChild(node);
       });
     });
@@ -1008,7 +1050,7 @@
 
         var grip = document.createElement("span");
         grip.className = "image-list-grip";
-        grip.textContent = "⠿ arrastrar";
+        grip.textContent = "⠿";
         wrap.appendChild(grip);
 
         list.appendChild(node);
@@ -1190,7 +1232,7 @@
             '<span class="image-list-pos">' + (idx + 1) + " / " + c.images.length + "</span>" +
             '<button type="button" data-role="down" aria-label="Bajar">↓</button>' +
           "</span>" +
-          '<span class="image-list-grip">⠿ arrastrar</span>' +
+          '<span class="image-list-grip">⠿</span>' +
         "</div>" +
         '<button type="button" class="btn-remove" data-role="remove" title="Eliminar del carrusel" aria-label="Eliminar del carrusel">&times;</button>';
 
@@ -1583,7 +1625,7 @@
       row.setAttribute("data-sort-item", "");
       var grip = document.createElement("span");
       grip.className = "image-list-grip";
-      grip.textContent = "⠿ arrastrar";
+      grip.textContent = "⠿";
       row.appendChild(grip);
       list.appendChild(row);
     });
