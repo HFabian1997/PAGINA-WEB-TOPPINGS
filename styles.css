@@ -921,17 +921,20 @@ main > .menu-page:first-child { padding-top: calc(var(--header-h) + clamp(1.5rem
 /* ---- Aviso de "desliza, hay más abajo" (solo portada) ----
    Va abajo a la IZQUIERDA porque la derecha ya la ocupan los botones
    flotantes (WhatsApp, sorpresa y la flecha de subir/bajar). */
+/* Centrado verticalmente sobre el borde izquierdo. El `-50%` va dentro de
+   cada transform porque la entrada y la salida también usan transform: si se
+   pusiera aparte, se pisarían entre sí y el aviso saltaría de lugar. */
 .scroll-hint {
-  position: fixed; left: clamp(1rem, 4vw, 1.75rem); bottom: clamp(1rem, 4vw, 1.75rem);
+  position: fixed; left: clamp(1rem, 4vw, 1.75rem); top: 50%;
   z-index: 290; display: flex; flex-direction: column; align-items: center; gap: .4rem;
   pointer-events: none; opacity: 0;
   transition: opacity .5s var(--ease-out), transform .5s var(--ease-out);
-  transform: translateY(8px);
+  transform: translateY(calc(-50% + 8px));
 }
 .scroll-hint[hidden] { display: none; }
-.scroll-hint.is-visible { opacity: 1; transform: translateY(0); }
+.scroll-hint.is-visible { opacity: 1; transform: translateY(-50%); }
 /* al desplazar se desvanece hacia abajo y ya no vuelve en esta visita */
-.scroll-hint.is-gone { opacity: 0; transform: translateY(14px); }
+.scroll-hint.is-gone { opacity: 0; transform: translateY(calc(-50% + 14px)); }
 .scroll-hint-mouse {
   width: 26px; height: 42px; border-radius: 999px;
   border: 2px solid rgba(255,255,255,.75); background: rgba(0,0,0,.35);
