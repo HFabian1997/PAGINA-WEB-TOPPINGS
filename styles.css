@@ -733,7 +733,6 @@ main > .menu-page:first-child { padding-top: calc(var(--header-h) + clamp(1.5rem
 .zona-secreta-page { min-height: 100svh; padding-top: calc(var(--header-h) + clamp(2rem, 6vw, 4rem)); }
 .zona-back { color: rgba(255,255,255,.6); }
 .zona-back:hover { color: var(--accent); }
-.zona-cta { margin-top: 2.5rem; }
 
 /* =============================================================
    6g. Gallery
