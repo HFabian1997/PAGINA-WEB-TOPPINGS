@@ -817,6 +817,14 @@ main > .menu-page:first-child { padding-top: calc(var(--header-h) + clamp(1.5rem
 /* =============================================================
    6i-2. Reviews CTA
    ============================================================= */
+/* Imágenes sueltas del inicio (panel → Portada → Bloques del inicio).
+   Mismo aire que las del menú: ancho del contenedor y esquinas redondeadas. */
+.home-image { margin-block: clamp(1.5rem, 5vw, 3rem); }
+.home-image img {
+  width: 100%; height: auto; border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
 .reviews {
   padding-block: clamp(3rem, 7vw, 5rem);
   text-align: center;

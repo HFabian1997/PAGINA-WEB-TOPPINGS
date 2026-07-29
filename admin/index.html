@@ -116,6 +116,16 @@
 
   <section class="admin-panel" data-panel="hero" hidden>
     <h2>Portada (hero)</h2>
+
+    <h3>🧱 Bloques del inicio</h3>
+    <p class="hint">Todo lo que se ve en la página de inicio, en el orden real. Arrastrá desde el asa ⠿ para moverlo: las secciones también se pueden reordenar entre ellas. El pie de página siempre va al final.</p>
+    <div class="home-blocks" data-home-blocks></div>
+    <label class="btn btn-ghost file-btn">
+      + Agregar imagen al inicio
+      <input type="file" accept="image/*" hidden data-add-home-image>
+    </label>
+
+    <h3>Textos de la portada</h3>
     <p class="hint">El logo (pestaña Negocio) ocupa el lugar central de la portada. Aquí solo editas los textos de alrededor.</p>
     <div class="field-grid" data-form="hero">
       <label>Texto pequeño arriba del logo <textarea data-field="kicker" rows="2"></textarea></label>
@@ -274,11 +284,7 @@
     <div class="field-grid" data-form="dailyPrize">
       <label class="full">Texto arriba de la sección <textarea data-field="kicker" rows="2"></textarea></label>
       <label class="full">Posición en la página
-        <select data-field="position">
-          <option value="afterHero">Después de la portada (como está ahora)</option>
-          <option value="top">Arriba de todo</option>
-          <option value="afterComidas">Al final, después del menú de Comidas</option>
-        </select>
+        <input type="text" value="Se mueve desde Portada → 🧱 Bloques del inicio" disabled>
       </label>
       <label>Texto del botón "Reclamar premio" <textarea data-field="claimPrizeButtonLabel" rows="2"></textarea></label>
       <label>Texto del botón "Entregar premio" <textarea data-field="deliverPrizeButtonLabel" rows="2"></textarea></label>

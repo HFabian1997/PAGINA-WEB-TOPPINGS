@@ -853,6 +853,123 @@
     window.addEventListener("blur", function () { if (item) finish(false); });
   }
 
+  /* ==================== Bloques de la página de inicio ====================
+     Una sola lista ordenada con las secciones fijas y las imágenes sueltas.
+     Las secciones no se pueden borrar ni ocultar desde aquí (cada una tiene
+     su propio interruptor en su pestaña); solo se mueven. */
+  var HOME_SECTIONS = {
+    hero:    { icon: "🏠", label: "Portada" },
+    prizes:  { icon: "🎁", label: "Premio del día" },
+    reviews: { icon: "⭐", label: "Nos importa lo que piensas" }
+  };
+
+  function homeBlocks() {
+    var h = state.content.home || (state.content.home = {});
+    if (!Array.isArray(h.blocks) || !h.blocks.length) {
+      // primera vez: se arma con el orden que ya tiene la página
+      h.blocks = [{ type: "hero" }, { type: "prizes" }, { type: "reviews" }];
+    }
+    // por si en el futuro se agrega una sección nueva al HTML: se añade al final
+    Object.keys(HOME_SECTIONS).forEach(function (t) {
+      var hay = h.blocks.some(function (b) { return b && b.type === t; });
+      if (!hay) h.blocks.push({ type: t });
+    });
+    return h.blocks;
+  }
+
+  function renderHomeBlocks() {
+    var list = $("[data-home-blocks]");
+    if (!list) return;
+    var blocks = homeBlocks();
+
+    if (!list.__sortable) {
+      list.__sortable = true;
+      makeSortable(list, function (from, to) {
+        var arr = homeBlocks();
+        arr.splice(to, 0, arr.splice(from, 1)[0]);
+        markDirty();
+        renderHomeBlocks();
+      });
+    }
+
+    list.innerHTML = "";
+    blocks.forEach(function (b, idx) {
+      var row = document.createElement("div");
+      row.className = "home-block" + (b.hidden ? " is-off" : "");
+      row.setAttribute("data-sort-item", "");
+
+      var meta = HOME_SECTIONS[b.type];
+      if (meta) {
+        row.innerHTML =
+          '<span class="home-block-icon">' + meta.icon + "</span>" +
+          '<span class="home-block-label">' + meta.label + "</span>" +
+          '<span class="home-block-tag">sección</span>' +
+          '<span class="image-list-grip">⠿</span>';
+      } else {
+        row.innerHTML =
+          '<img class="home-block-thumb" src="' + adminAssetUrl(b.src) + '" alt="">' +
+          '<span class="home-block-label">Imagen</span>' +
+          '<button type="button" class="home-block-hide" data-role="hide"></button>' +
+          '<button type="button" class="home-block-replace" data-role="replace">🔄</button>' +
+          '<input type="file" accept="image/*" hidden data-role="replace-input">' +
+          '<span class="image-list-grip">⠿</span>' +
+          '<button type="button" class="btn-remove" data-role="remove" aria-label="Eliminar">&times;</button>';
+
+        var hideBtn = row.querySelector('[data-role="hide"]');
+        hideBtn.textContent = b.hidden ? "🙈" : "👁️";
+        hideBtn.title = b.hidden ? "Oculta — clic para mostrarla" : "Se muestra — clic para ocultarla";
+        hideBtn.onclick = function () { b.hidden = !b.hidden; markDirty(); renderHomeBlocks(); };
+
+        row.querySelector('[data-role="remove"]').onclick = function () {
+          if (!confirm("¿Eliminar esta imagen del inicio?")) return;
+          homeBlocks().splice(idx, 1);
+          markDirty();
+          renderHomeBlocks();
+        };
+
+        var repBtn = row.querySelector('[data-role="replace"]');
+        var repInput = row.querySelector('[data-role="replace-input"]');
+        repBtn.title = "Reemplazar la imagen sin moverla de lugar";
+        repBtn.onclick = function () { repInput.click(); };
+        repInput.onchange = function () {
+          var file = repInput.files[0];
+          if (!file) return;
+          repBtn.disabled = true;
+          uploadImage(file, function (rel) {
+            repInput.value = "";
+            if (!rel) { repBtn.disabled = false; return; }
+            b.src = rel;
+            markDirty();
+            renderHomeBlocks();
+          });
+        };
+      }
+      list.appendChild(row);
+    });
+  }
+
+  function initAddHomeImage() {
+    var input = $("[data-add-home-image]");
+    if (!input) return;
+    input.addEventListener("change", function () {
+      var file = input.files[0];
+      if (!file) return;
+      uploadImage(file, function (rel) {
+        input.value = "";
+        if (!rel) return;
+        // entra antes de las reseñas, que es donde más se suele querer
+        var arr = homeBlocks();
+        var at = arr.length;
+        for (var i = 0; i < arr.length; i++) {
+          if (arr[i] && arr[i].type === "reviews") { at = i; break; }
+        }
+        arr.splice(at, 0, { type: "image", src: rel });
+        markDirty();
+        renderHomeBlocks();
+      });
+    });
+  }
+
   /* Lista de rutas ocultas de una categoría. Vive al lado de `images`
      (p. ej. comidas.hiddenImages) para no tener que cambiar el formato de
      `images`, que hoy es una lista simple de rutas. */
@@ -1356,6 +1473,7 @@
     renderRepeatLists();
     renderAiDocStatus();
     renderLooks();
+    renderHomeBlocks();
     renderBgTypeVisibility();
     renderModalStyleVisibility();
     renderNameChangeModeVisibility();
@@ -1808,6 +1926,7 @@
     initAiDoc();
     initBgTypeToggle();
     initLooks();
+    initAddHomeImage();
     initModalStyleToggle();
     initNameChangeModeToggle();
     initRewardTypeToggles();

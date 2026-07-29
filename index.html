@@ -46,7 +46,7 @@
 <main id="main">
 
   <!-- =================== HERO =================== -->
-  <section class="hero" id="inicio">
+  <section class="hero" id="inicio" data-home-block="hero">
     <div class="hero-inner container">
       <p class="hero-kicker" data-hero-kicker>Comida urbana · Colón, Putumayo</p>
       <h1 class="hero-title" data-brand-mark>TOPPINGS</h1>
@@ -63,7 +63,7 @@
   </section>
 
   <!-- =================== PREMIO DEL DÍA =================== -->
-  <section class="daily-prize" id="premio-del-dia" data-daily-prize hidden>
+  <section class="daily-prize" id="premio-del-dia" data-daily-prize data-home-block="prizes" hidden>
     <div class="container daily-prize-inner">
       <p class="section-kicker" data-prize-kicker>Premio del día</p>
 
@@ -197,18 +197,20 @@
     </div>
   </section>
 
-</main>
+  <!-- Dentro de <main> junto a la portada y al premio del día: las tres son
+       hermanas para que el orden de los bloques (panel → Portada → Bloques
+       del inicio) pueda reordenarlas entre sí. -->
+  <section class="reviews" data-home-block="reviews">
+    <div class="container">
+      <h2 class="reviews-title" data-reviews-title>Nos importa mucho lo que piensas</h2>
+      <p class="reviews-sub" data-reviews-sub>Te agradecemos una opinión o sugerencia</p>
+      <a class="btn btn-primary btn-lg" data-reviews-link href="#" target="_blank" rel="noopener">
+        <span data-reviews-cta>★ ¡Cuéntanos tu experiencia!</span>
+      </a>
+    </div>
+  </section>
 
-<!-- =================== FOOTER =================== -->
-<section class="reviews">
-  <div class="container">
-    <h2 class="reviews-title" data-reviews-title>Nos importa mucho lo que piensas</h2>
-    <p class="reviews-sub" data-reviews-sub>Te agradecemos una opinión o sugerencia</p>
-    <a class="btn btn-primary btn-lg" data-reviews-link href="#" target="_blank" rel="noopener">
-      <span data-reviews-cta>★ ¡Cuéntanos tu experiencia!</span>
-    </a>
-  </div>
-</section>
+</main>
 
 <footer class="footer">
   <div class="container footer-inner">

@@ -1121,6 +1121,11 @@
     var section = $("[data-daily-prize]");
     if (!main || !section) return; // solo existe en index.html
 
+    /* Si hay una lista de bloques, ella manda: mueve TODAS las secciones y ya
+       colocó esta donde corresponde. Sin este corte, lo de aquí abajo la
+       reubicaba después y deshacía el orden elegido en el panel. */
+    if (data.home && data.home.blocks && data.home.blocks.length) return;
+
     var info = data.dailyPrize;
     var position = (info && info.position) || "afterHero";
     var hero = $(".hero", main);
@@ -2493,8 +2498,60 @@
     });
   }
 
+  /* ---------------- Bloques de la página de inicio ----------------
+     El orden de la portada, el premio del día, las reseñas y las imágenes
+     que se agreguen sale del panel (Portada → Bloques del inicio). Se
+     guarda como una sola lista ordenada en `home.blocks`.
+
+     Corre ANTES que todo lo demás en boot(): el premio del día contiene el
+     juego y el carrusel, así que moverlo después de que se inicializan
+     dejaría sus referencias apuntando a elementos ya movidos. */
+  function applyHomeBlocks() {
+    var main = document.getElementById("main");
+    if (!main) return;
+    // solo la portada tiene bloques; las demás páginas no traen estas marcas
+    if (!$("[data-home-block]", main)) return;
+
+    var blocks = (data.home && data.home.blocks) || [];
+    if (!blocks.length) return;
+
+    var frag = document.createDocumentFragment();
+    var usadas = {};
+
+    blocks.forEach(function (b, i) {
+      if (!b || b.hidden) return;
+
+      if (b.type === "image") {
+        if (!b.src) return;
+        var wrap = document.createElement("div");
+        wrap.className = "home-image container";
+        var img = document.createElement("img");
+        img.src = b.src;
+        img.alt = "";           // decorativa: no aporta información nueva
+        img.loading = i < 2 ? "eager" : "lazy";
+        img.decoding = "async";
+        wrap.appendChild(img);
+        frag.appendChild(wrap);
+        return;
+      }
+
+      var sec = $('[data-home-block="' + b.type + '"]', main);
+      if (sec && !usadas[b.type]) { usadas[b.type] = true; frag.appendChild(sec); }
+    });
+
+    // Cualquier sección que la lista no mencione se conserva al final: nunca
+    // se pierde contenido por una lista incompleta o desactualizada.
+    $$("[data-home-block]", main).forEach(function (sec) {
+      var t = sec.getAttribute("data-home-block");
+      if (!usadas[t]) { usadas[t] = true; frag.appendChild(sec); }
+    });
+
+    main.appendChild(frag);
+  }
+
   /* ---------------- Boot ---------------- */
   function boot() {
+    safe(applyHomeBlocks, "applyHomeBlocks");
     safe(applyCustomization, "applyCustomization");
     safe(mountHero, "mountHero");
     safe(positionHeroGreeting, "positionHeroGreeting");

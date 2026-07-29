@@ -228,6 +228,33 @@ a.btn { text-decoration: none; }
 .image-list-replace:hover { border-color: var(--accent); color: var(--accent); }
 .image-list-replace:disabled { opacity: .5; cursor: default; }
 
+/* ---- Bloques de la página de inicio ---- */
+.home-blocks { display: flex; flex-direction: column; gap: .5rem; margin-bottom: 1rem; }
+.home-block {
+  position: relative; display: flex; align-items: center; gap: .7rem;
+  padding: .6rem 2.4rem .6rem .8rem;
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+}
+.home-block.is-off { opacity: .5; border-style: dashed; }
+.home-block-icon { font-size: 1.2rem; flex: none; }
+.home-block-thumb {
+  width: 64px; height: 44px; object-fit: cover; border-radius: 8px; flex: none;
+  border: 1px solid var(--line); background: var(--bg-2);
+}
+.home-block-label { flex: 1; font-weight: 700; font-size: .88rem; }
+.home-block-tag {
+  font-size: .66rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--ink-mute); border: 1px solid var(--line); border-radius: 999px; padding: .15rem .5rem;
+}
+.home-block-hide, .home-block-replace {
+  width: 32px; height: 32px; flex: none; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--bg-2); color: var(--ink);
+  font-size: .95rem; cursor: pointer;
+}
+.home-block-hide:hover, .home-block-replace:hover { border-color: var(--accent); color: var(--accent); }
+.home-block .image-list-grip { position: static; flex: none; }
+.home-block > .btn-remove { width: 26px; height: 26px; font-size: 1rem; top: .5rem; right: .5rem; }
+
 /* Mismo asa en la esquina para las demás listas que se pueden reordenar.
    En estas la × ya ocupa la esquina, así que el asa va justo a su izquierda. */
 .repeat-item, .ruleta-prize-row, .cc-admin-image { position: relative; }
