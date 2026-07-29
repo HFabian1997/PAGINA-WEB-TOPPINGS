@@ -231,6 +231,13 @@
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
 </button>
 
+<!-- Aviso de "hay más abajo". Solo en el inicio: en las demás páginas el
+     cliente ya sabe que hay contenido. Se va apenas desplaza. -->
+<div class="scroll-hint" data-scroll-hint hidden aria-hidden="true">
+  <span class="scroll-hint-mouse"><span class="scroll-hint-wheel"></span></span>
+  <span class="scroll-hint-text">Desliza</span>
+</div>
+
 <div class="fab-scroll-stack" data-scroll-fab>
   <button type="button" class="fab-scroll is-dir-down" data-scroll-btn aria-label="Ir al inicio o al final de la página">
     <svg class="icon-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg>

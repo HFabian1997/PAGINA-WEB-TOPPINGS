@@ -258,6 +258,19 @@
       <label>🔒 PIN de empleados (distinto de tu clave de administrador — lo usan para abrir "Entregar premio" en el local) <input type="text" data-field="pin"></label>
     </div>
 
+    <h3>🎠 Movimiento automático</h3>
+    <p class="hint">Las formas de ganar van pasando solas, para que el cliente las vea todas sin tener que deslizar. Si él elige una, se detiene y se queda ahí; vuelve a moverse cuando desplaza la página. Mientras alguien juega TOPPINGS RUN nunca se mueve.</p>
+    <label class="switch"><input type="checkbox" data-field="dailyPrize.carousel.active"> Que pasen solas</label>
+    <div class="field-grid" data-form="dailyPrize.carousel">
+      <label>Tiempo en cada una (segundos) <input type="number" min="1.5" step="0.5" data-field="intervalSeconds"></label>
+      <label>Dirección
+        <select data-field="direction">
+          <option value="ltr">Hacia adelante</option>
+          <option value="rtl">Hacia atrás</option>
+        </select>
+      </label>
+    </div>
+
     <div class="field-grid" data-form="dailyPrize">
       <label class="full">Texto arriba de la sección <textarea data-field="kicker" rows="2"></textarea></label>
       <label class="full">Posición en la página
@@ -541,6 +554,7 @@
     <label class="switch"><input type="checkbox" data-field="customization.effects.animations"> Animaciones (movimientos y transiciones)</label>
     <label class="switch"><input type="checkbox" data-field="customization.effects.glow"> Brillo/resplandor en botones y acentos</label>
     <label class="switch"><input type="checkbox" data-field="customization.effects.scrollButtons"> Flecha para subir/bajar de página (aparece al deslizar)</label>
+    <label class="switch"><input type="checkbox" data-field="customization.effects.scrollHint"> Aviso "desliza" en la portada (abajo a la izquierda, desaparece al desplazar)</label>
     <label class="switch"><input type="checkbox" data-field="customization.effects.pageNavArrows"> Flechas para cambiar entre Comidas/Helados/Bebidas (aparecen al deslizar)</label>
 
     <h3>🎵 Música de fondo</h3>

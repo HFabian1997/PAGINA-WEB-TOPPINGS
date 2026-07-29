@@ -918,6 +918,53 @@ main > .menu-page:first-child { padding-top: calc(var(--header-h) + clamp(1.5rem
 /* =============================================================
    6k-2. Flecha de inicio / final de página
    ============================================================= */
+/* ---- Aviso de "desliza, hay más abajo" (solo portada) ----
+   Va abajo a la IZQUIERDA porque la derecha ya la ocupan los botones
+   flotantes (WhatsApp, sorpresa y la flecha de subir/bajar). */
+.scroll-hint {
+  position: fixed; left: clamp(1rem, 4vw, 1.75rem); bottom: clamp(1rem, 4vw, 1.75rem);
+  z-index: 290; display: flex; flex-direction: column; align-items: center; gap: .4rem;
+  pointer-events: none; opacity: 0;
+  transition: opacity .5s var(--ease-out), transform .5s var(--ease-out);
+  transform: translateY(8px);
+}
+.scroll-hint[hidden] { display: none; }
+.scroll-hint.is-visible { opacity: 1; transform: translateY(0); }
+/* al desplazar se desvanece hacia abajo y ya no vuelve en esta visita */
+.scroll-hint.is-gone { opacity: 0; transform: translateY(14px); }
+.scroll-hint-mouse {
+  width: 26px; height: 42px; border-radius: 999px;
+  border: 2px solid rgba(255,255,255,.75); background: rgba(0,0,0,.35);
+  display: flex; justify-content: center; padding-top: 6px;
+  box-shadow: 0 4px 14px rgba(0,0,0,.45);
+}
+.scroll-hint-wheel {
+  width: 3px; height: 8px; border-radius: 999px; background: var(--accent);
+  animation: scrollHintWheel 1.6s var(--ease-soft) infinite;
+}
+.scroll-hint-text {
+  font-family: var(--sans); font-size: .66rem; font-weight: 800;
+  letter-spacing: .12em; text-transform: uppercase; color: rgba(255,255,255,.75);
+  text-shadow: 0 2px 6px rgba(0,0,0,.7);
+  animation: scrollHintText 1.6s var(--ease-soft) infinite;
+}
+@keyframes scrollHintWheel {
+  0%   { transform: translateY(0); opacity: 1; }
+  70%  { transform: translateY(16px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 0; }
+}
+@keyframes scrollHintText {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(3px); }
+}
+/* Con "Animaciones" apagado o si el sistema pide menos movimiento, el aviso
+   se queda quieto pero SIGUE viéndose: su trabajo es avisar, no animar. */
+body.no-animations .scroll-hint-wheel,
+body.no-animations .scroll-hint-text { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .scroll-hint-wheel, .scroll-hint-text { animation: none; }
+}
+
 .fab-scroll-stack {
   position: fixed; right: clamp(1rem, 4vw, 1.75rem); top: calc(var(--header-h) + 16px); z-index: 300;
   display: flex; flex-direction: column; align-items: center;

@@ -481,6 +481,39 @@
     }
   }
 
+  /* ---------------- Aviso de "desliza, hay más abajo" ----------------
+     Solo existe en la portada (el elemento no está en las demás páginas).
+     Aparece de una y desaparece para siempre en cuanto el cliente desplaza:
+     ya cumplió su trabajo y estorbaría el resto de la visita. */
+  function initScrollHint() {
+    var hint = $("[data-scroll-hint]");
+    if (!hint) return;
+
+    var effects = (data.customization && data.customization.effects) || {};
+    if (effects.scrollHint === false) return;
+
+    // si la página ya viene desplazada (volver atrás, enlace con #), no se muestra
+    if (window.scrollY > 40) return;
+
+    hint.hidden = false;
+    /* Un respiro para que la transición de entrada se vea. Con
+       requestAnimationFrame no sirve: si la pestaña no está pintando (recién
+       abierta en segundo plano, o el navegador la frena), rAF no corre y el
+       aviso se quedaría invisible para siempre. */
+    setTimeout(function () { hint.classList.add("is-visible"); }, 30);
+
+    var gone = false;
+    function dismiss() {
+      if (gone || window.scrollY <= 40) return;
+      gone = true;
+      hint.classList.remove("is-visible");
+      hint.classList.add("is-gone");
+      window.removeEventListener("scroll", dismiss);
+      setTimeout(function () { hint.hidden = true; }, 600);
+    }
+    window.addEventListener("scroll", dismiss, { passive: true });
+  }
+
   /* ---------------- Flecha: ir al inicio o al final de la página (según dónde estés) ---------------- */
   function initScrollButtons() {
     var stack = $("[data-scroll-fab]");
@@ -1334,16 +1367,74 @@
       updateTabs(i);
     }
 
+    /* ---- Movimiento automático entre las formas de ganar ----
+       Configurable desde el panel (Premio del día → Movimiento automático).
+       Se detiene en cuanto el cliente elige una opción, y vuelve a andar
+       cuando desplaza la página: la señal de que ya siguió mirando. */
+    var carCfg = (data.dailyPrize && data.dailyPrize.carousel) || {};
+    var autoOn = carCfg.active !== false && !reduced && activeKeys.length > 1;
+    var stepDir = carCfg.direction === "rtl" ? -1 : 1;
+    // el panel lo pide en segundos porque es lo que se entiende; aquí se pasa
+    // a milisegundos, con un mínimo para que nunca quede imposible de leer
+    var everyMs = Math.max(1500, (Number(carCfg.intervalSeconds) || 5) * 1000);
+    var autoTimer = null;
+    var pickedByUser = false;
+    var pickedAt = 0;
+
+    function autoStop() { clearInterval(autoTimer); autoTimer = null; }
+    function autoStart() {
+      autoStop();
+      if (!autoOn || pickedByUser || document.hidden) return;
+      // nunca mientras se está jugando: se llevaría el juego a mitad de partida
+      if (document.body.classList.contains("run-no-scroll")) return;
+      autoTimer = setInterval(function () {
+        if (document.body.classList.contains("run-no-scroll")) return;
+        goTo(currentIndex() + stepDir);
+      }, everyMs);
+    }
+    function userPicked() {
+      pickedByUser = true;
+      pickedAt = Date.now();
+      autoStop();
+    }
+
     if (tabsWrap) {
       $$(".prize-tab", tabsWrap).forEach(function (tab, i) {
-        tab.addEventListener("click", function () { goTo(i); });
+        tab.addEventListener("click", function () { userPicked(); goTo(i); });
       });
     }
+    // deslizar el carrusel con el dedo también cuenta como elegir
+    wrap.addEventListener("pointerdown", function (e) {
+      if (e.pointerType !== "mouse") userPicked();
+    }, { passive: true });
+
     var scrollTimer = null;
     wrap.addEventListener("scroll", function () {
       clearTimeout(scrollTimer);
       scrollTimer = setTimeout(function () { updateTabs(currentIndex()); }, 100);
     });
+
+    if (autoOn) {
+      window.addEventListener("scroll", function () {
+        // margen: el propio gesto de deslizar la tarjeta mueve un poco la página
+        if (pickedByUser && Date.now() - pickedAt > 600) {
+          pickedByUser = false;
+          autoStart();
+        }
+      }, { passive: true });
+
+      document.addEventListener("visibilitychange", function () {
+        if (document.hidden) autoStop(); else autoStart();
+      });
+
+      /* A propósito NO se usa IntersectionObserver para pausar cuando la
+         sección no está a la vista: ya pasó con el carrusel de las categorías
+         que el observador no reporta (o reporta tarde y en falso), y el
+         carrusel se quedaba quieto para siempre. Lo que se ahorraría es un
+         solo temporizador; no compensa el riesgo de que la función no ande. */
+      autoStart();
+      window.__prizeAutoRefresh = autoStart;   // lo usa el juego al salir
+    }
   }
 
   /* ---- Método 1: Cronómetro (misma fecha para todos los visitantes, se repite solo) ---- */
@@ -2418,6 +2509,7 @@
     safe(initWhatsappLinks, "initWhatsappLinks");
     safe(initBackgroundMusic, "initBackgroundMusic");
     safe(initNav, "initNav");
+    safe(initScrollHint, "initScrollHint");
     safe(initScrollButtons, "initScrollButtons");
     safe(initPageNav, "initPageNav");
     safe(initLightbox, "initLightbox");

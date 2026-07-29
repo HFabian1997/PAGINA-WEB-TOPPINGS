@@ -269,6 +269,12 @@
         // y otra vez tras el reflujo, por si el navegador lo reajusta después
         requestAnimationFrame(restore);
       }
+
+      // El carrusel de premios se congela mientras se juega; al salir hay que
+      // avisarle para que vuelva a arrancar solo.
+      if (!goingFullscreen && wasFullscreen && window.__prizeAutoRefresh) {
+        window.__prizeAutoRefresh();
+      }
     }
 
     /* ---- tamaño del canvas: 100% del ancho de su tarjeta, nunca más — así
