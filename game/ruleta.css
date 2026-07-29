@@ -62,6 +62,10 @@
   font-family: var(--display); font-size: 1.8rem; color: var(--accent); margin-bottom: .5rem;
   animation: ruletaResultPop .5s var(--ease-out);
 }
+/* Cuando no ganó: sin el amarillo de celebración ni el rebote. */
+.ruleta-result-title.is-lose {
+  color: var(--ink-soft); font-size: 1.5rem; animation: none;
+}
 @keyframes ruletaResultPop {
   0% { transform: scale(.7); opacity: 0; }
   60% { transform: scale(1.06); opacity: 1; }

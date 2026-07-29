@@ -49,17 +49,13 @@ function businessWhatsapp() {
   return is_array($content) && isset($content['business']['whatsapp']) ? (string) $content['business']['whatsapp'] : '';
 }
 
-/** Premios que de verdad pueden salir ahora mismo: activos, dentro de sus
-    fechas (si las tienen) y con inventario disponible (o ilimitado). */
+/** Premios que de verdad pueden salir ahora mismo: los que están activos.
+    El inventario y las fechas se quitaron — no eran configurables desde el
+    panel, así que eran reglas invisibles que nadie podía manejar. */
 function eligiblePrizes($prizes) {
-  $today = date('Y-m-d');
   $out = array();
   foreach ($prizes as $p) {
     if (empty($p['active'])) continue;
-    if (!empty($p['startDate']) && $today < $p['startDate']) continue;
-    if (!empty($p['endDate']) && $today > $p['endDate']) continue;
-    $inv = isset($p['inventory']) ? (int) $p['inventory'] : -1;
-    if ($inv === 0) continue;
     $out[] = $p;
   }
   return $out;
@@ -86,9 +82,9 @@ function pickWeightedPrize($eligible) {
 /** Vista pública de un premio: nunca expone probabilidad, inventario ni límites. */
 function publicPrize($p) {
   return array(
-    'id' => $p['id'], 'name' => $p['name'], 'description' => isset($p['description']) ? $p['description'] : '',
+    'id' => $p['id'], 'name' => $p['name'],
     'icon' => isset($p['icon']) ? $p['icon'] : '🎁', 'color' => isset($p['color']) ? $p['color'] : '#ffd400',
-    'order' => isset($p['order']) ? (int) $p['order'] : 0, 'claimable' => !empty($p['claimable']),
+    'claimable' => !empty($p['claimable']),
   );
 }
 
@@ -114,11 +110,12 @@ switch ($action) {
     $deviceId = isset($_GET['deviceId']) ? trim((string) $_GET['deviceId']) : '';
     $state = ruletaWithWriteLock(function ($s) { ruletaExpireTickets($s); return $s; });
     $prizes = array_values(array_filter($state['prizes'], function ($p) { return !empty($p['active']); }));
-    usort($prizes, function ($a, $b) { return (int) $a['order'] - (int) $b['order']; });
     jsonOut(array(
       'ok' => true,
       'active' => !!$state['active'],
       'title' => $state['title'],
+      'winTitle' => isset($state['winTitle']) && $state['winTitle'] !== '' ? $state['winTitle'] : '¡GANASTE!',
+      'loseTitle' => isset($state['loseTitle']) && $state['loseTitle'] !== '' ? $state['loseTitle'] : '¡QUÉ MALA SUERTE!',
       'soundEnabled' => !!$state['soundEnabled'],
       'confettiEnabled' => !!$state['confettiEnabled'],
       'whatsappNumber' => $state['whatsappNumber'] !== '' ? $state['whatsappNumber'] : businessWhatsapp(),
@@ -161,15 +158,6 @@ switch ($action) {
         return $state;
       }
       $prize = pickWeightedPrize($eligible);
-
-      // Descuenta inventario en la misma operación segura (el candado ya
-      // está tomado): nunca puede entregarse un premio agotado dos veces.
-      foreach ($state['prizes'] as &$p) {
-        if ($p['id'] === $prize['id'] && isset($p['inventory']) && (int) $p['inventory'] > 0) {
-          $p['inventory'] = (int) $p['inventory'] - 1;
-        }
-      }
-      unset($p);
 
       $now = ruletaNowMs();
       $claimable = !empty($prize['claimable']);
@@ -220,24 +208,23 @@ switch ($action) {
       $prizesOut[] = array(
         'id' => isset($p['id']) && $p['id'] !== '' ? (string) $p['id'] : uniqid('prz_', true),
         'name' => isset($p['name']) ? (string) $p['name'] : '',
-        'description' => isset($p['description']) ? (string) $p['description'] : '',
         'icon' => isset($p['icon']) ? (string) $p['icon'] : '🎁',
         'color' => isset($p['color']) ? (string) $p['color'] : '#ffd400',
         'probability' => isset($p['probability']) ? (float) $p['probability'] : 0,
-        'inventory' => isset($p['inventory']) ? (int) $p['inventory'] : -1,
         'dailyLimit' => isset($p['dailyLimit']) ? (int) $p['dailyLimit'] : -1,
-        'weeklyLimit' => isset($p['weeklyLimit']) ? (int) $p['weeklyLimit'] : -1,
         'active' => !empty($p['active']),
         'claimable' => !empty($p['claimable']),
-        'startDate' => isset($p['startDate']) ? (string) $p['startDate'] : '',
-        'endDate' => isset($p['endDate']) ? (string) $p['endDate'] : '',
-        'order' => isset($p['order']) ? (int) $p['order'] : 0,
       );
+      /* Ya no se guardan inventario, límite semanal, fechas ni orden: nadie
+         los podía configurar desde el panel y solo estorbaban. El orden es
+         ahora el de esta misma lista, que se cambia arrastrando. */
     }
 
     $final = ruletaWithWriteLock(function ($state) use ($body, $prizesOut) {
       $state['active'] = !empty($body['active']);
       $state['title'] = isset($body['title']) && $body['title'] !== '' ? (string) $body['title'] : 'RULETA TOPPINGS';
+      $state['winTitle'] = isset($body['winTitle']) && $body['winTitle'] !== '' ? (string) $body['winTitle'] : '¡GANASTE!';
+      $state['loseTitle'] = isset($body['loseTitle']) && $body['loseTitle'] !== '' ? (string) $body['loseTitle'] : '¡QUÉ MALA SUERTE!';
       $state['whatsappNumber'] = isset($body['whatsappNumber']) ? (string) $body['whatsappNumber'] : '';
       $state['soundEnabled'] = !empty($body['soundEnabled']);
       $state['confettiEnabled'] = !empty($body['confettiEnabled']);
@@ -286,7 +273,6 @@ switch ($action) {
     $mostWon = $byPrize ? array_key_first($byPrize) : null;
 
     $prizes = $state['prizes'];
-    usort($prizes, function ($a, $b) { return (int) $a['order'] - (int) $b['order']; });
 
     jsonOut(array(
       'ok' => true,

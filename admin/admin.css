@@ -418,10 +418,38 @@ body.is-sorting-active { user-select: none; }
 .ruleta-prob-sum.is-warning { color: var(--danger); }
 
 .ruleta-prizes-list { display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1rem; }
+/* Cada premio es una fila plegada: solo se abre la que se está editando. */
 .ruleta-prize-row {
   background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
-  padding: 1.1rem 1.25rem;
+  padding: .5rem .6rem;
 }
+.ruleta-prize-row.is-open { border-color: var(--accent); }
+.ruleta-prize-row.is-off { opacity: .5; }
+
+.rp-head { display: flex; align-items: center; gap: .4rem; }
+.rp-toggle {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: .5rem;
+  background: none; border: 0; color: var(--ink); cursor: pointer;
+  padding: .4rem .2rem; font: inherit; text-align: left;
+}
+.rp-icon { font-size: 1.15rem; flex: none; }
+.rp-name {
+  flex: 1; min-width: 0; font-weight: 700; font-size: .9rem;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rp-tag {
+  flex: none; font-size: .6rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--ink-mute); border: 1px solid var(--line); border-radius: 999px; padding: .1rem .4rem;
+}
+.rp-prob { flex: none; font-weight: 800; font-size: .82rem; color: var(--accent); }
+.rp-caret { flex: none; color: var(--ink-mute); }
+.rp-active {
+  flex: none; width: 32px; height: 32px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--bg-2); cursor: pointer; font-size: .9rem;
+}
+.rp-body { padding: .6rem .2rem .2rem; border-top: 1px solid var(--line); margin-top: .4rem; }
+.rp-body[hidden] { display: none; }
+.ruleta-prize-row .image-list-grip { position: static; }
 .ruleta-prize-grid {
   display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .9rem 1.2rem; margin-bottom: .9rem;
 }

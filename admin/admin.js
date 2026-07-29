@@ -1639,7 +1639,7 @@
      (acción del cliente) — necesita el mismo candado atómico que la
      acción de girar usa en el servidor. Por eso tiene su propio ciclo
      cargar/guardar, aparte del botón general "Guardar cambios". */
-  var ruletaState = { active: false, title: "RULETA TOPPINGS", whatsappNumber: "", soundEnabled: true, confettiEnabled: true, prizeExpiryHours: 24, prizes: [] };
+  var ruletaState = { active: false, title: "RULETA TOPPINGS", winTitle: "¡GANASTE!", loseTitle: "¡QUÉ MALA SUERTE!", whatsappNumber: "", soundEnabled: true, confettiEnabled: true, prizeExpiryHours: 24, prizes: [] };
   var ruletaLoaded = false;
 
   function fetchRuletaAdmin() {
@@ -1649,6 +1649,8 @@
         if (!res || !res.ok) return;
         ruletaState.active = res.active;
         ruletaState.title = res.title;
+        ruletaState.winTitle = res.winTitle || "¡GANASTE!";
+        ruletaState.loseTitle = res.loseTitle || "¡QUÉ MALA SUERTE!";
         ruletaState.whatsappNumber = res.whatsappNumber;
         ruletaState.soundEnabled = res.soundEnabled;
         ruletaState.confettiEnabled = res.confettiEnabled;
@@ -1683,26 +1685,56 @@
     el.classList.toggle("is-warning", Math.abs(sum - 100) > 0.05);
   }
 
+  /* Cada premio es una fila plegada: ícono, nombre y probabilidad a la vista,
+     y los campos solo cuando se abre. Con 8 premios abiertos a la vez eran
+     más de cien campos en pantalla y había que deslizar sin parar.
+
+     El ORDEN de la lista es el orden real de la rueda: se cambia arrastrando,
+     por eso ya no existe el campo "Orden". */
   function buildRuletaPrizeRow(p, idx) {
     var row = document.createElement("div");
-    row.className = "ruleta-prize-row";
+    row.className = "ruleta-prize-row" + (p.active === false ? " is-off" : "");
     row.innerHTML =
-      '<div class="ruleta-prize-grid">' +
-        '<label>Nombre <input type="text" data-p="name"></label>' +
-        '<label>Ícono <input type="text" data-p="icon" maxlength="4"></label>' +
-        '<label>Color <input type="color" data-p="color"></label>' +
-        '<label>Probabilidad % <input type="number" min="0" max="100" step="0.1" data-p="probability"></label>' +
-        '<label>Inventario (-1 = ilimitado) <input type="number" data-p="inventory"></label>' +
-        '<label>Límite diario (-1 = sin límite) <input type="number" data-p="dailyLimit"></label>' +
-        '<label>Límite semanal (-1 = sin límite) <input type="number" data-p="weeklyLimit"></label>' +
-        '<label>Fecha inicio (opcional) <input type="date" data-p="startDate"></label>' +
-        '<label>Fecha fin (opcional) <input type="date" data-p="endDate"></label>' +
-        '<label>Orden <input type="number" data-p="order"></label>' +
-        '<label class="full">Descripción <input type="text" data-p="description"></label>' +
-        '<label class="switch-inline"><input type="checkbox" data-p="active"> Activo</label>' +
-        '<label class="switch-inline"><input type="checkbox" data-p="claimable"> Premio reclamable (si no, es tipo "sigue intentando")</label>' +
-      '</div>' +
-      '<button type="button" class="btn btn-ghost ruleta-prize-remove">🗑️ Quitar este premio</button>';
+      '<div class="rp-head">' +
+        '<span class="image-list-grip">⠿</span>' +
+        '<button type="button" class="rp-toggle" data-rp-toggle>' +
+          '<span class="rp-icon">' + escHTML(p.icon || "🎁") + "</span>" +
+          '<span class="rp-name">' + escHTML(p.name || "(sin nombre)") + "</span>" +
+          (p.claimable ? "" : '<span class="rp-tag">sigue intentando</span>') +
+          '<span class="rp-prob">' + (Number(p.probability) || 0) + "%</span>" +
+          '<span class="rp-caret">▸</span>' +
+        "</button>" +
+        '<button type="button" class="rp-active" data-rp-active title="Activo / desactivado"></button>' +
+      "</div>" +
+      '<div class="rp-body" hidden>' +
+        '<div class="ruleta-prize-grid">' +
+          '<label class="full">Nombre <input type="text" data-p="name"></label>' +
+          '<label>Ícono <input type="text" data-p="icon" maxlength="4"></label>' +
+          '<label>Color en la rueda <input type="color" data-p="color"></label>' +
+          '<label>Probabilidad % <input type="number" min="0" max="100" step="0.1" data-p="probability"></label>' +
+          '<label>Límite diario (-1 = sin límite) <input type="number" data-p="dailyLimit"></label>' +
+        "</div>" +
+        '<label class="switch-inline"><input type="checkbox" data-p="claimable"> Es un premio de verdad (si lo apagas, es tipo "sigue intentando")</label>' +
+        '<button type="button" class="btn btn-ghost ruleta-prize-remove">🗑️ Quitar este premio</button>' +
+      "</div>";
+
+    var body = row.querySelector(".rp-body");
+    var caret = row.querySelector(".rp-caret");
+    row.querySelector("[data-rp-toggle]").onclick = function () {
+      body.hidden = !body.hidden;
+      caret.textContent = body.hidden ? "▸" : "▾";
+      row.classList.toggle("is-open", !body.hidden);
+    };
+
+    var activeBtn = row.querySelector("[data-rp-active]");
+    function paintActive() { activeBtn.textContent = p.active === false ? "🚫" : "✅"; }
+    paintActive();
+    activeBtn.onclick = function () {
+      p.active = p.active === false;
+      paintActive();
+      row.classList.toggle("is-off", p.active === false);
+      renderRuletaProbSum();
+    };
 
     $$("[data-p]", row).forEach(function (input) {
       var key = input.getAttribute("data-p");
@@ -1711,9 +1743,23 @@
       else input.value = val == null ? "" : val;
       input.oninput = function () {
         p[key] = input.type === "checkbox" ? input.checked : (input.type === "number" ? Number(input.value) : input.value);
-        if (key === "probability" || key === "active") renderRuletaProbSum();
+        if (key === "probability" || key === "name" || key === "icon" || key === "claimable") {
+          // la cabecera muestra estos datos: se refresca sin cerrar la fila
+          var h = row.querySelector(".rp-icon"); if (h) h.textContent = p.icon || "🎁";
+          var n = row.querySelector(".rp-name"); if (n) n.textContent = p.name || "(sin nombre)";
+          var pr = row.querySelector(".rp-prob"); if (pr) pr.textContent = (Number(p.probability) || 0) + "%";
+          var tag = row.querySelector(".rp-tag");
+          if (!p.claimable && !tag) {
+            tag = document.createElement("span");
+            tag.className = "rp-tag";
+            tag.textContent = "sigue intentando";
+            row.querySelector(".rp-prob").insertAdjacentElement("beforebegin", tag);
+          } else if (p.claimable && tag) { tag.remove(); }
+        }
+        if (key === "probability") renderRuletaProbSum();
       };
     });
+
     row.querySelector(".ruleta-prize-remove").addEventListener("click", function () {
       if (!confirm("¿Quitar este premio de la ruleta?")) return;
       ruletaState.prizes.splice(idx, 1);
@@ -1755,11 +1801,19 @@
     if (!btn) return;
     btn.addEventListener("click", function () {
       ruletaState.prizes.push({
-        id: "", name: "Nuevo premio", description: "", icon: "🎁", color: "#ffd400",
-        probability: 0, inventory: -1, dailyLimit: -1, weeklyLimit: -1, active: true,
-        claimable: true, startDate: "", endDate: "", order: ruletaState.prizes.length,
+        id: "", name: "Nuevo premio", icon: "🎁", color: "#ffd400",
+        probability: 0, dailyLimit: -1, active: true, claimable: true
       });
       renderRuletaPrizes();
+      // se abre el último para escribirlo de una, sin tener que buscarlo
+      var filas = $$("[data-ruleta-prizes-list] .ruleta-prize-row");
+      var ultima = filas[filas.length - 1];
+      if (ultima) {
+        ultima.querySelector("[data-rp-toggle]").click();
+        ultima.scrollIntoView({ block: "center" });
+        var nombre = ultima.querySelector('[data-p="name"]');
+        if (nombre) { nombre.focus(); nombre.select(); }
+      }
     });
   }
 

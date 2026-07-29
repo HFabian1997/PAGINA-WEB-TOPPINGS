@@ -208,6 +208,17 @@
     function showResult(prize, result) {
       if (resultNameEl) resultNameEl.textContent = (prize.icon ? prize.icon + " " : "") + prize.name;
       var claimable = !!result.claimable;
+
+      /* El título decía "¡GANASTE!" siempre, incluso cuando salía un premio
+         de tipo "sigue intentando". Ahora depende de si de verdad ganó, y
+         los dos textos se editan desde el panel de la Ruleta. */
+      var titleEl = $("[data-ruleta-result-title]", modal);
+      if (titleEl) {
+        titleEl.textContent = claimable
+          ? (config.winTitle || "¡GANASTE!")
+          : (config.loseTitle || "¡QUÉ MALA SUERTE!");
+        titleEl.classList.toggle("is-lose", !claimable);
+      }
       // el código nunca se muestra — el premio queda guardado por dentro y
       // se ve/reclama desde el botón de regalo 🎁, igual que las otras dinámicas
       if (resultActionsEl) resultActionsEl.hidden = !claimable;
