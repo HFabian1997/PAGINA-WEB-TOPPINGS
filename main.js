@@ -152,14 +152,22 @@
         safe(renderPremioSection, "renderPremioSection");
       })
       .catch(function (e) { console.warn("[rename] premio.php:", e); });
-    // Importante: el ranking solo se refresca DESPUÉS de que el propio
-    // cambio de nombre ya se guardó en el servidor — si se piden los dos al
-    // mismo tiempo, la consulta del ranking puede llegar primero y mostrar
-    // todavía el nombre viejo (por eso antes solo se veía actualizado al
-    // volver a jugar, que sí hace su propia consulta después).
-    fetch(RUN_API, { method: "POST", headers: { "Content-Type": "application/json" }, body: body })
+    /* La acción VA EN LA DIRECCIÓN (`?action=rename`), no solo dentro del
+       mensaje: run-leaderboard.php la lee de ahí. Faltaba, así que el
+       servidor respondía "acción no reconocida" y no renombraba nada — por
+       eso el nombre en el ranking solo cambiaba al volver a jugar, que sí
+       usa `?action=submit`. La tarjeta funcionaba porque premio.php además
+       la acepta dentro del mensaje.
+
+       Además el ranking se refresca DESPUÉS de que el cambio ya quedó
+       guardado: si se pidieran los dos a la vez, la consulta podría llegar
+       primero y mostrar todavía el nombre viejo. */
+    fetch(RUN_API + "?action=rename", { method: "POST", headers: { "Content-Type": "application/json" }, body: body })
       .then(function (r) { return r.json(); })
       .then(function (res) {
+        // Un fallo del servidor no puede pasar desapercibido: antes se
+        // ignoraba la respuesta y el error quedaba invisible.
+        if (!res || !res.ok) console.warn("[rename] el ranking rechazó el cambio:", res && res.error);
         // El servidor devuelve el ranking YA con el nombre corregido: se le
         // pasa tal cual al juego para que repinte con ese dato y no dependa
         // de una segunda consulta.

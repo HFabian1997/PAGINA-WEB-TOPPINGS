@@ -425,6 +425,19 @@ function buildPublicPayload($state, $requesterName, $requesterDevice) {
 $method = $_SERVER['REQUEST_METHOD'];
 $action = isset($_GET['action']) ? $_GET['action'] : '';
 
+/* Si la acción no viene en la dirección, se busca dentro del mensaje — igual
+   que hace premio.php. Sin este respaldo, una llamada que mande la acción
+   solo en el cuerpo cae en "acción no reconocida" y falla en silencio: eso
+   fue exactamente lo que dejó el cambio de nombre sin efecto en el ranking
+   durante días, mientras en la tarjeta sí funcionaba. */
+if ($action === '' && $method === 'POST') {
+  $rawBody = file_get_contents('php://input');
+  $parsedBody = json_decode($rawBody, true);
+  if (is_array($parsedBody) && isset($parsedBody['action'])) {
+    $action = (string) $parsedBody['action'];
+  }
+}
+
 switch ($action) {
 
   case 'status': {
