@@ -438,6 +438,26 @@ body.no-glow [data-hero-cta-primary] { animation-name: heroCtaPulseSoft; }
 .prize-challenge-text { color: var(--ink-soft); max-width: 46ch; }
 .prize-challenge-hint { color: var(--accent); font-size: .88rem; }
 .prize-challenge-hint[hidden] { display: none; }
+/* ---- Reto con enlace externo ----
+   Solo muestra el reto y lleva al enlace: sin foto, sin código y sin
+   reclamo en la página. La prueba se le muestra al mesero en el local. */
+.challenge-photo-mode, .challenge-link-mode {
+  display: flex; flex-direction: column; align-items: center; gap: .75rem; width: 100%;
+}
+.challenge-photo-mode[hidden], .challenge-link-mode[hidden] { display: none; }
+.challenge-link-banner {
+  width: 100%; max-width: 320px; height: auto;
+  border-radius: var(--radius-md); box-shadow: var(--shadow-sm);
+}
+.challenge-link-banner[hidden] { display: none; }
+.challenge-link-prize {
+  font-weight: 800; font-size: .95rem; color: var(--accent); text-align: center;
+}
+.challenge-link-prize[hidden] { display: none; }
+.challenge-link-note {
+  font-size: .8rem; color: var(--ink-mute); text-align: center; max-width: 34ch; line-height: 1.45;
+}
+
 .prize-photo-btn { position: relative; cursor: pointer; }
 .prize-photo-preview {
   width: 120px; height: 120px; object-fit: cover; border-radius: var(--radius-md);

@@ -1802,9 +1802,108 @@
     reader.readAsDataURL(file);
   }
 
+  /* ¿El reto de enlace está dentro de sus fechas? Las fechas son opcionales:
+     vacías = sin límite. Se comparan como texto AAAA-MM-DD, que ordena
+     igual que la fecha, y se usa la fecha local del visitante. */
+  function linkChallengeInWindow(link) {
+    var hoy = new Date();
+    var m = hoy.getMonth() + 1, d = hoy.getDate();
+    var today = hoy.getFullYear() + "-" + (m < 10 ? "0" : "") + m + "-" + (d < 10 ? "0" : "") + d;
+    if (link.startDate && today < link.startDate) return false;
+    if (link.endDate && today > link.endDate) return false;
+    return true;
+  }
+
+  /* Modalidad "enlace externo": la página solo muestra el reto y lleva al
+     enlace. Nada de foto, código, reclamo ni aviso al administrador — la
+     prueba se le muestra al mesero en el local. */
+  /* La tarjeta del reto puede haber quedado reescrita por
+     renderChallengeLockedCard (que reemplaza todo su HTML cuando se agotan
+     los ganadores del día). Si el bloque del enlace no está, se reconstruye
+     — así el modo enlace funciona igual sin depender de recargar. */
+  function ensureChallengeBlocks(card) {
+    if ($("[data-challenge-link-mode]", card)) return;
+    card.innerHTML =
+      '<p class="prize-method-title">🎯 Reto del día</p>' +
+      '<p class="prize-challenge-text" data-challenge-text></p>' +
+      '<p class="prize-challenge-hint" data-challenge-hint hidden></p>' +
+      '<div class="challenge-link-mode" data-challenge-link-mode>' +
+        '<img class="challenge-link-banner" data-challenge-link-banner alt="" hidden>' +
+        '<p class="challenge-link-prize" data-challenge-link-prize hidden></p>' +
+        '<a class="btn btn-primary daily-prize-claim" data-challenge-link-btn href="#" target="_blank" rel="noopener noreferrer"></a>' +
+        '<p class="challenge-link-note" data-challenge-link-note></p>' +
+      "</div>";
+  }
+
+  function mountChallengeLinkMode(card, info) {
+    var link = info.link || {};
+
+    if (!link.url || link.active === false || !linkChallengeInWindow(link)) {
+      card.hidden = true;
+      return true; // atendido: en modo enlace no se cae al modo foto
+    }
+
+    ensureChallengeBlocks(card);
+    var photoMode = $("[data-challenge-photo-mode]", card);
+    var linkMode = $("[data-challenge-link-mode]", card);
+    if (photoMode) photoMode.hidden = true;
+    if (linkMode) linkMode.hidden = false;
+    card.hidden = false;
+
+    var titleEl = $(".prize-method-title", card);
+    if (titleEl && link.title) titleEl.textContent = link.title;
+
+    var textEl = $("[data-challenge-text]", card);
+    if (textEl) textEl.textContent = link.description || info.challengeText || "";
+
+    var hintEl = $("[data-challenge-hint]", card);
+    if (hintEl) hintEl.hidden = true;
+
+    var bannerEl = $("[data-challenge-link-banner]", card);
+    if (bannerEl) {
+      if (link.banner) { bannerEl.src = link.banner; bannerEl.hidden = false; }
+      else bannerEl.hidden = true;
+    }
+
+    var prizeEl = $("[data-challenge-link-prize]", card);
+    if (prizeEl) {
+      if (link.prizeText) { prizeEl.textContent = "🎁 " + link.prizeText; prizeEl.hidden = false; }
+      else prizeEl.hidden = true;
+    }
+
+    var btn = $("[data-challenge-link-btn]", card);
+    if (btn) {
+      btn.textContent = link.buttonLabel || "Participa aquí";
+      btn.href = link.url;
+    }
+
+    var noteEl = $("[data-challenge-link-note]", card);
+    if (noteEl) {
+      noteEl.textContent = link.note ||
+        "Después de completar el reto, muéstrale la prueba al mesero para recibir tu premio.";
+    }
+    return true;
+  }
+
   function mountPrizeChallenge(section, info) {
     var card = $('[data-prize-method="challenge"]', section);
     if (!card) return;
+
+    // El tipo de reto lo elige el admin. "link" no comparte nada del flujo
+    // de la foto: se atiende aquí y se sale.
+    if (info.challengeType === "link") {
+      if (mountChallengeLinkMode(card, info)) return;
+    }
+
+    // ---- Modalidad de siempre: foto de prueba ----
+    var photoModeEl = $("[data-challenge-photo-mode]", card);
+    var linkModeEl = $("[data-challenge-link-mode]", card);
+    if (photoModeEl) photoModeEl.hidden = false;
+    if (linkModeEl) linkModeEl.hidden = true;
+    // el modo enlace pudo haber cambiado el título; se devuelve al suyo
+    var ttl = $(".prize-method-title", card);
+    if (ttl) ttl.textContent = "🎯 Reto del día";
+
     if (!info.challengeText) { card.hidden = true; return; }
     card.hidden = false;
 

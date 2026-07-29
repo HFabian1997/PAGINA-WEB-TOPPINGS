@@ -357,8 +357,41 @@
       <summary>🎯 Reto del día</summary>
       <p class="hint">Escribe el reto y, si quieres, una pista de dónde está escondido. Para reclamar el premio, el cliente sube una foto como prueba de que lo encontró (en vez de un código) — la foto se publica sola en "Stikers encontrados", no necesitas subirla tú. Puedes permitir varios ganadores por día, y reiniciarlo manualmente cuando quieras para abrir más cupos el mismo día.</p>
       <label class="switch"><input type="checkbox" data-field="dailyPrize.challenge.active"> Activar esta forma de ganar</label>
+
       <div class="field-grid" data-form="dailyPrize.challenge">
         <label>Nombre en el carrusel <textarea data-field="label" rows="2"></textarea></label>
+        <label>Tipo de reto
+          <select data-field="challengeType" data-challenge-type-select>
+            <option value="photo">Foto de prueba</option>
+            <option value="link">Enlace externo</option>
+          </select>
+        </label>
+      </div>
+
+      <!-- ===== Reto con ENLACE EXTERNO ===== -->
+      <div data-challenge-mode="link" hidden>
+        <p class="hint">La página solo muestra el reto y lleva al enlace. No se sube foto, no se genera código y no te llega ninguna solicitud: el cliente hace la acción y le muestra la prueba al mesero, que entrega el premio en el local.</p>
+        <label class="switch"><input type="checkbox" data-field="dailyPrize.challenge.link.active"> Reto de enlace activo</label>
+        <div class="field-grid" data-form="dailyPrize.challenge.link">
+          <label class="full">Título del reto <textarea data-field="title" rows="2" placeholder="Reclama un cono dejando una reseña"></textarea></label>
+          <label class="full">Descripción <textarea data-field="description" rows="3" placeholder="Cuéntanos tu experiencia en Google Maps y te damos un cono"></textarea></label>
+          <label class="full">Premio que recibe el cliente <textarea data-field="prizeText" rows="2" placeholder="Un cono gratis"></textarea></label>
+          <label class="full">Texto del botón <input type="text" data-field="buttonLabel" placeholder="Califícanos aquí"></label>
+          <label class="full">Enlace de destino (URL) <input type="text" data-field="url" placeholder="https://g.page/tu-negocio/review"></label>
+          <label>Fecha de inicio (opcional) <input type="date" data-field="startDate"></label>
+          <label>Fecha de finalización (opcional) <input type="date" data-field="endDate"></label>
+          <label class="full">Mensaje debajo del botón <textarea data-field="note" rows="2" placeholder="Después de completar el reto, muéstrale la prueba al mesero para recibir tu premio."></textarea></label>
+        </div>
+        <label class="full">Imagen o banner del reto (opcional)
+          <input type="file" accept="image/*" data-image-field="dailyPrize.challenge.link.banner">
+          <img class="preview" data-image-preview="dailyPrize.challenge.link.banner">
+        </label>
+        <button type="button" class="btn btn-ghost" data-image-remove="dailyPrize.challenge.link.banner">Quitar imagen</button>
+      </div>
+
+      <!-- ===== Reto con FOTO DE PRUEBA (el de siempre) ===== -->
+      <div data-challenge-mode="photo">
+      <div class="field-grid" data-form="dailyPrize.challenge">
         <label class="full">Reto de hoy <textarea data-field="challengeText" rows="2"></textarea></label>
         <label class="full">Pista de dónde está escondido (opcional) <textarea data-field="hintText" rows="2"></textarea></label>
         <label class="full">Premio (lo que ve el cliente al abrir el regalo) <textarea data-field="prizeText" rows="3"></textarea></label>
@@ -381,6 +414,7 @@
         <p class="hint">Cargando estado del reto…</p>
       </div>
       <button type="button" class="btn btn-ghost" data-challenge-reset>🔄 Reiniciar reto de hoy</button>
+      </div><!-- /data-challenge-mode="photo" -->
     </details>
 
     <details class="admin-collapsible">

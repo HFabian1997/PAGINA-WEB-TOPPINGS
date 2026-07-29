@@ -1474,6 +1474,7 @@
     renderAiDocStatus();
     renderLooks();
     renderHomeBlocks();
+    renderChallengeTypeVisibility();
     renderBgTypeVisibility();
     renderModalStyleVisibility();
     renderNameChangeModeVisibility();
@@ -1499,6 +1500,25 @@
       renderBgTypeVisibility();
       renderLooks();
     });
+  }
+
+  /* Tipo de reto: se muestran solo los campos de la modalidad elegida. Los de
+     la otra quedan guardados intactos, así cambiar de tipo y volver no pierde
+     nada de lo que ya estaba escrito. */
+  function renderChallengeTypeVisibility() {
+    var select = $("[data-challenge-type-select]");
+    if (!select) return;
+    var ch = (state.content.dailyPrize && state.content.dailyPrize.challenge) || {};
+    var tipo = ch.challengeType === "link" ? "link" : "photo";
+    $$("[data-challenge-mode]").forEach(function (el) {
+      el.hidden = el.getAttribute("data-challenge-mode") !== tipo;
+    });
+  }
+
+  function initChallengeTypeToggle() {
+    var select = $("[data-challenge-type-select]");
+    if (!select) return;
+    select.addEventListener("change", renderChallengeTypeVisibility);
   }
 
   /* Estilo de las ventanas emergentes: los ajustes del chorreado solo tienen
@@ -1981,6 +2001,7 @@
     initBgTypeToggle();
     initLooks();
     initAddHomeImage();
+    initChallengeTypeToggle();
     initModalStyleToggle();
     initNameChangeModeToggle();
     initRewardTypeToggles();

@@ -100,12 +100,26 @@
             <p class="prize-method-title">🎯 Reto del día</p>
             <p class="prize-challenge-text" data-challenge-text></p>
             <p class="prize-challenge-hint" data-challenge-hint hidden></p>
-            <label class="btn btn-ghost prize-photo-btn">
-              <span data-challenge-photo-label>📷 Subir foto del stiker</span>
-              <input type="file" accept="image/*" capture="environment" data-challenge-photo-input hidden>
-            </label>
-            <img class="prize-photo-preview" data-challenge-photo-preview alt="Tu foto del stiker" hidden>
-            <button type="button" class="btn btn-primary daily-prize-claim" data-prize-claim-btn="challenge" disabled></button>
+
+            <!-- Modalidad A: foto de prueba (la de siempre) -->
+            <div class="challenge-photo-mode" data-challenge-photo-mode>
+              <label class="btn btn-ghost prize-photo-btn">
+                <span data-challenge-photo-label>📷 Subir foto del stiker</span>
+                <input type="file" accept="image/*" capture="environment" data-challenge-photo-input hidden>
+              </label>
+              <img class="prize-photo-preview" data-challenge-photo-preview alt="Tu foto del stiker" hidden>
+              <button type="button" class="btn btn-primary daily-prize-claim" data-prize-claim-btn="challenge" disabled></button>
+            </div>
+
+            <!-- Modalidad B: enlace externo. Solo muestra el reto y lleva al
+                 enlace: no sube fotos, no genera código y no pide aprobación.
+                 La prueba se le muestra al mesero en el local. -->
+            <div class="challenge-link-mode" data-challenge-link-mode hidden>
+              <img class="challenge-link-banner" data-challenge-link-banner alt="" hidden>
+              <p class="challenge-link-prize" data-challenge-link-prize hidden></p>
+              <a class="btn btn-primary daily-prize-claim" data-challenge-link-btn href="#" target="_blank" rel="noopener noreferrer"></a>
+              <p class="challenge-link-note" data-challenge-link-note></p>
+            </div>
           </div>
 
           <!-- Método 4: TOPPINGS RUN (minijuego) -->
