@@ -651,8 +651,12 @@ body.no-animations .claim-waiting-spinner { animation: none; }
   display: flex; align-items: center; justify-content: center; line-height: 1;
 }
 .fab-gift-badge[hidden] { display: none; }
-.gift-codes-card { max-width: 420px; }
-.gift-codes-list { text-align: left; max-height: 55vh; overflow-y: auto; margin-top: 1rem; }
+/* Con el bloque de canje al final, la tarjeta puede quedar más alta que la
+   pantalla en un celular. Se desplaza la ventana completa (no la tarjeta: eso
+   dejaría la franja amarilla del borde subiendo con el contenido). */
+.gift-codes-modal { align-items: flex-start; overflow-y: auto; }
+.gift-codes-card { max-width: 420px; margin: auto; }
+.gift-codes-list { text-align: left; max-height: 42vh; overflow-y: auto; margin-top: 1rem; }
 .gift-code-row {
   display: flex; align-items: center; gap: .75rem; padding: .8rem; margin-bottom: .6rem;
   border: 1px solid var(--line); border-radius: var(--radius-sm); background: rgba(255,255,255,.04);
@@ -678,6 +682,30 @@ body.no-animations .claim-waiting-spinner { animation: none; }
 
 .gift-codes-goto-carousel { margin-top: 1rem; width: 100%; }
 .gift-codes-goto-carousel[hidden] { display: none; }
+
+/* ---- Canjear código de premio (siempre visible dentro del panel 🎁) ----
+   Va fuera de la lista que se repinta, así queda igual con premios y sin
+   premios. La línea punteada la separa de los premios de arriba. */
+.gift-redeem {
+  margin-top: 1.1rem; padding-top: 1.1rem;
+  border-top: 1px dashed var(--line);
+  text-align: center;
+}
+.gift-redeem-title {
+  font-size: .9rem; font-weight: 800; color: var(--ink);
+  margin: 0 0 .7rem; letter-spacing: .01em;
+}
+.gift-redeem .code-modal-input { margin-bottom: .6rem; }
+.gift-redeem .btn { width: 100%; }
+.gift-redeem-msg {
+  font-size: .85rem; line-height: 1.35; margin: 0 0 .7rem;
+  color: var(--ink-soft);
+}
+.gift-redeem-msg.is-error { color: #ff6b6b; }
+.gift-redeem-msg.is-ok { color: #2ecc71; font-weight: 700; }
+/* La clase declara color pero no display; aun así [hidden] necesita su regla
+   explícita para no depender del estilo por defecto del navegador. */
+.gift-redeem-msg[hidden] { display: none; }
 
 .name-taken-card { max-width: 380px; }
 .name-taken-actions { display: flex; flex-direction: column; gap: .6rem; margin-top: 1rem; }

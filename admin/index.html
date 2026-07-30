@@ -8,8 +8,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap">
-<link rel="stylesheet" href="admin.css">
-<link rel="stylesheet" href="../lib/cat-carousel.css?v=20260727">
+<link rel="stylesheet" href="admin.css?v=20260729a">
+<link rel="stylesheet" href="../lib/cat-carousel.css?v=20260729a">
 </head>
 <body>
 
@@ -51,6 +51,7 @@
     <span class="admin-tab-group-label">🎁 Premios y juegos</span>
     <button class="admin-tab" data-tab="premio">Premio del día</button>
     <button class="admin-tab" data-tab="ruleta">🎡 Ruleta</button>
+    <button class="admin-tab" data-tab="redeem">🎟️ Códigos de Premio</button>
     <button class="admin-tab" data-tab="stikers">Stikers encontrados</button>
 
     <span class="admin-tab-group-label">⚙️ Configuración general</span>
@@ -267,6 +268,10 @@
     <div class="field-grid" data-form="deliverySettings">
       <label>🔒 PIN de empleados (distinto de tu clave de administrador — lo usan para abrir "Entregar premio" en el local) <input type="text" data-field="pin"></label>
     </div>
+
+    <h3>🧱 Orden de las formas de ganar</h3>
+    <p class="hint">Arrastrá desde el asa ⠿ para cambiar el orden en que el cliente las ve. La primera de la lista es la que sale de entrada. Las que estén desactivadas no se muestran, pero se quedan en la lista para cuando las vuelvas a activar.</p>
+    <div class="home-blocks" data-prize-method-order></div>
 
     <h3>🎠 Movimiento automático</h3>
     <p class="hint">Las formas de ganar van pasando solas, para que el cliente las vea todas sin tener que deslizar. Si él elige una, se detiene y se queda ahí; vuelve a moverse cuando desplaza la página. Mientras alguien juega TOPPINGS RUN nunca se mueve.</p>
@@ -515,6 +520,20 @@
     </div>
   </section>
 
+  <section class="admin-panel" data-panel="redeem" hidden>
+    <h2>🎟️ Códigos de Premio</h2>
+    <p class="hint">Aquí creas códigos para regalar premios a mano: escribes una palabra (la que quieras: <strong>amigo</strong>, <strong>ANIVERSARIO</strong>, <strong>promo10</strong>…) y se la das al cliente. Él la escribe en el botón 🎁 de la página y el premio le queda desbloqueado al instante, para reclamarlo igual que cualquier otro (con el PIN del empleado). No importan las mayúsculas: "amigo" y "AMIGO" son el mismo código. Sirve para clientes especiales, promociones, eventos o campañas, sin tocar nada de las otras formas de ganar.</p>
+    <p class="hint" data-redeem-status></p>
+
+    <div class="redeem-codes-list" data-redeem-codes-list></div>
+    <button type="button" class="btn btn-primary" data-redeem-add>+ Agregar código</button>
+
+    <div class="ruleta-savebar">
+      <span class="save-status" data-redeem-save-status></span>
+      <button type="button" class="btn btn-primary" data-redeem-save-btn>Guardar códigos</button>
+    </div>
+  </section>
+
   <section class="admin-panel" data-panel="stikers" hidden>
     <h2>Stikers encontrados</h2>
     <p class="hint">Estas fotos las suben los clientes solos al reclamar el reto del día — aparecen aquí automáticamente, no tienes que subirlas tú. Necesitas haber escrito una "Clave de administrador" (pestaña Negocio) para poder borrar fotos.</p>
@@ -680,7 +699,7 @@
 
 <script src="lib/qrcode.min.js"></script>
 <!-- mismo carrusel que ve el cliente, para que la vista previa sea idéntica -->
-<script src="../lib/cat-carousel.js?v=20260727"></script>
-<script defer src="admin.js"></script>
+<script src="../lib/cat-carousel.js?v=20260729a"></script>
+<script defer src="admin.js?v=20260729a"></script>
 </body>
 </html>

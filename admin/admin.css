@@ -455,7 +455,28 @@ body.is-sorting-active { user-select: none; }
 }
 .ruleta-prize-grid label { display: flex; flex-direction: column; gap: .35rem; font-size: .78rem; color: var(--ink-soft); font-weight: 600; }
 .ruleta-prize-grid label.full { grid-column: 1 / -1; }
+/* Los campos de fecha y hora traen un ancho propio grande (más de 400px) y,
+   como los elementos de una grilla arrancan en min-width:auto, estiraban la
+   fila más allá de la pantalla del celular. */
+.ruleta-prize-grid > label { min-width: 0; }
+.ruleta-prize-grid input,
+.ruleta-prize-grid select,
+.ruleta-prize-grid textarea { min-width: 0; max-width: 100%; }
 .ruleta-prize-remove { font-size: .78rem; }
+
+/* ---- 🎟️ Códigos de Premio ----
+   Reutiliza las filas plegadas de la ruleta (.ruleta-prize-row y compañía):
+   son el mismo patrón y Fabián administra desde el celular, donde abrir solo
+   la fila que se edita es lo que evita deslizar de más. */
+.redeem-codes-list { display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1rem; }
+.redeem-code-field { display: flex; gap: .4rem; align-items: stretch; }
+.redeem-code-field input { flex: 1; min-width: 0; }
+.redeem-gen-btn { flex: none; padding: 0 .7rem; font-size: 1rem; }
+/* .ruleta-prize-grid declara display:grid, así que [hidden] necesita su regla
+   explícita para de verdad ocultar el bloque del tipo que no está elegido. */
+.ruleta-prize-grid[hidden] { display: none; }
+.redeem-log { margin-bottom: .9rem; }
+.redeem-log-row { margin: .2rem 0; }
 
 .ruleta-savebar { display: flex; align-items: center; justify-content: flex-end; gap: 1rem; margin-bottom: 2rem; }
 

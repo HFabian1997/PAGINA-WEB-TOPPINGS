@@ -1462,6 +1462,74 @@
     });
   }
 
+  /* ---------------- orden de las formas de ganar (Premio del día) ----------------
+     Mismo patrón que los bloques del inicio: una lista arrastrable desde el asa
+     ⠿ (pointer events, no arrastre nativo, que en táctil no existe). Las claves
+     que falten se agregan al final, así nunca desaparece una forma de ganar. */
+  var PRIZE_METHOD_META = {
+    cronometro: { icon: "⏱️", label: "Cronómetro" },
+    loyalty: { icon: "🎟️", label: "Tarjeta de fidelidad" },
+    challenge: { icon: "🎯", label: "Reto del día" },
+    toppingsRun: { icon: "🎮", label: "TOPPINGS RUN" }
+  };
+
+  function prizeMethodOrder() {
+    // state.content es null hasta que se inicia sesión y llega el contenido
+    if (!state.content) return [];
+    var dp = state.content.dailyPrize || (state.content.dailyPrize = {});
+    if (!Array.isArray(dp.methodOrder)) dp.methodOrder = [];
+    // se limpia lo que no exista y se completa con lo que falte, en el orden
+    // en que están declaradas arriba
+    dp.methodOrder = dp.methodOrder.filter(function (k, i) {
+      return PRIZE_METHOD_META[k] && dp.methodOrder.indexOf(k) === i;
+    });
+    Object.keys(PRIZE_METHOD_META).forEach(function (k) {
+      if (dp.methodOrder.indexOf(k) === -1) dp.methodOrder.push(k);
+    });
+    return dp.methodOrder;
+  }
+
+  function renderPrizeMethodOrder() {
+    var list = $("[data-prize-method-order]");
+    if (!list) return;
+    var order = prizeMethodOrder();
+    var dp = (state.content && state.content.dailyPrize) || {};
+
+    if (!list.__sortable) {
+      list.__sortable = true;
+      makeSortable(list, function (from, to) {
+        var arr = prizeMethodOrder();
+        arr.splice(to, 0, arr.splice(from, 1)[0]);
+        markDirty();
+        renderPrizeMethodOrder();
+      });
+    }
+
+    list.innerHTML = "";
+    order.forEach(function (key) {
+      var meta = PRIZE_METHOD_META[key];
+      var activa = !!(dp[key] && dp[key].active);
+      var row = document.createElement("div");
+      row.className = "home-block" + (activa ? "" : " is-off");
+      row.setAttribute("data-sort-item", "");
+      row.innerHTML =
+        '<span class="home-block-icon">' + meta.icon + "</span>" +
+        '<span class="home-block-label">' + escHTML(meta.label) + "</span>" +
+        '<span class="home-block-tag">' + (activa ? "activa" : "desactivada") + "</span>" +
+        '<span class="image-list-grip">⠿</span>';
+      list.appendChild(row);
+    });
+  }
+
+  /* La etiqueta "activa/desactivada" de cada fila sigue al interruptor de esa
+     forma de ganar, que vive más abajo en el mismo panel. */
+  function initPrizeMethodOrder() {
+    Object.keys(PRIZE_METHOD_META).forEach(function (key) {
+      var sw = $('[data-field="dailyPrize.' + key + '.active"]');
+      if (sw) sw.addEventListener("change", renderPrizeMethodOrder);
+    });
+  }
+
   /* ---------------- render everything ---------------- */
   function renderAll() {
     renderForms();
@@ -1474,6 +1542,7 @@
     renderAiDocStatus();
     renderLooks();
     renderHomeBlocks();
+    renderPrizeMethodOrder();
     renderChallengeTypeVisibility();
     renderBgTypeVisibility();
     renderModalStyleVisibility();
@@ -1874,6 +1943,287 @@
     initRuletaSave();
   }
 
+  /* ==================== 🎟️ Códigos de Premio (cupones a mano) ====================
+     El admin escribe una palabra, la reparte, y quien la escriba en el panel 🎁
+     de la página desbloquea el premio. Tiene su propio archivo y su propio
+     botón de guardar, igual que la ruleta — el estado NO vive en content.json
+     porque los canjes los escribe el cliente en cualquier momento y
+     content.json se sobrescribe completo en cada guardado del panel. */
+  var REDEEM_API = "../api/redeem.php";
+  var redeemState = { codes: [] };
+  var redeemLoaded = false;
+
+  function fetchRedeemAdmin() {
+    var statusEl = $("[data-redeem-status]");
+    if (statusEl) statusEl.textContent = "Cargando códigos…";
+    fetch(REDEEM_API + "?action=admin-list", { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (!res || !res.ok) {
+          if (statusEl) { statusEl.textContent = (res && res.error) || "No se pudieron cargar los códigos."; statusEl.style.color = "var(--danger)"; }
+          return;
+        }
+        redeemState.codes = res.codes || [];
+        if (statusEl) { statusEl.textContent = ""; statusEl.style.color = ""; }
+        renderRedeemCodes();
+      })
+      .catch(function () {
+        if (statusEl) { statusEl.textContent = "No se pudo conectar con el servidor."; statusEl.style.color = "var(--danger)"; }
+      });
+  }
+
+  function redeemUsesLabel(c) {
+    var usados = Number(c.usedCount) || 0;
+    var tope = Number(c.maxUses);
+    return usados + "/" + (tope >= 0 ? tope : "∞") + " usos";
+  }
+
+  function buildRedeemCodeRow(c, idx) {
+    var row = document.createElement("div");
+    row.className = "ruleta-prize-row" + (c.active ? "" : " is-off");
+    row.innerHTML =
+      '<div class="rp-head">' +
+        '<button type="button" class="rp-toggle" data-rp-toggle>' +
+          '<span class="rp-icon">🎟️</span>' +
+          '<span class="rp-name">' + escHTML(c.code || "(sin código)") + "</span>" +
+          '<span class="rp-prob" data-rc-uses>' + escHTML(redeemUsesLabel(c)) + "</span>" +
+          '<span class="rp-caret">▸</span>' +
+        "</button>" +
+        '<button type="button" class="rp-active" data-rp-active title="Activo / desactivado"></button>' +
+      "</div>" +
+      '<div class="rp-body" hidden>' +
+        '<div class="ruleta-prize-grid">' +
+          '<label class="full">Código que le das al cliente (una palabra o frase, sin importar mayúsculas)' +
+            '<span class="redeem-code-field">' +
+              '<input type="text" data-c="code" placeholder="amigo">' +
+              '<button type="button" class="btn btn-ghost redeem-gen-btn" title="Generar uno al azar">🎲</button>' +
+            "</span>" +
+          "</label>" +
+          '<label class="full">Para qué es (solo lo ves tú) <input type="text" data-c="internalName" placeholder="Ej: Clientes del aniversario"></label>' +
+          '<label class="full">Tipo de premio' +
+            '<select data-c="rewardType" data-rc-type>' +
+              '<option value="prize">Premio que entrega un mesero</option>' +
+              '<option value="wheelSpins">Tiro(s) en la Ruleta</option>' +
+            "</select>" +
+          "</label>" +
+        "</div>" +
+
+        '<div class="ruleta-prize-grid" data-rc-field="prize">' +
+          '<label class="full">Nombre del premio (lo que ve el cliente) <input type="text" data-c="prizeName" placeholder="Ej: Bebida gratis"></label>' +
+          '<label>Ícono <input type="text" data-c="prizeIcon" maxlength="4" placeholder="🎁"></label>' +
+          '<label>Vigencia del premio (horas) <input type="number" min="1" data-c="prizeExpiryHours"></label>' +
+        "</div>" +
+
+        '<div class="ruleta-prize-grid" data-rc-field="wheelSpins">' +
+          '<label>Cuántos tiros <input type="number" min="1" data-c="wheelSpinCount"></label>' +
+          '<label>Vigencia del tiro (horas) <input type="number" min="1" data-c="wheelTicketExpiryHours"></label>' +
+        "</div>" +
+
+        '<div class="ruleta-prize-grid">' +
+          '<label>Máximo de usos en total (-1 = sin tope) <input type="number" data-c="maxUses"></label>' +
+          '<label>Usos por persona <input type="number" min="1" data-c="usesPerPerson"></label>' +
+          '<label class="full">Vence el (vacío = no vence) <input type="datetime-local" data-rc-expires></label>' +
+        "</div>" +
+
+        '<details class="admin-collapsible redeem-log">' +
+          "<summary>Ver quién lo usó (" + ((c.redemptions && c.redemptions.length) || 0) + ")</summary>" +
+          '<div data-rc-log></div>' +
+        "</details>" +
+
+        '<button type="button" class="btn btn-ghost ruleta-prize-remove">🗑️ Quitar este código</button>' +
+      "</div>";
+
+    var body = row.querySelector(".rp-body");
+    var caret = row.querySelector(".rp-caret");
+    row.querySelector("[data-rp-toggle]").onclick = function () {
+      body.hidden = !body.hidden;
+      caret.textContent = body.hidden ? "▸" : "▾";
+      row.classList.toggle("is-open", !body.hidden);
+    };
+
+    var activeBtn = row.querySelector("[data-rp-active]");
+    function paintActive() { activeBtn.textContent = c.active ? "✅" : "🚫"; }
+    paintActive();
+    activeBtn.onclick = function () {
+      c.active = !c.active;
+      paintActive();
+      row.classList.toggle("is-off", !c.active);
+    };
+
+    // solo se muestran los campos del tipo de premio elegido
+    var typeSelect = row.querySelector("[data-rc-type]");
+    function paintType() {
+      var t = typeSelect.value === "wheelSpins" ? "wheelSpins" : "prize";
+      $$("[data-rc-field]", row).forEach(function (el) {
+        el.hidden = el.getAttribute("data-rc-field") !== t;
+      });
+    }
+
+    $$("[data-c]", row).forEach(function (input) {
+      var key = input.getAttribute("data-c");
+      var val = c[key];
+      if (input.type === "checkbox") input.checked = !!val;
+      else input.value = val == null ? "" : val;
+      input.oninput = function () {
+        c[key] = input.type === "checkbox" ? input.checked : (input.type === "number" ? Number(input.value) : input.value);
+        if (key === "code") {
+          var n = row.querySelector(".rp-name");
+          if (n) n.textContent = c.code || "(sin código)";
+        }
+        if (key === "maxUses") {
+          var u = row.querySelector("[data-rc-uses]");
+          if (u) u.textContent = redeemUsesLabel(c);
+        }
+        if (key === "rewardType") paintType();
+      };
+    });
+    typeSelect.addEventListener("change", paintType);
+    paintType();
+
+    // La fecha se guarda en milisegundos, pero el campo del navegador habla en
+    // hora local — se convierte en los dos sentidos.
+    var expInput = row.querySelector("[data-rc-expires]");
+    if (c.expiresAt) {
+      var d = new Date(Number(c.expiresAt));
+      var pad = function (n) { return (n < 10 ? "0" : "") + n; };
+      expInput.value = d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) +
+        "T" + pad(d.getHours()) + ":" + pad(d.getMinutes());
+    }
+    expInput.oninput = function () {
+      if (!expInput.value) { c.expiresAt = null; return; }
+      var t = new Date(expInput.value).getTime();
+      c.expiresAt = isNaN(t) ? null : t;
+    };
+
+    var genBtn = row.querySelector(".redeem-gen-btn");
+    genBtn.addEventListener("click", function () {
+      genBtn.disabled = true;
+      fetch(REDEEM_API + "?action=admin-gen", { credentials: "same-origin" })
+        .then(function (r) { return r.json(); })
+        .then(function (res) {
+          genBtn.disabled = false;
+          if (!res || !res.ok) return;
+          c.code = res.code;
+          var input = row.querySelector('[data-c="code"]');
+          if (input) input.value = res.code;
+          var n = row.querySelector(".rp-name");
+          if (n) n.textContent = res.code;
+        })
+        .catch(function () { genBtn.disabled = false; });
+    });
+
+    var log = row.querySelector("[data-rc-log]");
+    var canjes = c.redemptions || [];
+    log.innerHTML = canjes.length
+      ? canjes.map(function (r) {
+          var cuando = r.redeemedAt ? new Date(Number(r.redeemedAt)).toLocaleString() : "—";
+          return '<p class="hint redeem-log-row"><strong>' + escHTML(r.name || "(sin nombre)") + "</strong> — " + escHTML(cuando) + "</p>";
+        }).join("")
+      : '<p class="hint">Todavía nadie lo ha usado.</p>';
+
+    row.querySelector(".ruleta-prize-remove").addEventListener("click", function () {
+      if (!confirm('¿Quitar el código "' + (c.code || "") + '"? Quien ya lo canjeó se queda con su premio.')) return;
+      redeemState.codes.splice(idx, 1);
+      renderRedeemCodes();
+    });
+
+    return row;
+  }
+
+  function renderRedeemCodes() {
+    var list = $("[data-redeem-codes-list]");
+    if (!list) return;
+
+    if (!list.__sortable) {
+      list.__sortable = true;
+      makeSortable(list, function (from, to) {
+        var arr = redeemState.codes;
+        arr.splice(to, 0, arr.splice(from, 1)[0]);
+        renderRedeemCodes();
+      });
+    }
+
+    list.innerHTML = "";
+    if (!redeemState.codes.length) {
+      list.innerHTML = '<p class="hint">Todavía no hay códigos. Dale a "+ Agregar código" para crear el primero.</p>';
+      return;
+    }
+    redeemState.codes.forEach(function (c, idx) {
+      var row = buildRedeemCodeRow(c, idx);
+      row.setAttribute("data-sort-item", "");
+      var grip = document.createElement("span");
+      grip.className = "image-list-grip";
+      grip.textContent = "⠿";
+      row.appendChild(grip);
+      list.appendChild(row);
+    });
+  }
+
+  function initRedeemAdd() {
+    var btn = $("[data-redeem-add]");
+    if (!btn) return;
+    btn.addEventListener("click", function () {
+      redeemState.codes.push({
+        id: "", code: "", internalName: "", description: "",
+        rewardType: "prize", prizeName: "", prizeIcon: "🎁", prizeExpiryHours: 24,
+        wheelSpinCount: 1, wheelTicketExpiryHours: 24,
+        maxUses: -1, usesPerPerson: 1, expiresAt: null, active: true,
+        usedCount: 0, redemptions: []
+      });
+      renderRedeemCodes();
+      // se abre el último para escribirlo de una, sin tener que buscarlo
+      var filas = $$("[data-redeem-codes-list] .ruleta-prize-row");
+      var ultima = filas[filas.length - 1];
+      if (ultima) {
+        ultima.querySelector("[data-rp-toggle]").click();
+        ultima.scrollIntoView({ block: "center" });
+        var campo = ultima.querySelector('[data-c="code"]');
+        if (campo) campo.focus();
+      }
+    });
+  }
+
+  function initRedeemSave() {
+    var btn = $("[data-redeem-save-btn]");
+    if (!btn) return;
+    btn.addEventListener("click", function () {
+      var statusEl = $("[data-redeem-save-status]");
+      var vacio = redeemState.codes.some(function (c) { return !String(c.code || "").trim(); });
+      if (vacio) {
+        if (statusEl) { statusEl.textContent = "Hay un código sin palabra escrita."; statusEl.className = "save-status is-error"; }
+        return;
+      }
+      if (statusEl) { statusEl.textContent = "Guardando…"; statusEl.className = "save-status"; }
+      fetch(REDEEM_API + "?action=admin-save", {
+        method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "admin-save", codes: redeemState.codes })
+      }).then(function (r) { return r.json(); })
+        .then(function (res) {
+          if (res && res.ok) {
+            if (statusEl) { statusEl.textContent = "Guardado ✓"; statusEl.className = "save-status is-ok"; }
+            // se relee para traer los id que el servidor asignó a los nuevos
+            fetchRedeemAdmin();
+          } else if (statusEl) {
+            statusEl.textContent = (res && res.error) || "No se pudo guardar."; statusEl.className = "save-status is-error";
+          }
+        })
+        .catch(function () {
+          if (statusEl) { statusEl.textContent = "No se pudo conectar con el servidor."; statusEl.className = "save-status is-error"; }
+        });
+    });
+  }
+
+  function initRedeemTab() {
+    var tabBtn = $('[data-tab="redeem"]');
+    if (tabBtn) {
+      tabBtn.addEventListener("click", function () {
+        if (!redeemLoaded) { redeemLoaded = true; fetchRedeemAdmin(); }
+      });
+    }
+    initRedeemAdd();
+    initRedeemSave();
+  }
+
   /* ==================== 🎁 Validar / Entregar premios (unificado) ====================
      Cubre TODOS los premios (cronómetro, fidelidad, reto, juego y Ruleta) —
      un solo lugar para buscar códigos, anular uno y ver las estadísticas
@@ -2001,6 +2351,7 @@
     initBgTypeToggle();
     initLooks();
     initAddHomeImage();
+    initPrizeMethodOrder();
     initChallengeTypeToggle();
     initModalStyleToggle();
     initNameChangeModeToggle();
@@ -2008,6 +2359,7 @@
     initRankingReset();
     initChallengeReset();
     initRuletaTab();
+    initRedeemTab();
     initCodesSearch();
     initCarouselPreviewModal();
     initSave();

@@ -10,9 +10,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap">
-<link rel="stylesheet" href="styles.css?v=20260728a">
-<link rel="stylesheet" href="lib/cat-carousel.css?v=20260728a">
-<link rel="stylesheet" href="editor/page-editor.css?v=20260728a">
+<link rel="stylesheet" href="styles.css?v=20260729a">
+<link rel="stylesheet" href="lib/cat-carousel.css?v=20260729a">
+<link rel="stylesheet" href="editor/page-editor.css?v=20260729a">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 fill=%22%23111%22/><text x=%2250%22 y=%2268%22 font-size=%2260%22 text-anchor=%22middle%22 fill=%22%23FFD400%22 font-family=%22sans-serif%22 font-weight=%22900%22>T</text></svg>">
 </head>
 <body data-category="zonaSecreta">
@@ -108,8 +108,14 @@
     <button type="button" class="prize-modal-close" data-gift-codes-close aria-label="Cerrar">&times;</button>
     <p class="section-kicker">🎁 Tus premios</p>
     <div class="gift-codes-list" data-gift-codes-list></div>
-    <p class="claim-prize-hint" data-gift-codes-empty hidden>No tienes premios pendientes por reclamar.</p>
+    <p class="claim-prize-hint" data-gift-codes-empty hidden>🎁 Aún no tienes premios disponibles. Participa de nuestros retos y actividades que tenemos para ti</p>
     <button type="button" class="btn btn-ghost gift-codes-goto-carousel" data-gift-codes-goto-carousel hidden>🎯 Ver cómo ganar premios</button>
+    <div class="gift-redeem">
+      <p class="gift-redeem-title">¿Tienes un código de premio?</p>
+      <input type="text" class="code-modal-input" data-redeem-input placeholder="Escribe tu código" autocomplete="off" autocapitalize="characters" spellcheck="false">
+      <p class="gift-redeem-msg" data-redeem-msg hidden></p>
+      <button type="button" class="btn btn-primary" data-redeem-btn>🎟️ Canjear código</button>
+    </div>
   </div>
 </div>
 
@@ -135,8 +141,8 @@
 <script defer src="lib/gsap.min.js"></script>
 <script defer src="lib/ScrollTrigger.min.js"></script>
 <script defer src="lib/manifest.js"></script>
-<script defer src="lib/cat-carousel.js?v=20260728a"></script>
-<script defer src="main.js?v=20260728a"></script>
-<script defer src="editor/page-editor.js?v=20260728a"></script>
+<script defer src="lib/cat-carousel.js?v=20260729a"></script>
+<script defer src="main.js?v=20260729a"></script>
+<script defer src="editor/page-editor.js?v=20260729a"></script>
 </body>
 </html>

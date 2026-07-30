@@ -1161,6 +1161,7 @@
   var PRIZE_API = "api/premio.php";
   var CODES_API = "api/codes.php";
   var RULETA_API_MAIN = "api/ruleta.php";
+  var REDEEM_API = "api/redeem.php";
   var premioState = null;
   var premioPollTimer = null;
   var cronometroGen = 0;
@@ -1242,6 +1243,46 @@
     if (deliverSubtext2) deliverSubtext2.textContent = deliverSub;
   }
 
+  var PRIZE_METHOD_KEYS = ["cronometro", "loyalty", "challenge", "toppingsRun"];
+
+  /* Orden de las formas de ganar, configurable desde el panel.
+     Las claves que la lista guardada no mencione se agregan al final —
+     igual que en applyHomeBlocks — así nunca desaparece una forma de ganar
+     por una lista incompleta o desactualizada. */
+  function orderPrizeMethods(info) {
+    var saved = (info && info.methodOrder) || [];
+    var out = [];
+    var usadas = {};
+    saved.forEach(function (key) {
+      if (usadas[key] || PRIZE_METHOD_KEYS.indexOf(key) === -1) return;
+      usadas[key] = true;
+      out.push({ key: key, data: info[key] || {} });
+    });
+    PRIZE_METHOD_KEYS.forEach(function (key) {
+      if (usadas[key]) return;
+      usadas[key] = true;
+      out.push({ key: key, data: info[key] || {} });
+    });
+    return out;
+  }
+
+  /* Las pestañas hacen wrap.scrollLeft = i * clientWidth, así que el orden
+     del DOM tiene que coincidir con el del arreglo. Mover los nodos (en vez
+     de reescribir innerHTML) conserva las referencias que el juego ya tiene
+     guardadas, así que es seguro hacerlo en cada repintado. */
+  function reorderPrizeCards(section, methods) {
+    var wrap = $("[data-prize-methods]", section);
+    if (!wrap) return;
+    methods.forEach(function (m) {
+      var card = $('[data-prize-method="' + m.key + '"]', wrap);
+      if (card) wrap.appendChild(card);
+    });
+    // las tarjetas inactivas (ocultas) quedan al final, sin perderse
+    $$("[data-prize-method]", wrap).forEach(function (card) {
+      if (card.hidden) wrap.appendChild(card);
+    });
+  }
+
   function renderPremioSection() {
     safe(renderHeroGreeting, "renderHeroGreeting");
     var section = $("[data-daily-prize]");
@@ -1254,12 +1295,7 @@
       return;
     }
 
-    var methods = [
-      { key: "cronometro", data: info.cronometro || {} },
-      { key: "loyalty", data: info.loyalty || {} },
-      { key: "challenge", data: info.challenge || {} },
-      { key: "toppingsRun", data: info.toppingsRun || {} }
-    ].filter(function (m) { return m.data.active; });
+    var methods = orderPrizeMethods(info).filter(function (m) { return m.data.active; });
 
     if (!methods.length) {
       section.hidden = true;
@@ -1282,6 +1318,9 @@
       else if (m.key === "toppingsRun") safe(function () { mountPrizeToppingsRun(section, m.data); }, "mountPrizeToppingsRun");
     });
 
+    // después de montar (ahí queda definido cuáles quedaron visibles) y antes
+    // del selector, que numera las pestañas por posición en el DOM
+    safe(function () { reorderPrizeCards(section, methods); }, "reorderPrizeCards");
     safe(function () { initPrizeSwitcher(section, methods); }, "initPrizeSwitcher");
   }
 
@@ -2553,6 +2592,82 @@
     }, 60000);
   }
 
+  /* ---- Canjear código de premio (dentro del panel 🎁) ----
+     El admin define una palabra en el panel y la reparte (cliente especial,
+     promoción, evento); quien la escriba acá desbloquea el premio, que después
+     reclama igual que cualquier otro. */
+  var REDEEM_REASONS = {
+    not_found: "El código ingresado no es válido.",
+    inactive: "Este código ya no está disponible.",
+    expired: "Este código ha vencido.",
+    already_used: "Este código ya fue utilizado.",
+    max_uses: "Este código ya fue utilizado."
+  };
+
+  function initRedeemCode() {
+    var input = $("[data-redeem-input]");
+    var btn = $("[data-redeem-btn]");
+    var msg = $("[data-redeem-msg]");
+    if (!input || !btn) return;
+    var busy = false;
+
+    function setMsg(text, kind) {
+      if (!msg) return;
+      msg.textContent = text || "";
+      msg.hidden = !text;
+      msg.classList.toggle("is-ok", kind === "ok");
+      msg.classList.toggle("is-error", kind === "error");
+    }
+
+    function submit() {
+      if (busy) return;
+      var code = (input.value || "").trim();
+      if (!code) { setMsg("Escribe el código que te dieron.", "error"); input.focus(); return; }
+
+      busy = true;
+      btn.disabled = true;
+      var originalLabel = btn.textContent;
+      btn.textContent = "Canjeando…";
+      setMsg("", "");
+
+      var name = "";
+      try { name = localStorage.getItem(LOYALTY_NAME_KEY) || ""; } catch (e) {}
+
+      fetch(REDEEM_API + "?action=redeem", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "redeem", code: code, deviceId: getDeviceId(), name: name })
+      })
+        .then(function (r) { return r.json(); })
+        .catch(function () { return null; })
+        .then(function (res) {
+          busy = false;
+          btn.disabled = false;
+          btn.textContent = originalLabel;
+
+          if (!res) { setMsg("No se pudo conectar. Revisa tu internet e intenta de nuevo.", "error"); return; }
+          if (!res.ok) {
+            setMsg(REDEEM_REASONS[res.reason] || res.error || "No se pudo canjear el código.", "error");
+            return;
+          }
+
+          input.value = "";
+          var icon = res.prizeIcon || "🎁";
+          setMsg("¡Listo! " + icon + " " + (res.prizeName || "Premio desbloqueado") + " ya está en tus premios.", "ok");
+          // El premio se creó bajo el deviceId de esta persona, así que aparece
+          // en la lista al instante — sin recargar. Esto también sube el
+          // numerito del botón 🎁.
+          safe(refreshGiftFab, "refreshGiftFab");
+        });
+    }
+
+    btn.addEventListener("click", submit);
+    input.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") { e.preventDefault(); submit(); }
+    });
+    input.addEventListener("input", function () { setMsg("", ""); });
+  }
+
   // Punto de entrada compartido para abrir el panel de premios desde
   // cualquier otro módulo (ej. la ruleta, tras un giro ganador).
   window.__openGiftPanel = function () {
@@ -2680,6 +2795,7 @@
     safe(initClaimPrizeFlow, "initClaimPrizeFlow");
     safe(initDeliverPrizeFlow, "initDeliverPrizeFlow");
     safe(initGiftFab, "initGiftFab");
+    safe(initRedeemCode, "initRedeemCode");
     safe(refreshGiftFab, "refreshGiftFab");
     setInterval(function () { safe(refreshGiftFab, "refreshGiftFab"); }, 30000);
 
