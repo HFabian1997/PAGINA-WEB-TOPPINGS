@@ -1484,6 +1484,20 @@
     });
   }
 
+  /* Los campos "cada cuánto" solo aparecen si eligió reinicio por intervalo. */
+  function renderAttemptsResetVisibility() {
+    var select = $("[data-attempts-reset-select]");
+    if (!select) return;
+    $$("[data-attempts-reset-field]").forEach(function (el) {
+      el.hidden = el.getAttribute("data-attempts-reset-field") !== select.value;
+    });
+  }
+
+  function initAttemptsResetToggle() {
+    var select = $("[data-attempts-reset-select]");
+    if (select) select.addEventListener("change", renderAttemptsResetVisibility);
+  }
+
   /* El tiempo ganador se guarda en milisegundos (uno solo), pero se edita en
      tres casillas (min : seg . centésimas) porque escribir "10000" para decir
      10 segundos no se entiende. */
@@ -1719,6 +1733,7 @@
     renderCronoModeVisibility();
     renderStopTimeTarget();
     renderStopTimeDates();
+    renderAttemptsResetVisibility();
     renderChallengeTypeVisibility();
     renderBgTypeVisibility();
     renderModalStyleVisibility();
@@ -2529,6 +2544,7 @@
     initAddHomeImage();
     initPrizeMethodOrder();
     initStopTimeRound();
+    initAttemptsResetToggle();
     initCronoReset();
     initChallengeTypeToggle();
     initModalStyleToggle();

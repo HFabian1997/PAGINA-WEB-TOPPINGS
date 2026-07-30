@@ -73,7 +73,7 @@ function stMyView($state, $deviceId, $cfg) {
   $abierta = $state['roundStatus'] === 'running' && stInWindow($cfg);
   $usados = stCountAttempts($state, $deviceId, $cfg);
   $ganadores = stCountWinners($state);
-  $ultimo = stLastAttempt($state, $deviceId);
+  $ultimo = stLastAttempt($state, $deviceId, $cfg);
 
   $mio = array('state' => 'none', 'elapsedMs' => null, 'prizeCode' => null, 'prizeClaimed' => false);
   if ($ultimo && !empty($ultimo['stoppedAt'])) {
@@ -96,6 +96,9 @@ function stMyView($state, $deviceId, $cfg) {
     'attemptsPerUser' => $cfg['attemptsPerUser'],
     'attemptsUsed' => $usados,
     'attemptsLeft' => max(0, $cfg['attemptsPerUser'] - $usados),
+    'attemptsReset' => $cfg['attemptsReset'],
+    // cuándo vuelve a tener intento (null si le quedan, o si depende del admin)
+    'nextAttemptAtMs' => stNextResetMs($state, $deviceId, $cfg),
     'winners' => $ganadores,
     'maxWinners' => $cfg['maxWinners'],
     'prizeAvailable' => $cfg['maxWinners'] <= 0 || $ganadores < $cfg['maxWinners'],
@@ -146,12 +149,12 @@ switch ($action) {
         $out = array('ok' => false, 'reason' => 'no_attempts');
         return null;
       }
-      // un intento sin terminar se reutiliza: si alguien recarga la página a
-      // mitad del intento NO recupera el intento, sigue con el mismo
+      // Un intento sin terminar se reutiliza: si alguien recarga la página a
+      // mitad del intento NO recupera el intento, sigue con el mismo. Se busca
+      // solo dentro de la ventana vigente, para que un intento abandonado ayer
+      // no se le coma el intento de hoy.
       $abierto = null;
-      foreach ($state['attempts'] as $a) {
-        if (!isset($a['deviceId'], $a['roundId'])) continue;
-        if ($a['deviceId'] !== $deviceId || $a['roundId'] !== $state['roundId']) continue;
+      foreach (stAttemptsInWindow($state, $deviceId, $cfg) as $a) {
         if (!isset($a['stoppedAt']) || $a['stoppedAt'] === null) { $abierto = $a; break; }
       }
       if ($abierto) {

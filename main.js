@@ -1617,7 +1617,20 @@
      tocar DETENER — se calcula en el mismo momento del clic, no del dibujado. */
   var STOPTIME_API = "api/stoptime.php";
   var stopTimeTimer = null;
-  var stopTimeRun = null;   // { attemptId, t0 } mientras el cronómetro corre
+  var stopTimeRun = null;          // { attemptId, t0 } mientras el cronómetro corre
+  var cuentaRegresivaTimer = null; // conteo hasta que se le renueva el intento
+
+  /** "2 h 05 min", "12:34" o "45 s" — lo más corto que se entienda. */
+  function formatFaltante(ms) {
+    var total = Math.max(0, Math.ceil(ms / 1000));
+    var h = Math.floor(total / 3600);
+    var m = Math.floor((total % 3600) / 60);
+    var s = total % 60;
+    function p2(n) { return (n < 10 ? "0" : "") + n; }
+    if (h >= 1) return h + " h " + p2(m) + " min";
+    if (m >= 1) return m + ":" + p2(s) + " min";
+    return s + " s";
+  }
 
   function formatStopTime(ms) {
     ms = Math.max(0, Math.round(ms));
@@ -1682,6 +1695,48 @@
       }
     }
 
+    /* Línea de abajo: o los intentos que le quedan, o —si ya los gastó— cuánto
+       falta para que se le renueven. El conteo se dibuja acá cada segundo y se
+       apoya en el reloj DEL SERVIDOR (nextAttemptAtMs viene con serverNow al
+       lado), no en el del celular, que puede estar mal puesto. */
+    function renderAttemptsLine(st) {
+      if (!attemptsEl) return;
+      if (cuentaRegresivaTimer) { clearInterval(cuentaRegresivaTimer); cuentaRegresivaTimer = null; }
+
+      var quedan = st.attemptsLeft > 0;
+      var ganadoresTxt = st.maxWinners > 0 ? ("Ganadores: " + st.winners + " de " + st.maxWinners) : "";
+
+      if (quedan && st.roundOpen) {
+        attemptsEl.textContent = "Te queda" + (st.attemptsLeft === 1 ? "" : "n") + " " + st.attemptsLeft +
+          " intento" + (st.attemptsLeft === 1 ? "" : "s");
+        return;
+      }
+
+      if (!st.nextAttemptAtMs) {
+        // por ronda o manual: no hay una hora fija que mostrar
+        attemptsEl.textContent = st.attemptsReset === "round" && !quedan
+          ? "Ya jugaste en esta ronda. Podrás volver cuando empiece la siguiente."
+          : ganadoresTxt;
+        return;
+      }
+
+      var desfase = st.nextAttemptAtMs - (st.serverNow || Date.now());
+      var vencimiento = Date.now() + desfase;
+
+      function pintar() {
+        var falta = vencimiento - Date.now();
+        if (falta <= 0) {
+          if (cuentaRegresivaTimer) { clearInterval(cuentaRegresivaTimer); cuentaRegresivaTimer = null; }
+          attemptsEl.textContent = "¡Ya puedes volver a jugar!";
+          fetchStatus();   // se recarga el estado y vuelve a aparecer EMPEZAR
+          return;
+        }
+        attemptsEl.textContent = "Vuelves a jugar en " + formatFaltante(falta);
+      }
+      pintar();
+      cuentaRegresivaTimer = setInterval(pintar, 1000);
+    }
+
     function render(st) {
       if (targetEl) targetEl.textContent = precisionHint(st.precision, st.targetMs);
 
@@ -1724,15 +1779,7 @@
       actionBtn.disabled = false;
       actionBtn.onclick = empezar;
 
-      if (attemptsEl) {
-        if (!st.roundOpen || mine.state === "won" || mine.state === "lost") {
-          attemptsEl.textContent = st.maxWinners > 0 ? ("Ganadores: " + st.winners + " de " + st.maxWinners) : "";
-        } else {
-          attemptsEl.textContent = "Te queda" + (st.attemptsLeft === 1 ? "" : "n") + " " + st.attemptsLeft +
-            " intento" + (st.attemptsLeft === 1 ? "" : "s");
-        }
-      }
-
+      renderAttemptsLine(st);
       paintPrize(mine);
       prizeBtn.onclick = function () {
         if (mine.state === "won" && mine.prizeCode) openClaimModalWithCode(mine.prizeCode, true);
@@ -1818,6 +1865,9 @@
           }
 
           setMsg("", "");
+          // mientras juega no tiene sentido el conteo "vuelves a jugar en…"
+          if (cuentaRegresivaTimer) { clearInterval(cuentaRegresivaTimer); cuentaRegresivaTimer = null; }
+          if (attemptsEl) attemptsEl.textContent = "";
           // Si el intento venía abierto (recargó la página), el cronómetro
           // arranca desde el tiempo que el servidor ya lleva contando — así
           // recargar no regala un intento nuevo ni deja el reloj en cero.

@@ -139,6 +139,11 @@ p.hint { color: var(--ink-mute); font-size: .9rem; margin: 0 0 1.5rem; }
    `.switch` declaran `display` y le ganan al atributo `hidden`. */
 [data-bg-field][hidden] { display: none; }
 [data-modal-field][hidden] { display: none; }
+/* `.field-grid label` (0,1,1) le gana a un `[hidden]` pelado (0,1,0), así que
+   cada marca de campo condicional necesita la suya con dos selectores. */
+[data-reward-field][hidden] { display: none; }
+[data-attempts-reset-field][hidden] { display: none; }
+[data-rc-field][hidden] { display: none; }
 input[type="text"], input[type="number"], textarea, select {
   background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px;
   color: var(--ink); padding: .65rem .75rem; font: inherit; font-weight: 400;

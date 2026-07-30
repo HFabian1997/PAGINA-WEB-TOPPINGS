@@ -8,8 +8,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap">
-<link rel="stylesheet" href="admin.css?v=20260730a">
-<link rel="stylesheet" href="../lib/cat-carousel.css?v=20260730a">
+<link rel="stylesheet" href="admin.css?v=20260730b">
+<link rel="stylesheet" href="../lib/cat-carousel.css?v=20260730b">
 </head>
 <body>
 
@@ -375,12 +375,22 @@
           <label>Máximo de ganadores por ronda <input type="number" min="0" data-field="maxWinners"></label>
           <label>Intentos por persona <input type="number" min="1" data-field="attemptsPerUser"></label>
           <label class="full">Los intentos se reinician
-            <select data-field="attemptsReset">
+            <select data-field="attemptsReset" data-attempts-reset-select>
+              <option value="daily">Cada día (a la medianoche)</option>
+              <option value="interval">Cada cierto tiempo</option>
               <option value="round">En cada ronda nueva</option>
-              <option value="daily">Cada día</option>
               <option value="manual">Solo cuando yo reinicie participantes</option>
             </select>
           </label>
+          <label data-attempts-reset-field="interval">Cada <input type="number" min="1" step="1" data-field="attemptsResetAmount"></label>
+          <label data-attempts-reset-field="interval">Unidad
+            <select data-field="attemptsResetUnit">
+              <option value="minutes">Minutos</option>
+              <option value="hours">Horas</option>
+              <option value="days">Días</option>
+            </select>
+          </label>
+          <p class="hint full">Con "Cada día" e "Intentos por persona" en 1, cada cliente juega <strong>una vez al día</strong>. Con "Cada cierto tiempo" podés poner, por ejemplo, cada 6 horas. En los dos casos el cliente ve en pantalla cuánto le falta para volver a jugar.</p>
 
           <label>Disponible desde <input type="datetime-local" data-stoptime-date="startAt"></label>
           <label>Disponible hasta <input type="datetime-local" data-stoptime-date="endAt"></label>
@@ -796,7 +806,7 @@
 
 <script src="lib/qrcode.min.js"></script>
 <!-- mismo carrusel que ve el cliente, para que la vista previa sea idéntica -->
-<script src="../lib/cat-carousel.js?v=20260730a"></script>
-<script defer src="admin.js?v=20260730a"></script>
+<script src="../lib/cat-carousel.js?v=20260730b"></script>
+<script defer src="admin.js?v=20260730b"></script>
 </body>
 </html>
