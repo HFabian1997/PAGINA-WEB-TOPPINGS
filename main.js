@@ -1485,13 +1485,36 @@
   function cronometroRepeatMs(info) {
     var amount = Number(info.repeatAmount) || 0;
     if (!amount) return 0;
-    var unitMs = info.repeatUnit === "minutes" ? 60000 : 3600000;
+    var unitMs = info.repeatUnit === "seconds" ? 1000
+      : (info.repeatUnit === "minutes" ? 60000 : 3600000);
     return amount * unitMs;
   }
 
+  /* ============ Cronómetro: dos modos ============
+     El admin elige cuál está activo. La configuración del otro no se borra:
+     son dos ramas independientes de content.json, así que se puede ir y venir
+     entre los dos modos sin perder nada.
+       "countdown" -> cuenta regresiva de siempre (más abajo, sin tocar)
+       "stopTime"  -> "Detén el tiempo" (mountStopTimeGame) */
   function mountPrizeCronometro(section, info) {
     var card = $('[data-prize-method="cronometro"]', section);
     if (!card) return;
+
+    var countdownWrap = $("[data-cronometro-countdown-mode]", card);
+    var stopWrap = $("[data-cronometro-stoptime-mode]", card);
+    var esStopTime = info.mode === "stopTime";
+
+    if (countdownWrap) countdownWrap.hidden = esStopTime;
+    if (stopWrap) stopWrap.hidden = !esStopTime;
+
+    if (esStopTime) {
+      var titleEl2 = $("[data-cronometro-title]", card);
+      if (titleEl2) titleEl2.textContent = (info.stopTime && info.stopTime.title) || info.title || "⏱️ Detén el tiempo";
+      card.hidden = false;
+      safe(function () { mountStopTimeGame(card, info); }, "mountStopTimeGame");
+      return;
+    }
+
     var repeatMs = cronometroRepeatMs(info);
     if (repeatMs <= 0) { card.hidden = true; return; }
 
@@ -1581,6 +1604,277 @@
         else askNameWithCheck(function (name) { doClaim(name || "Cliente"); });
       };
     }
+  }
+
+  /* ============ Modo 2 del cronómetro: "Detén el tiempo" ============
+     Sube un cronómetro y hay que detenerlo justo en el tiempo que configuró el
+     admin. Quien decide si ganó es el servidor (api/stoptime.php); acá solo se
+     mide y se dibuja.
+
+     El tiempo se mide con performance.now(), que es monótono: no lo afecta que
+     el reloj del celular esté mal puesto ni que cambie la hora a mitad del
+     intento. El valor que se manda es EXACTAMENTE el que quedó en pantalla al
+     tocar DETENER — se calcula en el mismo momento del clic, no del dibujado. */
+  var STOPTIME_API = "api/stoptime.php";
+  var stopTimeTimer = null;
+  var stopTimeRun = null;   // { attemptId, t0 } mientras el cronómetro corre
+
+  function formatStopTime(ms) {
+    ms = Math.max(0, Math.round(ms));
+    var cent = Math.floor((ms % 1000) / 10);
+    var totalSeg = Math.floor(ms / 1000);
+    var min = Math.floor(totalSeg / 60);
+    var seg = totalSeg % 60;
+    function p2(n) { return (n < 10 ? "0" : "") + n; }
+    return p2(min) + ":" + p2(seg) + "." + p2(cent);
+  }
+
+  function precisionHint(precision, targetMs) {
+    var t = formatStopTime(targetMs);
+    if (precision === "easy") return "Detenlo en el segundo " + Math.floor(targetMs / 1000) + " (" + t + ")";
+    if (precision === "hard") return "Detenlo exactamente en " + t + " — hasta las centésimas";
+    return "Detenlo en " + t + " (tienes un margen de una décima)";
+  }
+
+  function mountStopTimeGame(card, info) {
+    // Si hay un intento corriendo, no se vuelve a dibujar: un repintado a
+    // mitad del intento reiniciaría el cronómetro del cliente.
+    if (stopTimeRun) return;
+
+    var cfg = info.stopTime || {};
+    var targetEl = $("[data-stoptime-target]", card);
+    var clockEl = $("[data-stoptime-clock]", card);
+    var msgEl = $("[data-stoptime-msg]", card);
+    var actionBtn = $("[data-stoptime-action]", card);
+    var attemptsEl = $("[data-stoptime-attempts]", card);
+    var prizeBtn = $("[data-stoptime-prize]", card);
+    if (!clockEl || !actionBtn || !prizeBtn) return;
+
+    function setMsg(text, kind) {
+      if (!msgEl) return;
+      msgEl.textContent = text || "";
+      msgEl.hidden = !text;
+      msgEl.classList.toggle("is-win", kind === "win");
+      msgEl.classList.toggle("is-lose", kind === "lose");
+    }
+
+    /* Los 4 estados del botón del premio, tal como se pidieron:
+       antes de jugar gris, al ganar verde, al fallar rojo, y gris otra vez
+       cuando el premio ya se reclamó. */
+    function paintPrize(mine) {
+      prizeBtn.classList.remove("is-ready", "is-lost", "is-locked");
+      if (mine.state === "won" && mine.prizeClaimed) {
+        prizeBtn.textContent = cfg.claimedLabel || "Premio reclamado";
+        prizeBtn.classList.add("is-locked");
+        prizeBtn.disabled = true;
+      } else if (mine.state === "won") {
+        prizeBtn.textContent = cfg.claimLabel || "Reclamar premio";
+        prizeBtn.classList.add("is-ready");
+        prizeBtn.disabled = false;
+      } else if (mine.state === "lost") {
+        prizeBtn.textContent = cfg.retryLabel || "Inténtalo en la próxima oportunidad";
+        prizeBtn.classList.add("is-lost");
+        prizeBtn.disabled = true;
+      } else {
+        prizeBtn.textContent = cfg.idleLabel || "Detén el tiempo exacto para ganar";
+        prizeBtn.classList.add("is-locked");
+        prizeBtn.disabled = true;
+      }
+    }
+
+    function render(st) {
+      if (targetEl) targetEl.textContent = precisionHint(st.precision, st.targetMs);
+
+      var mine = st.mine || { state: "none" };
+      /* Quien ya ganó no vuelve a jugar en la ronda. Quien falló solo vuelve si
+         le quedan intentos: con "Intentos por persona" en 1 (lo normal) falla y
+         queda fuera de la ronda, que es lo pedido; si el admin le pone 2 o más,
+         el número que configuró es el que manda. */
+      var puedeJugar = st.roundOpen && st.attemptsLeft > 0 && mine.state !== "won";
+
+      if (mine.elapsedMs != null) clockEl.textContent = formatStopTime(mine.elapsedMs);
+      else clockEl.textContent = formatStopTime(0);
+      clockEl.classList.remove("is-running");
+      clockEl.classList.toggle("is-win", mine.state === "won");
+      clockEl.classList.toggle("is-lose", mine.state === "lost");
+
+      if (mine.state === "won") {
+        setMsg(cfg.winMessage || "🎉 ¡Felicidades! Detuviste el tiempo exacto y ganaste un premio.", "win");
+      } else if (mine.state === "lost") {
+        var base = st.attemptsLeft > 0
+          ? "❌ No era el tiempo exacto. Te detuviste en " + formatStopTime(mine.elapsedMs || 0) + "."
+          : (cfg.loseMessage || "❌ Estuviste cerca. Inténtalo cuando haya una nueva oportunidad.") +
+            " (te detuviste en " + formatStopTime(mine.elapsedMs || 0) + ")";
+        setMsg(base, "lose");
+      } else if (!st.inWindow) {
+        setMsg("Esta dinámica no está disponible en este momento.", "");
+      } else if (!st.roundOpen) {
+        setMsg("Todavía no hay una ronda abierta. Vuelve más tarde.", "");
+      } else {
+        setMsg("", "");
+      }
+
+      actionBtn.hidden = !puedeJugar;
+      // "running" = arrancó un intento y no lo detuvo (recargó la página). El
+      // intento NO se le devuelve: al continuar, el cronómetro sigue desde el
+      // tiempo que ya llevaba corriendo en el servidor.
+      actionBtn.textContent = mine.state === "running"
+        ? (cfg.resumeLabel || "▶️ CONTINUAR")
+        : (cfg.startLabel || "▶️ EMPEZAR");
+      actionBtn.disabled = false;
+      actionBtn.onclick = empezar;
+
+      if (attemptsEl) {
+        if (!st.roundOpen || mine.state === "won" || mine.state === "lost") {
+          attemptsEl.textContent = st.maxWinners > 0 ? ("Ganadores: " + st.winners + " de " + st.maxWinners) : "";
+        } else {
+          attemptsEl.textContent = "Te queda" + (st.attemptsLeft === 1 ? "" : "n") + " " + st.attemptsLeft +
+            " intento" + (st.attemptsLeft === 1 ? "" : "s");
+        }
+      }
+
+      paintPrize(mine);
+      prizeBtn.onclick = function () {
+        if (mine.state === "won" && mine.prizeCode) openClaimModalWithCode(mine.prizeCode, true);
+      };
+    }
+
+    function fetchStatus(cb) {
+      fetch(STOPTIME_API + "?action=status&deviceId=" + encodeURIComponent(getDeviceId()) + "&_=" + Date.now(), { cache: "no-store" })
+        .then(function (r) { return r.json(); })
+        .then(function (st) { if (st && st.ok) { if (cb) cb(st); else render(st); } })
+        .catch(function (e) { console.warn("[stoptime] no se pudo consultar el estado:", e); });
+    }
+
+    function stopClock() {
+      if (stopTimeTimer) { clearInterval(stopTimeTimer); stopTimeTimer = null; }
+    }
+
+    function detener() {
+      if (!stopTimeRun) return;
+      // el valor que se manda es el del instante del clic, no el del último
+      // dibujado: si el navegador se atrasó un cuadro, no se pierde precisión
+      var elapsed = Math.round(performance.now() - stopTimeRun.t0);
+      var attemptId = stopTimeRun.attemptId;
+      stopClock();
+      clockEl.textContent = formatStopTime(elapsed);
+      actionBtn.disabled = true;
+      actionBtn.textContent = "Comprobando…";
+
+      var name = "";
+      try { name = localStorage.getItem(LOYALTY_NAME_KEY) || ""; } catch (e) {}
+
+      fetch(STOPTIME_API + "?action=stop", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "stop", deviceId: getDeviceId(), attemptId: attemptId, elapsedMs: elapsed, name: name })
+      })
+        .then(function (r) { return r.json(); })
+        .catch(function () { return null; })
+        .then(function (res) {
+          stopTimeRun = null;
+          if (!res) {
+            setMsg("No se pudo enviar tu intento. Revisa tu conexión.", "lose");
+            actionBtn.hidden = true;
+            return;
+          }
+          if (!res.ok && res.reason === "time_mismatch") {
+            setMsg("No pudimos validar tu tiempo (la conexión tardó demasiado). Ese intento no cuenta como acierto.", "lose");
+          }
+          if (res.ok && res.won) {
+            safe(refreshGiftFab, "refreshGiftFab");
+            safe(function () { launchStopTimeConfetti(card, cfg); }, "launchStopTimeConfetti");
+          }
+          if (res.ok && res.noSlots) {
+            setMsg("Acertaste, pero los premios de esta ronda ya se acabaron.", "lose");
+            fetchStatus(function (st) { render(st); setMsg("Acertaste, pero los premios de esta ronda ya se acabaron.", "lose"); });
+            return;
+          }
+          fetchStatus();
+        });
+    }
+
+    function empezar() {
+      actionBtn.disabled = true;
+      var name = "";
+      try { name = localStorage.getItem(LOYALTY_NAME_KEY) || ""; } catch (e) {}
+
+      fetch(STOPTIME_API + "?action=start", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "start", deviceId: getDeviceId(), name: name })
+      })
+        .then(function (r) { return r.json(); })
+        .catch(function () { return null; })
+        .then(function (res) {
+          actionBtn.disabled = false;
+          if (!res || !res.ok) {
+            var razones = {
+              round_closed: "Todavía no hay una ronda abierta. Vuelve más tarde.",
+              out_of_window: "Esta dinámica no está disponible en este momento.",
+              no_attempts: "Ya usaste todos tus intentos."
+            };
+            setMsg((res && razones[res.reason]) || (res && res.error) || "No se pudo empezar.", "lose");
+            fetchStatus();
+            return;
+          }
+
+          setMsg("", "");
+          // Si el intento venía abierto (recargó la página), el cronómetro
+          // arranca desde el tiempo que el servidor ya lleva contando — así
+          // recargar no regala un intento nuevo ni deja el reloj en cero.
+          var yaCorrido = res.resumed ? Math.max(0, (res.serverNow || 0) - (res.startedAt || 0)) : 0;
+          stopTimeRun = { attemptId: res.attemptId, t0: performance.now() - yaCorrido };
+          actionBtn.textContent = cfg.stopLabel || "DETENER";
+          actionBtn.onclick = detener;
+          clockEl.classList.remove("is-win", "is-lose");
+          clockEl.classList.add("is-running");
+
+          // setInterval y no requestAnimationFrame: rAF se congela cuando la
+          // pestaña no está pintando, y el cronómetro tiene que seguir
+          // corriendo igual (el mismo motivo por el que el arrastre del panel
+          // usa setInterval).
+          stopClock();
+          stopTimeTimer = setInterval(function () {
+            if (!stopTimeRun) { stopClock(); return; }
+            clockEl.textContent = formatStopTime(performance.now() - stopTimeRun.t0);
+          }, 20);
+        });
+    }
+
+    actionBtn.onclick = empezar;
+    stopClock();
+    clockEl.classList.remove("is-running");
+    fetchStatus();
+  }
+
+  /* Un puñado de destellos al ganar — reutiliza el confeti de la ruleta si
+     está cargado, y si no hace uno simple para no depender de esa página. */
+  function launchStopTimeConfetti(card, cfg) {
+    if (cfg.soundEnabled !== false) safe(function () { playStopTimeWinSound(); }, "playStopTimeWinSound");
+    var host = $("[data-stoptime-clock]", card);
+    if (!host) return;
+    host.classList.remove("is-pop");
+    // reinicia la animación aunque se gane dos veces seguidas
+    void host.offsetWidth;
+    host.classList.add("is-pop");
+  }
+
+  function playStopTimeWinSound() {
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    var ctx = new AC();
+    [880, 1175, 1568].forEach(function (f, i) {
+      var osc = ctx.createOscillator();
+      var gain = ctx.createGain();
+      osc.type = "triangle";
+      osc.frequency.value = f;
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime + i * 0.09);
+      gain.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + i * 0.09 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + i * 0.09 + 0.22);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(ctx.currentTime + i * 0.09);
+      osc.stop(ctx.currentTime + i * 0.09 + 0.25);
+    });
+    setTimeout(function () { try { ctx.close(); } catch (e) {} }, 900);
   }
 
   /* ---- Método 2: Tarjeta de fidelidad (sellada escaneando un QR en el local) ---- */
@@ -1870,6 +2164,7 @@
         '<img class="challenge-link-banner" data-challenge-link-banner alt="" hidden>' +
         '<p class="challenge-link-prize" data-challenge-link-prize hidden></p>' +
         '<a class="btn btn-primary daily-prize-claim" data-challenge-link-btn href="#" target="_blank" rel="noopener noreferrer"></a>' +
+        '<button type="button" class="btn btn-ghost challenge-link-ask" data-challenge-link-ask></button>' +
         '<p class="challenge-link-note" data-challenge-link-note></p>' +
       "</div>";
   }
@@ -1914,6 +2209,29 @@
     if (btn) {
       btn.textContent = link.buttonLabel || "Participa aquí";
       btn.href = link.url;
+    }
+
+    /* En modo enlace NO hay botón de "Reclamar premio": el premio no se
+       entrega solo. El cliente cumple el reto, pide su código por WhatsApp, y
+       lo escribe en "Introducir código de premio" (panel 🎁). */
+    var askBtn = $("[data-challenge-link-ask]", card);
+    if (askBtn) {
+      var askLabel = link.askButtonLabel || "Ya cumplí, solicitar premio";
+      askBtn.textContent = askLabel;
+      askBtn.hidden = link.askButtonActive === false;
+      askBtn.onclick = function () {
+        function abrir(name) {
+          if (name) setCustomerName(name);
+          var plantilla = link.askMessage ||
+            "Hola, soy [nombre]. Cumplí el reto del día. Por favor envíame el código de regalo.";
+          var msg = plantilla.replace(/\[nombre\]/gi, name || "un cliente");
+          window.open(buildWhatsAppUrl(msg), "_blank", "noopener");
+        }
+        var existing = null;
+        try { existing = localStorage.getItem(LOYALTY_NAME_KEY); } catch (e) {}
+        if (existing) abrir(existing);
+        else askNameWithCheck(function (name) { abrir(name || ""); });
+      };
     }
 
     var noteEl = $("[data-challenge-link-note]", card);
@@ -2653,7 +2971,8 @@
 
           input.value = "";
           var icon = res.prizeIcon || "🎁";
-          setMsg("¡Listo! " + icon + " " + (res.prizeName || "Premio desbloqueado") + " ya está en tus premios.", "ok");
+          setMsg("🎉 ¡Felicidades! Has reclamado tu premio: " + icon + " " +
+            (res.prizeName || "Premio desbloqueado") + ". Ya está en tus premios.", "ok");
           // El premio se creó bajo el deviceId de esta persona, así que aparece
           // en la lista al instante — sin recargar. Esto también sube el
           // numerito del botón 🎁.

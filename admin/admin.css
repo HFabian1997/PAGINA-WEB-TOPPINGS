@@ -127,6 +127,14 @@ p.hint { color: var(--ink-mute); font-size: .9rem; margin: 0 0 1.5rem; }
 }
 .field-grid label, .repeat-item label { display: flex; flex-direction: column; gap: .4rem; font-size: .82rem; color: var(--ink-soft); font-weight: 600; }
 .field-grid label.full, .repeat-item label.full { grid-column: 1 / -1; }
+/* .full también sirve para un texto de ayuda suelto dentro de la grilla */
+.field-grid > .full { grid-column: 1 / -1; }
+/* Los elementos de una grilla arrancan en min-width:auto, así que una lista con
+   una opción de texto largo (o un campo de fecha, que trae ancho propio) estira
+   la columna más allá de la pantalla y saca los campos del panel en el celular.
+   Con esto la columna manda y el campo se ajusta. */
+.field-grid > label, .field-grid > button, .field-grid > div { min-width: 0; }
+.field-grid input, .field-grid select, .field-grid textarea { min-width: 0; max-width: 100%; }
 /* Sin esto los campos ocultos se siguen viendo: `.field-grid label` y
    `.switch` declaran `display` y le ganan al atributo `hidden`. */
 [data-bg-field][hidden] { display: none; }
@@ -463,6 +471,19 @@ body.is-sorting-active { user-select: none; }
 .ruleta-prize-grid select,
 .ruleta-prize-grid textarea { min-width: 0; max-width: 100%; }
 .ruleta-prize-remove { font-size: .78rem; }
+
+/* ---- ⏱️ Cronómetro: modo "Detén el tiempo" ---- */
+[data-crono-mode][hidden] { display: none; }
+.stoptime-target-row { display: flex; align-items: center; gap: .35rem; }
+.stoptime-target-row input { width: 4.5rem; min-width: 0; text-align: center; }
+.stoptime-target-row span { color: var(--ink-mute); font-weight: 800; }
+.stoptime-round-box {
+  display: flex; flex-wrap: wrap; gap: .6rem; margin-bottom: .9rem;
+}
+.stoptime-round-box .ruleta-stat { flex: 1 1 120px; }
+.stoptime-round-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }
+.stoptime-log { display: flex; flex-direction: column; max-height: 320px; overflow-y: auto; }
+.stoptime-log-row { margin: .15rem 0; }
 
 /* ---- 🎟️ Códigos de Premio ----
    Reutiliza las filas plegadas de la ruleta (.ruleta-prize-row y compañía):

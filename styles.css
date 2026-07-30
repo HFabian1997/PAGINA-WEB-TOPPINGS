@@ -417,8 +417,46 @@ body.no-glow [data-hero-cta-primary] { animation-name: heroCtaPulseSoft; }
 /* Cronómetro: gris mientras no está listo, verde cuando ya se puede reclamar */
 .daily-prize-claim.is-locked { background: rgba(255,255,255,.12); color: rgba(255,255,255,.45); animation: none; cursor: not-allowed; }
 .daily-prize-claim.is-ready { background: #2ecc71; color: #06331c; }
+.daily-prize-claim.is-lost { background: #c0392b; color: #fff; animation: none; cursor: not-allowed; }
 .prize-crono-claimed { color: var(--accent); font-size: .85rem; font-weight: 700; }
 .prize-crono-claimed[hidden] { display: none; }
+
+/* ---- Cronómetro, modo "Detén el tiempo" ----
+   El reloj es la pieza central: números anchos que no se muevan de sitio al
+   cambiar (tabular-nums), porque a esta velocidad el salto se nota mucho. */
+.stoptime-mode { display: flex; flex-direction: column; align-items: center; gap: .7rem; width: 100%; }
+.stoptime-mode[hidden] { display: none; }
+.stoptime-target { color: var(--ink-soft); font-size: .88rem; margin: 0; max-width: 34ch; }
+.stoptime-clock {
+  font-family: var(--font-display, inherit);
+  font-size: clamp(2.6rem, 13vw, 4rem); font-weight: 800; line-height: 1;
+  letter-spacing: .02em; color: var(--accent);
+  font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1;
+  padding: .35rem 1rem; border-radius: var(--radius-md);
+  border: 2px solid rgba(255,212,0,.28); background: rgba(0,0,0,.35);
+  text-shadow: 0 0 18px rgba(255,212,0,.35);
+}
+.stoptime-clock.is-running { border-color: var(--accent); }
+.stoptime-clock.is-win { color: #2ecc71; border-color: #2ecc71; text-shadow: 0 0 20px rgba(46,204,113,.5); }
+.stoptime-clock.is-lose { color: #ff6b6b; border-color: #ff6b6b; text-shadow: none; }
+.stoptime-clock.is-pop { animation: stoptimePop .55s var(--ease-out) 1; }
+@keyframes stoptimePop {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.14); }
+  100% { transform: scale(1); }
+}
+.stoptime-action { min-width: 190px; font-size: 1.05rem; }
+.stoptime-action[hidden] { display: none; }
+.stoptime-msg { font-size: .92rem; line-height: 1.35; margin: 0; max-width: 34ch; color: var(--ink-soft); }
+.stoptime-msg.is-win { color: #2ecc71; font-weight: 700; }
+.stoptime-msg.is-lose { color: #ff6b6b; }
+.stoptime-msg[hidden] { display: none; }
+.stoptime-attempts { font-size: .8rem; color: var(--ink-mute); margin: 0; }
+.stoptime-prize { width: 100%; max-width: 320px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .stoptime-clock.is-pop { animation: none; }
+}
 
 .loyalty-greeting { font-weight: 700; color: var(--accent); }
 .loyalty-greeting[hidden] { display: none; }
@@ -454,6 +492,10 @@ body.no-glow [data-hero-cta-primary] { animation-name: heroCtaPulseSoft; }
   font-weight: 800; font-size: .95rem; color: var(--accent); text-align: center;
 }
 .challenge-link-prize[hidden] { display: none; }
+/* Segundo botón del reto con enlace: pide el código por WhatsApp. Va en
+   secundario para que "Califícanos aquí" siga siendo el paso principal. */
+.challenge-link-ask { width: 100%; max-width: 320px; font-size: .9rem; }
+.challenge-link-ask[hidden] { display: none; }
 .challenge-link-note {
   font-size: .8rem; color: var(--ink-mute); text-align: center; max-width: 34ch; line-height: 1.45;
 }

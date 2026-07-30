@@ -1462,6 +1462,179 @@
     });
   }
 
+  /* ==================== ⏱️ Cronómetro: los dos modos ====================
+     El selector solo muestra los campos del modo elegido; la configuración del
+     otro sigue guardada en content.json intacta, así que alternar no borra nada. */
+  var STOPTIME_API = "../api/stoptime.php";
+
+  function stopTimeCfg() {
+    if (!state.content) return {};
+    var c = state.content.dailyPrize && state.content.dailyPrize.cronometro;
+    if (!c) return {};
+    if (!c.stopTime || typeof c.stopTime !== "object") c.stopTime = {};
+    return c.stopTime;
+  }
+
+  function renderCronoModeVisibility() {
+    var select = $("[data-crono-mode-select]");
+    if (!select) return;
+    var modo = select.value === "stopTime" ? "stopTime" : "countdown";
+    $$("[data-crono-mode]").forEach(function (el) {
+      el.hidden = el.getAttribute("data-crono-mode") !== modo;
+    });
+  }
+
+  /* El tiempo ganador se guarda en milisegundos (uno solo), pero se edita en
+     tres casillas (min : seg . centésimas) porque escribir "10000" para decir
+     10 segundos no se entiende. */
+  function renderStopTimeTarget() {
+    var cfg = stopTimeCfg();
+    var ms = Number(cfg.targetMs) > 0 ? Number(cfg.targetMs) : 10000;
+    var cent = Math.floor((ms % 1000) / 10);
+    var totalSeg = Math.floor(ms / 1000);
+    var partes = { min: Math.floor(totalSeg / 60), sec: totalSeg % 60, cent: cent };
+    $$("[data-stoptime-part]").forEach(function (input) {
+      input.value = partes[input.getAttribute("data-stoptime-part")];
+      input.oninput = function () {
+        var vals = {};
+        $$("[data-stoptime-part]").forEach(function (i2) {
+          vals[i2.getAttribute("data-stoptime-part")] = Math.max(0, Number(i2.value) || 0);
+        });
+        stopTimeCfg().targetMs = (vals.min * 60000) + (vals.sec * 1000) + (vals.cent * 10);
+        markDirty();
+      };
+    });
+  }
+
+  /* Las fechas se guardan como texto "YYYY-MM-DDTHH:MM" (lo que da el campo del
+     navegador) y el servidor las lee con strtotime — así el admin escribe en su
+     hora local, que es la del negocio. */
+  function renderStopTimeDates() {
+    $$("[data-stoptime-date]").forEach(function (input) {
+      var key = input.getAttribute("data-stoptime-date");
+      input.value = stopTimeCfg()[key] || "";
+      input.oninput = function () {
+        stopTimeCfg()[key] = input.value || "";
+        markDirty();
+      };
+    });
+  }
+
+  function stopTimeSecret() {
+    return ((state.content && state.content.business && state.content.business.adminSecret) || "").trim();
+  }
+
+  function fetchStopTimeRound() {
+    var box = $("[data-stoptime-round]");
+    var log = $("[data-stoptime-log]");
+    if (!box) return;
+    var secret = stopTimeSecret();
+    if (!secret) {
+      box.innerHTML = '<p class="hint">Primero escribí una "Clave de administrador" en la pestaña Negocio.</p>';
+      return;
+    }
+    box.innerHTML = '<p class="hint">Consultando…</p>';
+    fetch(STOPTIME_API + "?action=admin-status&secret=" + encodeURIComponent(secret) + "&_=" + Date.now(), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (!res || !res.ok) {
+          box.innerHTML = '<p class="hint">' + escHTML((res && res.error) || "No se pudo consultar la ronda.") + "</p>";
+          if (log) log.innerHTML = "";
+          return;
+        }
+        var etiqueta = { idle: "Sin abrir", running: "Abierta", ended: "Finalizada" }[res.roundStatus] || res.roundStatus;
+        var filas = [
+          ["Estado de la ronda", etiqueta],
+          ["Dentro de las fechas", res.inWindow ? "Sí" : "No"],
+          ["Participantes", res.participants],
+          ["Intentos", res.attempts],
+          ["Ganadores", res.winners + (res.maxWinners > 0 ? " de " + res.maxWinners : "")]
+        ];
+        box.innerHTML = filas.map(function (f) {
+          return '<div class="ruleta-stat"><span class="ruleta-stat-value">' + escHTML(String(f[1])) +
+            '</span><span class="ruleta-stat-label">' + f[0] + "</span></div>";
+        }).join("");
+
+        if (log) {
+          if (!res.log.length) {
+            log.innerHTML = '<p class="hint">Todavía nadie ha jugado en esta ronda.</p>';
+          } else {
+            log.innerHTML = res.log.map(function (a) {
+              var cuando = a.startedAt ? new Date(a.startedAt).toLocaleString() : "—";
+              var tiempo = a.elapsedMs != null ? (a.elapsedMs / 1000).toFixed(2) + " s" : "sin detener";
+              var marca = a.won ? "🏆 ganó" : (a.rejected ? "⚠️ tiempo no válido" : "❌ falló");
+              var premio = a.prizeStatus ? " · premio " + a.prizeStatus : "";
+              return '<p class="hint stoptime-log-row"><strong>' + escHTML(a.name) + "</strong> — " +
+                escHTML(tiempo) + " — " + marca + escHTML(premio) + " · " + escHTML(cuando) + "</p>";
+            }).join("");
+          }
+        }
+      })
+      .catch(function () {
+        box.innerHTML = '<p class="hint">No se pudo conectar con el servidor.</p>';
+      });
+  }
+
+  function initStopTimeRound() {
+    $$("[data-stoptime-op]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var op = btn.getAttribute("data-stoptime-op");
+        var secret = stopTimeSecret();
+        if (!secret) { alert('Primero escribí una "Clave de administrador" en la pestaña Negocio.'); return; }
+        var avisos = {
+          start: "¿Abrir una ronda nueva? Los intentos de todos quedan en cero.",
+          end: "¿Finalizar la ronda? Nadie más va a poder jugar hasta que abras otra.",
+          "reset-participants": "¿Reiniciar participantes? Se borran los intentos de esta ronda y todos pueden volver a jugar."
+        };
+        if (!confirm(avisos[op] || "¿Continuar?")) return;
+        btn.disabled = true;
+        fetch(STOPTIME_API + "?action=admin-round", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "admin-round", op: op, secret: secret })
+        }).then(function (r) { return r.json(); })
+          .then(function (res) {
+            btn.disabled = false;
+            if (res && res.ok) fetchStopTimeRound();
+            else alert((res && res.error) || "No se pudo cambiar la ronda.");
+          })
+          .catch(function () { btn.disabled = false; alert("No se pudo conectar con el servidor."); });
+      });
+    });
+
+    var refresh = $("[data-stoptime-refresh]");
+    if (refresh) refresh.addEventListener("click", fetchStopTimeRound);
+
+    var select = $("[data-crono-mode-select]");
+    if (select) {
+      select.addEventListener("change", function () {
+        renderCronoModeVisibility();
+        if (select.value === "stopTime") fetchStopTimeRound();
+      });
+    }
+  }
+
+  /* Reiniciar la cuenta regresiva del Modo 1. */
+  function initCronoReset() {
+    var btn = $("[data-crono-reset]");
+    if (!btn) return;
+    btn.addEventListener("click", function () {
+      var secret = stopTimeSecret();
+      if (!secret) { alert('Primero escribí una "Clave de administrador" en la pestaña Negocio.'); return; }
+      if (!confirm("¿Reiniciar el temporizador? Se borra el ganador de hoy y la cuenta vuelve a arrancar desde ahora.")) return;
+      btn.disabled = true;
+      fetch(PRIZE_API, {
+        method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "admin-reset-cronometro", secret: secret })
+      }).then(function (r) { return r.json(); })
+        .then(function (res) {
+          btn.disabled = false;
+          if (res && res.ok) alert("Temporizador reiniciado.");
+          else alert((res && res.error) || "No se pudo reiniciar el temporizador.");
+        })
+        .catch(function () { btn.disabled = false; alert("No se pudo conectar con el servidor."); });
+    });
+  }
+
   /* ---------------- orden de las formas de ganar (Premio del día) ----------------
      Mismo patrón que los bloques del inicio: una lista arrastrable desde el asa
      ⠿ (pointer events, no arrastre nativo, que en táctil no existe). Las claves
@@ -1543,6 +1716,9 @@
     renderLooks();
     renderHomeBlocks();
     renderPrizeMethodOrder();
+    renderCronoModeVisibility();
+    renderStopTimeTarget();
+    renderStopTimeDates();
     renderChallengeTypeVisibility();
     renderBgTypeVisibility();
     renderModalStyleVisibility();
@@ -2352,6 +2528,8 @@
     initLooks();
     initAddHomeImage();
     initPrizeMethodOrder();
+    initStopTimeRound();
+    initCronoReset();
     initChallengeTypeToggle();
     initModalStyleToggle();
     initNameChangeModeToggle();

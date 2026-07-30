@@ -182,7 +182,10 @@ function cronometroRepeatMs() {
   $cfg = is_array($content) && isset($content['dailyPrize']['cronometro']) ? $content['dailyPrize']['cronometro'] : array();
   $amount = isset($cfg['repeatAmount']) ? (float) $cfg['repeatAmount'] : 0;
   if ($amount <= 0) return 0;
-  $unitMs = (isset($cfg['repeatUnit']) && $cfg['repeatUnit'] === 'minutes') ? 60000 : 3600000;
+  $unit = isset($cfg['repeatUnit']) ? $cfg['repeatUnit'] : 'hours';
+  if ($unit === 'seconds') $unitMs = 1000;
+  elseif ($unit === 'minutes') $unitMs = 60000;
+  else $unitMs = 3600000;
   return (int) round($amount * $unitMs);
 }
 
@@ -491,6 +494,28 @@ if ($method === 'POST') {
     withWriteLock(function ($state) use (&$outcome) {
       ensureFreshDay($state);
       $state['challenge'] = defaultChallenge();
+      $outcome = array('ok' => true, 'state' => publicState($state));
+      return $state;
+    });
+    jsonOut($outcome);
+  }
+
+  /* Reinicia la cuenta regresiva del cronómetro: se borra el ganador de hoy y
+     el conteo vuelve a arrancar desde este instante (cronometroUnlocksAtMs
+     usa lastClaimAt cuando existe, así que limpiarlo lo devuelve al arranque
+     del día... por eso se deja lastClaimAt en "ahora" pero sin nombre: así el
+     temporizador cuenta desde cero de nuevo y no queda aviso de ganador). */
+  if ($action === 'admin-reset-cronometro') {
+    $secret = isset($body['secret']) ? trim((string) $body['secret']) : '';
+    if (!checkAdminSecret($secret)) {
+      jsonOut(array('ok' => false, 'error' => 'Clave de administrador inválida.'), 403);
+    }
+
+    $outcome = array('ok' => true);
+    withWriteLock(function ($state) use (&$outcome) {
+      ensureFreshDay($state);
+      $state['cronometro'] = defaultCronometro();
+      $state['cronometro']['lastClaimAt'] = (int) round(microtime(true) * 1000);
       $outcome = array('ok' => true, 'state' => publicState($state));
       return $state;
     });

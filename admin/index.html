@@ -8,8 +8,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap">
-<link rel="stylesheet" href="admin.css?v=20260729a">
-<link rel="stylesheet" href="../lib/cat-carousel.css?v=20260729a">
+<link rel="stylesheet" href="admin.css?v=20260730a">
+<link rel="stylesheet" href="../lib/cat-carousel.css?v=20260730a">
 </head>
 <body>
 
@@ -300,29 +300,118 @@
       <summary>⏱️ Cronómetro</summary>
       <p class="hint">Un temporizador que se repite solo, igual para todos los que visiten la página. Mientras cuenta, el botón sale en gris (no está listo); al llegar a cero se pone verde y se queda esperando a que alguien lo reclame — le pide su nombre y se restablece por el mismo tiempo, dejando un aviso de quién ganó hoy. Nunca queda bloqueado del todo: siempre vuelve a estar disponible en la siguiente vuelta.</p>
       <label class="switch"><input type="checkbox" data-field="dailyPrize.cronometro.active"> Activar esta forma de ganar</label>
+
+      <h4>Modo de juego</h4>
+      <p class="hint">Elegí cuál de los dos juegos está activo. La configuración del otro <strong>no se borra</strong>: podés ir y venir entre los dos cuando quieras.</p>
       <div class="field-grid" data-form="dailyPrize.cronometro">
+        <label class="full">Modo
+          <select data-field="mode" data-crono-mode-select>
+            <option value="countdown">Cuenta regresiva (el de siempre)</option>
+            <option value="stopTime">Detén el tiempo</option>
+          </select>
+        </label>
         <label>Nombre en el carrusel <textarea data-field="label" rows="2"></textarea></label>
-        <label class="full">Título de esta sección <textarea data-field="title" rows="2"></textarea></label>
-        <label>Se reinicia cada <input type="number" min="1" data-field="repeatAmount"></label>
-        <label>Unidad
-          <select data-field="repeatUnit">
-            <option value="minutes">Minutos</option>
-            <option value="hours">Horas</option>
-          </select>
-        </label>
-        <label class="full">Premio (lo que ve el cliente al abrir el regalo) <textarea data-field="prizeText" rows="3"></textarea></label>
-        <label>Nombre del premio <textarea data-field="prizeName" rows="2"></textarea></label>
-        <label>Ícono del premio <input type="text" data-field="prizeIcon" maxlength="4"></label>
-        <label>Texto del botón para reclamar <textarea data-field="claimButtonLabel" rows="2"></textarea></label>
-        <label>Tipo de premio
-          <select data-field="rewardType" data-reward-type-select>
-            <option value="direct">Premio directo (el texto de arriba)</option>
-            <option value="wheelSpins">Giro(s) en la Ruleta TOPPINGS</option>
-          </select>
-        </label>
-        <label data-reward-field="direct">Vigencia del premio (horas) <input type="number" min="1" data-field="codeExpiryHours"></label>
-        <label data-reward-field="wheelSpins">Cantidad de tiros <input type="number" min="1" data-field="wheelSpinCount"></label>
-        <label data-reward-field="wheelSpins">Vencimiento del tiro (horas) <input type="number" min="1" data-field="wheelTicketExpiryHours"></label>
+      </div>
+
+      <!-- ============ Modo 1: cuenta regresiva ============ -->
+      <div data-crono-mode="countdown">
+        <h4>⏳ Cuenta regresiva</h4>
+        <p class="hint">Cuenta hacia cero, igual para todos. Al llegar a cero el botón se pone verde y gana el primero que lo presione; después se reinicia solo por el mismo tiempo.</p>
+        <div class="field-grid" data-form="dailyPrize.cronometro">
+          <label class="full">Título de esta sección <textarea data-field="title" rows="2"></textarea></label>
+          <label>Se reinicia cada <input type="number" min="1" data-field="repeatAmount"></label>
+          <label>Unidad
+            <select data-field="repeatUnit">
+              <option value="seconds">Segundos</option>
+              <option value="minutes">Minutos</option>
+              <option value="hours">Horas</option>
+            </select>
+          </label>
+          <label class="full">Premio (lo que ve el cliente al abrir el regalo) <textarea data-field="prizeText" rows="3"></textarea></label>
+          <label>Nombre del premio <textarea data-field="prizeName" rows="2"></textarea></label>
+          <label>Ícono del premio <input type="text" data-field="prizeIcon" maxlength="4"></label>
+          <label>Texto del botón para reclamar <textarea data-field="claimButtonLabel" rows="2"></textarea></label>
+          <label>Tipo de premio
+            <select data-field="rewardType" data-reward-type-select>
+              <option value="direct">Premio directo (el texto de arriba)</option>
+              <option value="wheelSpins">Giro(s) en la Ruleta TOPPINGS</option>
+            </select>
+          </label>
+          <label data-reward-field="direct">Vigencia del premio (horas) <input type="number" min="1" data-field="codeExpiryHours"></label>
+          <label data-reward-field="wheelSpins">Cantidad de tiros <input type="number" min="1" data-field="wheelSpinCount"></label>
+          <label data-reward-field="wheelSpins">Vencimiento del tiro (horas) <input type="number" min="1" data-field="wheelTicketExpiryHours"></label>
+        </div>
+        <button type="button" class="btn btn-ghost" data-crono-reset>🔄 Reiniciar temporizador</button>
+        <p class="hint">Borra el ganador de hoy y la cuenta regresiva vuelve a arrancar desde este momento.</p>
+      </div>
+
+      <!-- ============ Modo 2: detén el tiempo ============ -->
+      <div data-crono-mode="stopTime">
+        <h4>⏱️ Detén el tiempo</h4>
+        <p class="hint">Al cliente le sube un cronómetro y tiene que detenerlo justo en el tiempo que pongas acá. Quien decide si acertó es el servidor, no el celular. El premio entra a 🎁 Mis Premios como cualquier otro.</p>
+
+        <div class="field-grid" data-form="dailyPrize.cronometro.stopTime">
+          <label class="full">Título de esta sección <textarea data-field="title" rows="2"></textarea></label>
+
+          <label class="full">Tiempo ganador
+            <span class="stoptime-target-row">
+              <input type="number" min="0" max="59" data-stoptime-part="min" placeholder="min">
+              <span>:</span>
+              <input type="number" min="0" max="59" data-stoptime-part="sec" placeholder="seg">
+              <span>.</span>
+              <input type="number" min="0" max="99" data-stoptime-part="cent" placeholder="cent">
+            </span>
+          </label>
+
+          <label class="full">Dificultad
+            <select data-field="precision">
+              <option value="easy">Fácil — el segundo exacto</option>
+              <option value="medium">Medio — margen de 0,10 s</option>
+              <option value="hard">Difícil — la centésima exacta</option>
+            </select>
+          </label>
+          <p class="hint full">Con el tiempo ganador en <strong>00:10.00</strong>: en fácil gana en cualquier momento del segundo 10; en medio, entre 9,90 y 10,10; en difícil, solo justo en 10,00.</p>
+
+          <label>Máximo de ganadores por ronda <input type="number" min="0" data-field="maxWinners"></label>
+          <label>Intentos por persona <input type="number" min="1" data-field="attemptsPerUser"></label>
+          <label class="full">Los intentos se reinician
+            <select data-field="attemptsReset">
+              <option value="round">En cada ronda nueva</option>
+              <option value="daily">Cada día</option>
+              <option value="manual">Solo cuando yo reinicie participantes</option>
+            </select>
+          </label>
+
+          <label>Disponible desde <input type="datetime-local" data-stoptime-date="startAt"></label>
+          <label>Disponible hasta <input type="datetime-local" data-stoptime-date="endAt"></label>
+
+          <label>Nombre del premio <textarea data-field="prizeName" rows="2"></textarea></label>
+          <label>Ícono del premio <input type="text" data-field="prizeIcon" maxlength="4"></label>
+          <label>Tipo de premio
+            <select data-field="rewardType" data-reward-type-select>
+              <option value="direct">Premio que entrega un mesero</option>
+              <option value="wheelSpins">Giro(s) en la Ruleta TOPPINGS</option>
+            </select>
+          </label>
+          <label data-reward-field="direct">Vigencia del premio (horas) <input type="number" min="1" data-field="codeExpiryHours"></label>
+          <label data-reward-field="wheelSpins">Cantidad de tiros <input type="number" min="1" data-field="wheelSpinCount"></label>
+          <label data-reward-field="wheelSpins">Vencimiento del tiro (horas) <input type="number" min="1" data-field="wheelTicketExpiryHours"></label>
+
+          <label class="full">Mensaje cuando ACIERTA <textarea data-field="winMessage" rows="2" placeholder="🎉 ¡Felicidades! Detuviste el tiempo exacto y ganaste un premio."></textarea></label>
+          <label class="full">Mensaje cuando FALLA <textarea data-field="loseMessage" rows="2" placeholder="❌ Estuviste cerca. Inténtalo cuando haya una nueva oportunidad."></textarea></label>
+          <label class="switch-inline"><input type="checkbox" data-field="soundEnabled"> Sonido al ganar</label>
+        </div>
+
+        <h4>Ronda en curso</h4>
+        <p class="hint">Mientras no haya una ronda abierta, el cliente ve el juego pero no puede jugar. Abrí una ronda cuando quieras que empiece a contar.</p>
+        <div class="stoptime-round-box" data-stoptime-round></div>
+        <div class="stoptime-round-actions">
+          <button type="button" class="btn btn-primary" data-stoptime-op="start">▶️ Iniciar ronda</button>
+          <button type="button" class="btn btn-ghost" data-stoptime-op="end">⏹️ Finalizar ronda</button>
+          <button type="button" class="btn btn-ghost" data-stoptime-op="reset-participants">👥 Reiniciar participantes</button>
+          <button type="button" class="btn btn-ghost" data-stoptime-refresh>🔄 Actualizar</button>
+        </div>
+        <div class="stoptime-log" data-stoptime-log></div>
       </div>
     </details>
 
@@ -375,17 +464,25 @@
 
       <!-- ===== Reto con ENLACE EXTERNO ===== -->
       <div data-challenge-mode="link" hidden>
-        <p class="hint">La página solo muestra el reto y lleva al enlace. No se sube foto, no se genera código y no te llega ninguna solicitud: el cliente hace la acción y le muestra la prueba al mesero, que entrega el premio en el local.</p>
+        <p class="hint">La página muestra el reto, lleva al enlace, y debajo deja un segundo botón para que el cliente te pida el código por WhatsApp. No se sube foto ni aparece "Reclamar premio": vos le mandás un código de los que creaste en la pestaña <strong>🎟️ Códigos de Premio</strong>, y él lo escribe en "Introducir código de premio" (botón 🎁). Ahí el premio le entra solo.</p>
         <label class="switch"><input type="checkbox" data-field="dailyPrize.challenge.link.active"> Reto de enlace activo</label>
         <div class="field-grid" data-form="dailyPrize.challenge.link">
           <label class="full">Título del reto <textarea data-field="title" rows="2" placeholder="Reclama un cono dejando una reseña"></textarea></label>
           <label class="full">Descripción <textarea data-field="description" rows="3" placeholder="Cuéntanos tu experiencia en Google Maps y te damos un cono"></textarea></label>
           <label class="full">Premio que recibe el cliente <textarea data-field="prizeText" rows="2" placeholder="Un cono gratis"></textarea></label>
-          <label class="full">Texto del botón <input type="text" data-field="buttonLabel" placeholder="Califícanos aquí"></label>
+          <label class="full">Texto del botón principal <input type="text" data-field="buttonLabel" placeholder="Califícanos aquí"></label>
           <label class="full">Enlace de destino (URL) <input type="text" data-field="url" placeholder="https://g.page/tu-negocio/review"></label>
           <label>Fecha de inicio (opcional) <input type="date" data-field="startDate"></label>
           <label>Fecha de finalización (opcional) <input type="date" data-field="endDate"></label>
           <label class="full">Mensaje debajo del botón <textarea data-field="note" rows="2" placeholder="Después de completar el reto, muéstrale la prueba al mesero para recibir tu premio."></textarea></label>
+        </div>
+
+        <h4>📲 Pedir el código por WhatsApp</h4>
+        <p class="hint">Segundo botón, debajo del principal. Al tocarlo se abre WhatsApp con el mensaje ya escrito, a tu número de la pestaña Negocio. Donde pongas <code>[nombre]</code> se reemplaza por el nombre del cliente.</p>
+        <label class="switch"><input type="checkbox" data-field="dailyPrize.challenge.link.askButtonActive"> Mostrar este botón</label>
+        <div class="field-grid" data-form="dailyPrize.challenge.link">
+          <label class="full">Texto del botón <input type="text" data-field="askButtonLabel" placeholder="Ya cumplí, solicitar premio"></label>
+          <label class="full">Mensaje que se envía por WhatsApp <textarea data-field="askMessage" rows="3" placeholder="Hola, soy [nombre]. Cumplí el reto del día. Por favor envíame el código de regalo."></textarea></label>
         </div>
         <label class="full">Imagen o banner del reto (opcional)
           <input type="file" accept="image/*" data-image-field="dailyPrize.challenge.link.banner">
@@ -699,7 +796,7 @@
 
 <script src="lib/qrcode.min.js"></script>
 <!-- mismo carrusel que ve el cliente, para que la vista previa sea idéntica -->
-<script src="../lib/cat-carousel.js?v=20260729a"></script>
-<script defer src="admin.js?v=20260729a"></script>
+<script src="../lib/cat-carousel.js?v=20260730a"></script>
+<script defer src="admin.js?v=20260730a"></script>
 </body>
 </html>
