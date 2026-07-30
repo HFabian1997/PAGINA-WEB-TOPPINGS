@@ -1677,11 +1677,17 @@
     function paintPrize(mine) {
       prizeBtn.classList.remove("is-ready", "is-lost", "is-locked");
       if (mine.state === "won" && mine.prizeClaimed) {
-        prizeBtn.textContent = cfg.claimedLabel || "Premio reclamado";
+        prizeBtn.textContent = mine.rewardType === "wheelSpins"
+          ? (cfg.spunLabel || "Ya giraste la ruleta")
+          : (cfg.claimedLabel || "Premio reclamado");
         prizeBtn.classList.add("is-locked");
         prizeBtn.disabled = true;
       } else if (mine.state === "won") {
-        prizeBtn.textContent = cfg.claimLabel || "Reclamar premio";
+        // Un premio en tiros de Ruleta no tiene código que reclamar: lo que
+        // ganó es el tiro, así que el botón lleva a girar.
+        prizeBtn.textContent = mine.rewardType === "wheelSpins"
+          ? (cfg.spinLabel || "🎡 Girar la ruleta")
+          : (cfg.claimLabel || "Reclamar premio");
         prizeBtn.classList.add("is-ready");
         prizeBtn.disabled = false;
       } else if (mine.state === "lost") {
@@ -1754,7 +1760,11 @@
       clockEl.classList.toggle("is-lose", mine.state === "lost");
 
       if (mine.state === "won") {
-        setMsg(cfg.winMessage || "🎉 ¡Felicidades! Detuviste el tiempo exacto y ganaste un premio.", "win");
+        var txtGano = cfg.winMessage || "🎉 ¡Felicidades! Detuviste el tiempo exacto y ganaste un premio.";
+        if (mine.rewardType === "wheelSpins" && mine.wheelSpins > 0) {
+          txtGano += " Ganaste " + mine.wheelSpins + " tiro" + (mine.wheelSpins === 1 ? "" : "s") + " en la Ruleta.";
+        }
+        setMsg(txtGano, "win");
       } else if (mine.state === "lost") {
         var base = st.attemptsLeft > 0
           ? "❌ No era el tiempo exacto. Te detuviste en " + formatStopTime(mine.elapsedMs || 0) + "."
@@ -1782,7 +1792,17 @@
       renderAttemptsLine(st);
       paintPrize(mine);
       prizeBtn.onclick = function () {
-        if (mine.state === "won" && mine.prizeCode) openClaimModalWithCode(mine.prizeCode, true);
+        if (mine.state !== "won") return;
+        if (mine.rewardType === "wheelSpins") {
+          if (window.__openRuletaModal) window.__openRuletaModal();
+          else if (window.__openGiftPanel) window.__openGiftPanel();
+          return;
+        }
+        if (mine.prizeCode) { openClaimModalWithCode(mine.prizeCode, true); return; }
+        // Sin código ni tiros identificados (por ejemplo, un premio ganado
+        // antes de que se guardaran los tiros): el premio igual está en el
+        // panel 🎁, así que se lleva ahí en vez de no hacer nada.
+        if (window.__openGiftPanel) window.__openGiftPanel();
       };
     }
 
@@ -1830,6 +1850,17 @@
           if (res.ok && res.won) {
             safe(refreshGiftFab, "refreshGiftFab");
             safe(function () { launchStopTimeConfetti(card, cfg); }, "launchStopTimeConfetti");
+            /* La MISMA ventana con la caja de regalo que se abre en todas las
+               demás formas de ganar: openClaimResult ya sabe distinguir entre
+               un premio para reclamar y tiros de Ruleta. */
+            safe(function () {
+              openClaimResult(
+                res,
+                cfg.winMessage || "🎉 ¡Felicidades! Detuviste el tiempo exacto y ganaste un premio.",
+                "Hola TOPPINGS! Detuve el tiempo exacto y gané un premio 🎁 Mi nombre es " + (name || ""),
+                { icon: cfg.prizeIcon }
+              );
+            }, "openClaimResult");
           }
           if (res.ok && res.noSlots) {
             setMsg("Acertaste, pero los premios de esta ronda ya se acabaron.", "lose");

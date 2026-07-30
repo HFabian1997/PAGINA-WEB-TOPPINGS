@@ -68,6 +68,18 @@ function stPrizeClaimed($code) {
   return $status === 'waiting' || $status === 'delivered';
 }
 
+/** Cuántos de los tiros que ganó en este intento le quedan sin usar. */
+function stTicketsPendientes($ids) {
+  if (!is_array($ids) || !$ids) return 0;
+  $state = ruletaReadState();
+  ruletaExpireTickets($state);
+  $n = 0;
+  foreach ($state['tickets'] as $t) {
+    if (in_array($t['id'], $ids, true) && $t['status'] === 'available') $n++;
+  }
+  return $n;
+}
+
 /** Lo que ve el cliente: su propio intento, sin datos de nadie más. */
 function stMyView($state, $deviceId, $cfg) {
   $abierta = $state['roundStatus'] === 'running' && stInWindow($cfg);
@@ -75,12 +87,27 @@ function stMyView($state, $deviceId, $cfg) {
   $ganadores = stCountWinners($state);
   $ultimo = stLastAttempt($state, $deviceId, $cfg);
 
-  $mio = array('state' => 'none', 'elapsedMs' => null, 'prizeCode' => null, 'prizeClaimed' => false);
+  $mio = array(
+    'state' => 'none', 'elapsedMs' => null, 'prizeCode' => null, 'prizeClaimed' => false,
+    'rewardType' => 'prize', 'wheelSpins' => 0, 'wheelPending' => 0,
+  );
   if ($ultimo && !empty($ultimo['stoppedAt'])) {
     $mio['state'] = !empty($ultimo['won']) ? 'won' : 'lost';
     $mio['elapsedMs'] = (int) $ultimo['elapsedMs'];
     $mio['prizeCode'] = isset($ultimo['prizeCode']) ? $ultimo['prizeCode'] : null;
-    $mio['prizeClaimed'] = stPrizeClaimed($mio['prizeCode']);
+
+    // Un premio en tiros de Ruleta no genera código: lo que se gana es el
+    // tiro. Hay que decírselo al cliente, o el botón "Reclamar" se queda
+    // sin nada que abrir.
+    if (!empty($ultimo['wheelSpins'])) {
+      $ids = isset($ultimo['wheelTicketIds']) ? $ultimo['wheelTicketIds'] : array();
+      $mio['rewardType'] = 'wheelSpins';
+      $mio['wheelSpins'] = (int) $ultimo['wheelSpins'];
+      $mio['wheelPending'] = stTicketsPendientes($ids);
+      $mio['prizeClaimed'] = $mio['wheelPending'] === 0;
+    } else {
+      $mio['prizeClaimed'] = stPrizeClaimed($mio['prizeCode']);
+    }
   } elseif ($ultimo) {
     $mio['state'] = 'running';   // arrancó y no ha detenido
   }
@@ -247,6 +274,7 @@ switch ($action) {
 
       $codigo = null;
       $tiros = null;
+      $registroCodigo = null;
       if ($gano) {
         // El premio entra al MISMO libro de premios que todas las demás
         // dinámicas: aparece en 🎁 Mis Premios y se reclama igual que
@@ -254,10 +282,14 @@ switch ($action) {
         if ($cfg['rewardType'] === 'wheelSpins') {
           $ids = grantRuletaTickets($deviceId, $name, 'stoptime', $cfg['wheelSpinCount'], $cfg['wheelTicketExpiryHours']);
           $tiros = count($ids);
+          // se guardan para poder decirle después si ya los usó o no
+          $state['attempts'][$idx]['wheelSpins'] = $tiros;
+          $state['attempts'][$idx]['wheelTicketIds'] = $ids;
         } else {
           $rec = issuePrizeCode($deviceId, $name, 'stoptime', $cfg['prizeName'], $cfg['prizeIcon'], $cfg['codeExpiryHours']);
           if ($rec) {
             $codigo = $rec['code'];
+            $registroCodigo = $rec;
             $state['attempts'][$idx]['prizeCode'] = $codigo;
           }
         }
@@ -274,6 +306,16 @@ switch ($action) {
         'prizeIcon' => $cfg['prizeIcon'],
         'wheelSpins' => $tiros,
         'attemptsLeft' => max(0, $cfg['attemptsPerUser'] - stCountAttempts($state, $deviceId, $cfg)),
+        /* Mismos dos bloques que devuelven las otras dinámicas (premio.php),
+           para que el cliente pueda abrir la MISMA ventana animada del regalo
+           con openClaimResult() en vez de inventar una propia. */
+        'wheelGranted' => $tiros ? array('count' => $tiros) : null,
+        'codeGranted' => $registroCodigo ? array(
+          'code' => $registroCodigo['code'],
+          'prizeName' => $registroCodigo['prizeName'],
+          'prizeIcon' => $registroCodigo['prizeIcon'],
+          'expiresAt' => $registroCodigo['expiresAt'],
+        ) : null,
       );
       return $state;
     });
