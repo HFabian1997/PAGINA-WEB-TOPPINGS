@@ -1600,8 +1600,13 @@
           });
         }
         var existingName = localStorage.getItem(LOYALTY_NAME_KEY);
-        if (existingName) doClaim(existingName);
-        else askNameWithCheck(function (name) { doClaim(name || "Cliente"); });
+        if (existingName) { doClaim(existingName); return; }
+        /* Sin nombre no se reclama. Antes se colaba como "Cliente" y en el
+           aviso de ganador y en el panel quedaba gente sin identificar. */
+        askNameWithCheck(function (name) {
+          name = (name || "").trim();
+          if (name) doClaim(name);
+        });
       };
     }
   }
@@ -1674,20 +1679,18 @@
     /* Los 4 estados del botón del premio, tal como se pidieron:
        antes de jugar gris, al ganar verde, al fallar rojo, y gris otra vez
        cuando el premio ya se reclamó. */
+    /* Es el mismo botón de reclamo que en todas las demás formas de ganar: el
+       texto no cambia según el tipo de premio, solo el color y si se puede
+       tocar. Lo que hay detrás (premio para reclamar o tiro de Ruleta) lo
+       resuelve la ventana del regalo, no el botón. */
     function paintPrize(mine) {
       prizeBtn.classList.remove("is-ready", "is-lost", "is-locked");
       if (mine.state === "won" && mine.prizeClaimed) {
-        prizeBtn.textContent = mine.rewardType === "wheelSpins"
-          ? (cfg.spunLabel || "Ya giraste la ruleta")
-          : (cfg.claimedLabel || "Premio reclamado");
+        prizeBtn.textContent = cfg.claimedLabel || "Premio reclamado";
         prizeBtn.classList.add("is-locked");
         prizeBtn.disabled = true;
       } else if (mine.state === "won") {
-        // Un premio en tiros de Ruleta no tiene código que reclamar: lo que
-        // ganó es el tiro, así que el botón lleva a girar.
-        prizeBtn.textContent = mine.rewardType === "wheelSpins"
-          ? (cfg.spinLabel || "🎡 Girar la ruleta")
-          : (cfg.claimLabel || "Reclamar premio");
+        prizeBtn.textContent = cfg.claimLabel || "Reclamar premio";
         prizeBtn.classList.add("is-ready");
         prizeBtn.disabled = false;
       } else if (mine.state === "lost") {
@@ -1710,19 +1713,16 @@
       if (cuentaRegresivaTimer) { clearInterval(cuentaRegresivaTimer); cuentaRegresivaTimer = null; }
 
       var quedan = st.attemptsLeft > 0;
-      var ganadoresTxt = st.maxWinners > 0 ? ("Ganadores: " + st.winners + " de " + st.maxWinners) : "";
 
-      if (quedan && st.roundOpen) {
+      if (quedan) {
         attemptsEl.textContent = "Te queda" + (st.attemptsLeft === 1 ? "" : "n") + " " + st.attemptsLeft +
           " intento" + (st.attemptsLeft === 1 ? "" : "s");
         return;
       }
 
       if (!st.nextAttemptAtMs) {
-        // por ronda o manual: no hay una hora fija que mostrar
-        attemptsEl.textContent = st.attemptsReset === "round" && !quedan
-          ? "Ya jugaste en esta ronda. Podrás volver cuando empiece la siguiente."
-          : ganadoresTxt;
+        // modo manual: no hay una hora fija que mostrar
+        attemptsEl.textContent = "Ya jugaste. Espera a que el negocio habilite una nueva oportunidad.";
         return;
       }
 
@@ -1747,11 +1747,11 @@
       if (targetEl) targetEl.textContent = precisionHint(st.precision, st.targetMs);
 
       var mine = st.mine || { state: "none" };
-      /* Quien ya ganó no vuelve a jugar en la ronda. Quien falló solo vuelve si
-         le quedan intentos: con "Intentos por persona" en 1 (lo normal) falla y
-         queda fuera de la ronda, que es lo pedido; si el admin le pone 2 o más,
-         el número que configuró es el que manda. */
-      var puedeJugar = st.roundOpen && st.attemptsLeft > 0 && mine.state !== "won";
+      /* No hay rondas: el juego está abierto siempre que esté dentro de sus
+         fechas, y quién puede jugar lo decide el tiempo de reinicio. Quien ya
+         ganó no repite hasta que le toque de nuevo; quien falló vuelve solo si
+         le quedan intentos del periodo. */
+      var puedeJugar = st.attemptsLeft > 0 && mine.state !== "won";
 
       if (mine.elapsedMs != null) clockEl.textContent = formatStopTime(mine.elapsedMs);
       else clockEl.textContent = formatStopTime(0);
@@ -1773,8 +1773,6 @@
         setMsg(base, "lose");
       } else if (!st.inWindow) {
         setMsg("Esta dinámica no está disponible en este momento.", "");
-      } else if (!st.roundOpen) {
-        setMsg("Todavía no hay una ronda abierta. Vuelve más tarde.", "");
       } else {
         setMsg("", "");
       }
@@ -1791,19 +1789,48 @@
 
       renderAttemptsLine(st);
       paintPrize(mine);
-      prizeBtn.onclick = function () {
-        if (mine.state !== "won") return;
-        if (mine.rewardType === "wheelSpins") {
-          if (window.__openRuletaModal) window.__openRuletaModal();
-          else if (window.__openGiftPanel) window.__openGiftPanel();
-          return;
-        }
-        if (mine.prizeCode) { openClaimModalWithCode(mine.prizeCode, true); return; }
-        // Sin código ni tiros identificados (por ejemplo, un premio ganado
-        // antes de que se guardaran los tiros): el premio igual está en el
-        // panel 🎁, así que se lleva ahí en vez de no hacer nada.
-        if (window.__openGiftPanel) window.__openGiftPanel();
-      };
+      prizeBtn.onclick = function () { reclamar(mine); };
+    }
+
+    /* Abre la MISMA ventana con la caja de regalo que usan todas las demás
+       formas de ganar. openClaimResult ya sabe distinguir sola entre un premio
+       para reclamar y tiros de Ruleta: solo hay que armarle el mismo bloque
+       que le manda premio.php. Se reconstruye desde el estado y no desde la
+       respuesta de "detener", para que siga funcionando después de recargar. */
+    function reclamar(mine) {
+      if (mine.state !== "won" || mine.prizeClaimed) return;
+
+      var res = {};
+      if (mine.rewardType === "wheelSpins") {
+        res.wheelGranted = { count: mine.wheelSpins || 1 };
+      } else if (mine.prizeName) {
+        res.codeGranted = {
+          prizeName: mine.prizeName,
+          prizeIcon: mine.prizeIcon || cfg.prizeIcon || "🎁",
+          expiresAt: mine.prizeExpiresAt
+        };
+      }
+
+      var name = "";
+      try { name = localStorage.getItem(LOYALTY_NAME_KEY) || ""; } catch (e) {}
+
+      safe(function () {
+        openClaimResult(
+          res,
+          cfg.winMessage || "🎉 ¡Felicidades! Detuviste el tiempo exacto y ganaste un premio.",
+          "Hola TOPPINGS! Detuve el tiempo exacto y gané un premio 🎁 Mi nombre es " + name,
+          { icon: cfg.prizeIcon }
+        );
+      }, "openClaimResult");
+
+      // Se avisa al servidor para que el botón siga gris aunque recargue.
+      fetch(STOPTIME_API + "?action=claim", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "claim", deviceId: getDeviceId() })
+      })
+        .then(function (r) { return r.json(); })
+        .catch(function () { return null; })
+        .then(function () { fetchStatus(); });
     }
 
     function fetchStatus(cb) {
@@ -1850,31 +1877,35 @@
           if (res.ok && res.won) {
             safe(refreshGiftFab, "refreshGiftFab");
             safe(function () { launchStopTimeConfetti(card, cfg); }, "launchStopTimeConfetti");
-            /* La MISMA ventana con la caja de regalo que se abre en todas las
-               demás formas de ganar: openClaimResult ya sabe distinguir entre
-               un premio para reclamar y tiros de Ruleta. */
-            safe(function () {
-              openClaimResult(
-                res,
-                cfg.winMessage || "🎉 ¡Felicidades! Detuviste el tiempo exacto y ganaste un premio.",
-                "Hola TOPPINGS! Detuve el tiempo exacto y gané un premio 🎁 Mi nombre es " + (name || ""),
-                { icon: cfg.prizeIcon }
-              );
-            }, "openClaimResult");
+            // La ventana del regalo NO se abre sola: queda el botón verde y la
+            // abre el cliente al tocar "Reclamar premio", como en el resto.
           }
           if (res.ok && res.noSlots) {
-            setMsg("Acertaste, pero los premios de esta ronda ya se acabaron.", "lose");
-            fetchStatus(function (st) { render(st); setMsg("Acertaste, pero los premios de esta ronda ya se acabaron.", "lose"); });
+            setMsg("Acertaste, pero los premios de este periodo ya se acabaron.", "lose");
+            fetchStatus(function (st) { render(st); setMsg("Acertaste, pero los premios de este periodo ya se acabaron.", "lose"); });
             return;
           }
           fetchStatus();
         });
     }
 
+    /* El nombre se pide ANTES de dejar jugar, igual que en TOPPINGS RUN: sin
+       nombre no hay a quién entregarle el premio, y en el panel los ganadores
+       salían sin identificar. Si cierra la ventana sin escribir nada, no se
+       arranca el intento — no se le gasta. */
     function empezar() {
+      var guardado = "";
+      try { guardado = localStorage.getItem(LOYALTY_NAME_KEY) || ""; } catch (e) {}
+      if (guardado) { empezarConNombre(guardado); return; }
+      askNameWithCheck(function (name) {
+        name = (name || "").trim();
+        if (!name) return;   // canceló: se queda como estaba
+        empezarConNombre(name);
+      });
+    }
+
+    function empezarConNombre(name) {
       actionBtn.disabled = true;
-      var name = "";
-      try { name = localStorage.getItem(LOYALTY_NAME_KEY) || ""; } catch (e) {}
 
       fetch(STOPTIME_API + "?action=start", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -1886,7 +1917,6 @@
           actionBtn.disabled = false;
           if (!res || !res.ok) {
             var razones = {
-              round_closed: "Todavía no hay una ronda abierta. Vuelve más tarde.",
               out_of_window: "Esta dinámica no está disponible en este momento.",
               no_attempts: "Ya usaste todos tus intentos."
             };

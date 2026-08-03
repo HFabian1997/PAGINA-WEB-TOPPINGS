@@ -8,8 +8,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap">
-<link rel="stylesheet" href="admin.css?v=20260730c">
-<link rel="stylesheet" href="../lib/cat-carousel.css?v=20260730c">
+<link rel="stylesheet" href="admin.css?v=20260802a">
+<link rel="stylesheet" href="../lib/cat-carousel.css?v=20260802a">
 </head>
 <body>
 
@@ -372,13 +372,12 @@
           </label>
           <p class="hint full">Con el tiempo ganador en <strong>00:10.00</strong>: en fácil gana en cualquier momento del segundo 10; en medio, entre 9,90 y 10,10; en difícil, solo justo en 10,00.</p>
 
-          <label>Máximo de ganadores por ronda <input type="number" min="0" data-field="maxWinners"></label>
+          <label>Máximo de ganadores por periodo <input type="number" min="0" data-field="maxWinners"></label>
           <label>Intentos por persona <input type="number" min="1" data-field="attemptsPerUser"></label>
           <label class="full">Los intentos se reinician
             <select data-field="attemptsReset" data-attempts-reset-select>
               <option value="daily">Cada día (a la medianoche)</option>
               <option value="interval">Cada cierto tiempo</option>
-              <option value="round">En cada ronda nueva</option>
               <option value="manual">Solo cuando yo reinicie participantes</option>
             </select>
           </label>
@@ -390,7 +389,7 @@
               <option value="days">Días</option>
             </select>
           </label>
-          <p class="hint full">Con "Cada día" e "Intentos por persona" en 1, cada cliente juega <strong>una vez al día</strong>. Con "Cada cierto tiempo" podés poner, por ejemplo, cada 6 horas. En los dos casos el cliente ve en pantalla cuánto le falta para volver a jugar.</p>
+          <p class="hint full">Con "Cada día" e "Intentos por persona" en 1, cada cliente juega <strong>una vez al día</strong>. Con "Cada cierto tiempo" podés poner, por ejemplo, cada 12 horas. En los dos casos el cliente ve en pantalla cuánto le falta para volver a jugar. El <strong>máximo de ganadores se reinicia junto con los intentos</strong>: si pusiste 12 horas, son ese número de ganadores cada 12 horas.</p>
 
           <label>Disponible desde <input type="datetime-local" data-stoptime-date="startAt"></label>
           <label>Disponible hasta <input type="datetime-local" data-stoptime-date="endAt"></label>
@@ -412,13 +411,11 @@
           <label class="switch-inline"><input type="checkbox" data-field="soundEnabled"> Sonido al ganar</label>
         </div>
 
-        <h4>Ronda en curso</h4>
-        <p class="hint">Mientras no haya una ronda abierta, el cliente ve el juego pero no puede jugar. Abrí una ronda cuando quieras que empiece a contar.</p>
+        <h4>Cómo va el periodo</h4>
+        <p class="hint">El juego está siempre disponible dentro de las fechas de arriba; no hay que abrir nada. Si querés que todos puedan volver a jugar ya, sin esperar a que se cumpla el tiempo, usá "Reiniciar participantes".</p>
         <div class="stoptime-round-box" data-stoptime-round></div>
         <div class="stoptime-round-actions">
-          <button type="button" class="btn btn-primary" data-stoptime-op="start">▶️ Iniciar ronda</button>
-          <button type="button" class="btn btn-ghost" data-stoptime-op="end">⏹️ Finalizar ronda</button>
-          <button type="button" class="btn btn-ghost" data-stoptime-op="reset-participants">👥 Reiniciar participantes</button>
+          <button type="button" class="btn btn-ghost" data-stoptime-op="reset">👥 Reiniciar participantes</button>
           <button type="button" class="btn btn-ghost" data-stoptime-refresh>🔄 Actualizar</button>
         </div>
         <div class="stoptime-log" data-stoptime-log></div>
@@ -806,7 +803,7 @@
 
 <script src="lib/qrcode.min.js"></script>
 <!-- mismo carrusel que ve el cliente, para que la vista previa sea idéntica -->
-<script src="../lib/cat-carousel.js?v=20260730c"></script>
-<script defer src="admin.js?v=20260730c"></script>
+<script src="../lib/cat-carousel.js?v=20260802a"></script>
+<script defer src="admin.js?v=20260802a"></script>
 </body>
 </html>

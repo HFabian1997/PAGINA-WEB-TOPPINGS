@@ -1552,17 +1552,16 @@
       .then(function (r) { return r.json(); })
       .then(function (res) {
         if (!res || !res.ok) {
-          box.innerHTML = '<p class="hint">' + escHTML((res && res.error) || "No se pudo consultar la ronda.") + "</p>";
+          box.innerHTML = '<p class="hint">' + escHTML((res && res.error) || "No se pudo consultar el estado.") + "</p>";
           if (log) log.innerHTML = "";
           return;
         }
-        var etiqueta = { idle: "Sin abrir", running: "Abierta", ended: "Finalizada" }[res.roundStatus] || res.roundStatus;
+        var periodo = { daily: "hoy", interval: "en este periodo", manual: "desde el último reinicio" }[res.attemptsReset] || "en este periodo";
         var filas = [
-          ["Estado de la ronda", etiqueta],
-          ["Dentro de las fechas", res.inWindow ? "Sí" : "No"],
-          ["Participantes", res.participants],
-          ["Intentos", res.attempts],
-          ["Ganadores", res.winners + (res.maxWinners > 0 ? " de " + res.maxWinners : "")]
+          ["Disponible ahora", res.inWindow ? "Sí" : "No"],
+          ["Participantes " + periodo, res.participants],
+          ["Intentos " + periodo, res.attempts],
+          ["Ganadores " + periodo, res.winners + (res.maxWinners > 0 ? " de " + res.maxWinners : "")]
         ];
         box.innerHTML = filas.map(function (f) {
           return '<div class="ruleta-stat"><span class="ruleta-stat-value">' + escHTML(String(f[1])) +
@@ -1571,7 +1570,7 @@
 
         if (log) {
           if (!res.log.length) {
-            log.innerHTML = '<p class="hint">Todavía nadie ha jugado en esta ronda.</p>';
+            log.innerHTML = '<p class="hint">Todavía nadie ha jugado en este periodo.</p>';
           } else {
             log.innerHTML = res.log.map(function (a) {
               var cuando = a.startedAt ? new Date(a.startedAt).toLocaleString() : "—";
@@ -1592,24 +1591,18 @@
   function initStopTimeRound() {
     $$("[data-stoptime-op]").forEach(function (btn) {
       btn.addEventListener("click", function () {
-        var op = btn.getAttribute("data-stoptime-op");
         var secret = stopTimeSecret();
         if (!secret) { alert('Primero escribí una "Clave de administrador" en la pestaña Negocio.'); return; }
-        var avisos = {
-          start: "¿Abrir una ronda nueva? Los intentos de todos quedan en cero.",
-          end: "¿Finalizar la ronda? Nadie más va a poder jugar hasta que abras otra.",
-          "reset-participants": "¿Reiniciar participantes? Se borran los intentos de esta ronda y todos pueden volver a jugar."
-        };
-        if (!confirm(avisos[op] || "¿Continuar?")) return;
+        if (!confirm("¿Reiniciar participantes? Se borran los intentos y todos pueden volver a jugar de inmediato, sin esperar a que se cumpla el tiempo.")) return;
         btn.disabled = true;
-        fetch(STOPTIME_API + "?action=admin-round", {
+        fetch(STOPTIME_API + "?action=admin-reset", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "admin-round", op: op, secret: secret })
+          body: JSON.stringify({ action: "admin-reset", secret: secret })
         }).then(function (r) { return r.json(); })
           .then(function (res) {
             btn.disabled = false;
             if (res && res.ok) fetchStopTimeRound();
-            else alert((res && res.error) || "No se pudo cambiar la ronda.");
+            else alert((res && res.error) || "No se pudo reiniciar.");
           })
           .catch(function () { btn.disabled = false; alert("No se pudo conectar con el servidor."); });
       });

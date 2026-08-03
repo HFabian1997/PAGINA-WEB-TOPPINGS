@@ -17,14 +17,12 @@ if (!function_exists('stDataFile')) {
   function stDataFile() { return __DIR__ . '/data/stoptime.json'; }
   function stLockFile() { return __DIR__ . '/data/stoptime.lock'; }
 
+  /* No hay rondas: el juego está siempre disponible dentro de sus fechas, y
+     quién puede jugar lo decide únicamente cada cuánto se renuevan los
+     intentos (ej. uno cada 12 horas). */
   function stDefaultState() {
     return array(
-      'roundId' => '',
-      'roundStatus' => 'idle',   // idle | running | ended
-      'roundStartedAt' => null,
-      'roundEndedAt' => null,
-      'attempts' => array(),     // un registro por intento (histórico completo)
-      'winners' => array(),      // deviceIds que ya ganaron en la ronda actual
+      'attempts' => array(),   // un registro por intento (histórico completo)
     );
   }
 
@@ -35,7 +33,8 @@ if (!function_exists('stDataFile')) {
       if (!isset($state[$k])) $state[$k] = $v;
     }
     if (!is_array($state['attempts'])) $state['attempts'] = array();
-    if (!is_array($state['winners'])) $state['winners'] = array();
+    // restos del sistema de rondas anterior: se ignoran sin borrar nada
+    unset($state['roundId'], $state['roundStatus'], $state['roundStartedAt'], $state['roundEndedAt'], $state['winners']);
     return $state;
   }
 
@@ -93,7 +92,8 @@ if (!function_exists('stDataFile')) {
       'precision' => in_array(isset($cfg['precision']) ? $cfg['precision'] : '', array('easy', 'medium', 'hard'), true) ? $cfg['precision'] : 'medium',
       'maxWinners' => isset($cfg['maxWinners']) ? (int) $cfg['maxWinners'] : 1,
       'attemptsPerUser' => isset($cfg['attemptsPerUser']) && (int) $cfg['attemptsPerUser'] > 0 ? (int) $cfg['attemptsPerUser'] : 1,
-      'attemptsReset' => in_array(isset($cfg['attemptsReset']) ? $cfg['attemptsReset'] : '', array('manual', 'daily', 'round', 'interval'), true) ? $cfg['attemptsReset'] : 'round',
+      // "round" ya no existe: si quedó guardado de antes, se trata como diario
+      'attemptsReset' => in_array(isset($cfg['attemptsReset']) ? $cfg['attemptsReset'] : '', array('manual', 'daily', 'interval'), true) ? $cfg['attemptsReset'] : 'daily',
       'attemptsResetAmount' => isset($cfg['attemptsResetAmount']) && $cfg['attemptsResetAmount'] > 0 ? (float) $cfg['attemptsResetAmount'] : 1,
       'attemptsResetUnit' => in_array(isset($cfg['attemptsResetUnit']) ? $cfg['attemptsResetUnit'] : '', array('minutes', 'hours', 'days'), true) ? $cfg['attemptsResetUnit'] : 'days',
       'startAt' => isset($cfg['startAt']) ? (string) $cfg['startAt'] : '',
@@ -151,14 +151,30 @@ if (!function_exists('stDataFile')) {
   }
 
   /**
-   * Los intentos de este dispositivo que CUENTAN ahora mismo. La política de
-   * reinicio se evalúa acá, al leer — misma idea perezosa que el resto del
-   * proyecto, sin depender de un cron que este hosting no tiene.
+   * ¿Este intento cae dentro del periodo vigente? La política de reinicio se
+   * evalúa acá, al leer — misma idea perezosa que el resto del proyecto, sin
+   * depender de un cron que este hosting no tiene.
    *
-   *   round    -> solo los de la ronda actual
    *   daily    -> solo los de hoy (día del negocio, America/Bogota)
    *   interval -> solo los de las últimas N horas/días (ventana deslizante)
    *   manual   -> todos, hasta que el admin reinicie participantes
+   *
+   * Lo usan las dos cuentas: la de intentos (por dispositivo) y la de
+   * ganadores (global). Así el tope de ganadores se renueva con el mismo
+   * reloj que los intentos, sin un segundo calendario que explicar.
+   */
+  function stInPeriod($a, $cfg) {
+    if ($cfg['attemptsReset'] === 'daily') {
+      return isset($a['day']) && $a['day'] === date('Y-m-d');
+    }
+    if ($cfg['attemptsReset'] === 'interval') {
+      return isset($a['startedAt']) && (int) $a['startedAt'] >= stNowMs() - stIntervalMs($cfg);
+    }
+    return true;   // manual
+  }
+
+  /**
+   * Los intentos de este dispositivo que CUENTAN ahora mismo.
    *
    * Todo lo que ve el cliente sale de esta misma lista, así que cuando se le
    * renueva el intento también se le limpia la tarjeta (el resultado anterior
@@ -167,18 +183,10 @@ if (!function_exists('stDataFile')) {
    */
   function stAttemptsInWindow($state, $deviceId, $cfg) {
     if ($deviceId === '') return array();
-    $hoy = date('Y-m-d');
-    $desde = $cfg['attemptsReset'] === 'interval' ? stNowMs() - stIntervalMs($cfg) : null;
     $out = array();
     foreach ($state['attempts'] as $a) {
       if (!isset($a['deviceId']) || $a['deviceId'] !== $deviceId) continue;
-      if ($cfg['attemptsReset'] === 'round') {
-        if (!isset($a['roundId']) || $a['roundId'] !== $state['roundId']) continue;
-      } elseif ($cfg['attemptsReset'] === 'daily') {
-        if (!isset($a['day']) || $a['day'] !== $hoy) continue;
-      } elseif ($cfg['attemptsReset'] === 'interval') {
-        if (!isset($a['startedAt']) || (int) $a['startedAt'] < $desde) continue;
-      }
+      if (!stInPeriod($a, $cfg)) continue;
       $out[] = $a;
     }
     usort($out, function ($x, $y) { return (int) $x['startedAt'] - (int) $y['startedAt']; });
@@ -189,11 +197,11 @@ if (!function_exists('stDataFile')) {
     return count(stAttemptsInWindow($state, $deviceId, $cfg));
   }
 
-  /** Cuántos ganadores hay ya en la ronda actual. */
-  function stCountWinners($state) {
+  /** Cuántos ganadores hay ya en el periodo vigente (de todos los clientes). */
+  function stCountWinners($state, $cfg) {
     $n = 0;
     foreach ($state['attempts'] as $a) {
-      if (!empty($a['won']) && isset($a['roundId']) && $a['roundId'] === $state['roundId']) $n++;
+      if (!empty($a['won']) && stInPeriod($a, $cfg)) $n++;
     }
     return $n;
   }
@@ -206,8 +214,8 @@ if (!function_exists('stDataFile')) {
 
   /**
    * Cuándo vuelve a tener intentos este dispositivo, en milisegundos. null si
-   * todavía le quedan, o si no se puede saber (por ronda / manual: depende de
-   * que el admin haga algo).
+   * todavía le quedan, o si no hay hora fija que mostrar (modo manual: depende
+   * de que el admin reinicie participantes).
    */
   function stNextResetMs($state, $deviceId, $cfg) {
     $enVentana = stAttemptsInWindow($state, $deviceId, $cfg);
@@ -222,6 +230,6 @@ if (!function_exists('stDataFile')) {
       // viejo de la ventana termina de envejecer
       return (int) $enVentana[0]['startedAt'] + stIntervalMs($cfg);
     }
-    return null;   // round / manual: no hay hora fija que mostrar
+    return null;   // manual: no hay hora fija que mostrar
   }
 }

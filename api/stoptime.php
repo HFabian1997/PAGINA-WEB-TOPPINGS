@@ -58,7 +58,7 @@ function stCheckAdminSecret($secret) {
   return $configured !== '' && $secret !== '' && hash_equals($configured, $secret);
 }
 
-/** ¿El código de premio de este intento ya fue reclamado o entregado? */
+/** ¿El mesero ya recibió o entregó este premio? (solo para el panel) */
 function stPrizeClaimed($code) {
   if (!$code) return false;
   $state = codesReadState();
@@ -68,45 +68,57 @@ function stPrizeClaimed($code) {
   return $status === 'waiting' || $status === 'delivered';
 }
 
-/** Cuántos de los tiros que ganó en este intento le quedan sin usar. */
-function stTicketsPendientes($ids) {
-  if (!is_array($ids) || !$ids) return 0;
-  $state = ruletaReadState();
-  ruletaExpireTickets($state);
-  $n = 0;
-  foreach ($state['tickets'] as $t) {
-    if (in_array($t['id'], $ids, true) && $t['status'] === 'available') $n++;
-  }
-  return $n;
+/** Nombre, ícono y vencimiento del premio que de verdad le tocó, leídos del
+    libro de premios. Se leen de ahí y no de la configuración actual: si el
+    admin le cambia el nombre al premio, quien ya ganó debe seguir viendo el
+    que ganó. */
+function stPrizeInfo($code) {
+  if (!$code) return null;
+  $state = codesReadState();
+  $idx = findCodeIndex($state['codes'], $code);
+  if ($idx === null) return null;
+  $c = $state['codes'][$idx];
+  return array(
+    'prizeName' => isset($c['prizeName']) ? $c['prizeName'] : null,
+    'prizeIcon' => isset($c['prizeIcon']) ? $c['prizeIcon'] : '🎁',
+    'expiresAt' => isset($c['expiresAt']) ? $c['expiresAt'] : null,
+  );
 }
 
 /** Lo que ve el cliente: su propio intento, sin datos de nadie más. */
 function stMyView($state, $deviceId, $cfg) {
-  $abierta = $state['roundStatus'] === 'running' && stInWindow($cfg);
   $usados = stCountAttempts($state, $deviceId, $cfg);
-  $ganadores = stCountWinners($state);
+  $ganadores = stCountWinners($state, $cfg);
   $ultimo = stLastAttempt($state, $deviceId, $cfg);
 
   $mio = array(
     'state' => 'none', 'elapsedMs' => null, 'prizeCode' => null, 'prizeClaimed' => false,
-    'rewardType' => 'prize', 'wheelSpins' => 0, 'wheelPending' => 0,
+    'rewardType' => 'prize', 'wheelSpins' => 0,
+    'prizeName' => null, 'prizeIcon' => '🎁', 'prizeExpiresAt' => null,
   );
   if ($ultimo && !empty($ultimo['stoppedAt'])) {
     $mio['state'] = !empty($ultimo['won']) ? 'won' : 'lost';
     $mio['elapsedMs'] = (int) $ultimo['elapsedMs'];
     $mio['prizeCode'] = isset($ultimo['prizeCode']) ? $ultimo['prizeCode'] : null;
 
-    // Un premio en tiros de Ruleta no genera código: lo que se gana es el
-    // tiro. Hay que decírselo al cliente, o el botón "Reclamar" se queda
-    // sin nada que abrir.
+    /* "Reclamado" acá significa "ya vio la animación del premio", no "el
+       mesero ya se lo entregó". Son dos cosas distintas: el código queda en
+       waiting/delivered recién cuando lo entregan, y los tiros de Ruleta
+       siguen disponibles hasta que gire. Con cualquiera de esos dos el botón
+       se quedaría verde después de abrir el regalo. */
+    $mio['prizeClaimed'] = !empty($ultimo['revealedAt']);
+
+    // Un premio en tiros de Ruleta no genera código: lo que se gana es el tiro.
     if (!empty($ultimo['wheelSpins'])) {
-      $ids = isset($ultimo['wheelTicketIds']) ? $ultimo['wheelTicketIds'] : array();
       $mio['rewardType'] = 'wheelSpins';
       $mio['wheelSpins'] = (int) $ultimo['wheelSpins'];
-      $mio['wheelPending'] = stTicketsPendientes($ids);
-      $mio['prizeClaimed'] = $mio['wheelPending'] === 0;
     } else {
-      $mio['prizeClaimed'] = stPrizeClaimed($mio['prizeCode']);
+      $info = stPrizeInfo($mio['prizeCode']);
+      if ($info) {
+        $mio['prizeName'] = $info['prizeName'];
+        $mio['prizeIcon'] = $info['prizeIcon'];
+        $mio['prizeExpiresAt'] = $info['expiresAt'];
+      }
     }
   } elseif ($ultimo) {
     $mio['state'] = 'running';   // arrancó y no ha detenido
@@ -114,9 +126,6 @@ function stMyView($state, $deviceId, $cfg) {
 
   return array(
     'ok' => true,
-    'roundId' => $state['roundId'],
-    'roundStatus' => $state['roundStatus'],
-    'roundOpen' => $abierta,
     'inWindow' => stInWindow($cfg),
     'targetMs' => $cfg['targetMs'],
     'precision' => $cfg['precision'],
@@ -164,10 +173,8 @@ switch ($action) {
 
     $out = array('ok' => false, 'error' => 'No se pudo empezar.');
     stWithWriteLock(function ($state) use ($deviceId, $name, $cfg, &$out) {
-      if ($state['roundStatus'] !== 'running') {
-        $out = array('ok' => false, 'reason' => 'round_closed');
-        return null;
-      }
+      // Ya no hay rondas: lo único que puede cerrar el juego son las fechas
+      // configuradas, y de ahí en más manda el tiempo de reinicio.
       if (!stInWindow($cfg)) {
         $out = array('ok' => false, 'reason' => 'out_of_window');
         return null;
@@ -192,7 +199,6 @@ switch ($action) {
       $now = stNowMs();
       $intento = array(
         'id' => uniqid('att_', true),
-        'roundId' => $state['roundId'],
         'day' => date('Y-m-d'),
         'deviceId' => $deviceId,
         'name' => $name,
@@ -259,7 +265,7 @@ switch ($action) {
 
       // El tope de ganadores se revisa DENTRO del candado: dos personas que
       // acierten al mismo tiempo no pueden pasar las dos si solo hay un cupo.
-      if ($gano && $cfg['maxWinners'] > 0 && stCountWinners($state) >= $cfg['maxWinners']) {
+      if ($gano && $cfg['maxWinners'] > 0 && stCountWinners($state, $cfg) >= $cfg['maxWinners']) {
         $gano = false;
         $sinCupo = true;
       } else {
@@ -323,62 +329,63 @@ switch ($action) {
     jsonOut($out, !empty($out['ok']) ? 200 : 400);
   }
 
-  /* ---------------- panel: control de la ronda ---------------- */
-  case 'admin-round': {
+  /* ---------------- marca que ya vio la animación del premio ----------------
+     Es lo que apaga el botón verde. Va aparte del estado del código porque
+     "ya abrió el regalo" y "el mesero ya se lo entregó" son cosas distintas. */
+  case 'claim': {
     if ($method !== 'POST') jsonOut(array('ok' => false, 'error' => 'Método no permitido.'), 405);
-    $secret = isset($body['secret']) ? trim((string) $body['secret']) : '';
-    if (!stCheckAdminSecret($secret)) jsonOut(array('ok' => false, 'error' => 'Clave de administrador incorrecta.'), 403);
-    $op = isset($body['op']) ? (string) $body['op'] : '';
-    if (!in_array($op, array('start', 'end', 'reset-participants'), true)) {
-      jsonOut(array('ok' => false, 'error' => 'Operación no reconocida.'), 400);
-    }
+    $deviceId = isset($body['deviceId']) ? trim((string) $body['deviceId']) : '';
+    if ($deviceId === '') jsonOut(array('ok' => false, 'error' => 'Falta identificar el dispositivo.'), 400);
 
-    $final = stWithWriteLock(function ($state) use ($op) {
-      if ($op === 'start') {
-        $state['roundId'] = uniqid('rnd_', true);
-        $state['roundStatus'] = 'running';
-        $state['roundStartedAt'] = stNowMs();
-        $state['roundEndedAt'] = null;
-        return $state;
-      }
-      if ($op === 'end') {
-        $state['roundStatus'] = 'ended';
-        $state['roundEndedAt'] = stNowMs();
-        return $state;
-      }
-      if ($op === 'reset-participants') {
-        // Se borran solo los intentos de la ronda actual: el histórico de
-        // rondas anteriores queda como registro.
-        $actual = $state['roundId'];
-        $state['attempts'] = array_values(array_filter($state['attempts'], function ($a) use ($actual) {
-          return !isset($a['roundId']) || $a['roundId'] !== $actual;
-        }));
-        return $state;
+    $out = array('ok' => false, 'reason' => 'not_found');
+    stWithWriteLock(function ($state) use ($deviceId, $cfg, &$out) {
+      $ultimo = stLastAttempt($state, $deviceId, $cfg);
+      if (!$ultimo || empty($ultimo['won'])) { $out = array('ok' => false, 'reason' => 'not_found'); return null; }
+      foreach ($state['attempts'] as $i => $a) {
+        if (isset($a['id']) && $a['id'] === $ultimo['id']) {
+          if (empty($a['revealedAt'])) $state['attempts'][$i]['revealedAt'] = stNowMs();
+          $out = array('ok' => true);
+          return $state;
+        }
       }
       return null;
     });
-
-    if (!is_array($final)) jsonOut(array('ok' => false, 'error' => 'No se pudo guardar el estado de la ronda.'), 500);
-    jsonOut(array('ok' => true, 'roundId' => $final['roundId'], 'roundStatus' => $final['roundStatus']));
+    jsonOut($out, !empty($out['ok']) ? 200 : 400);
   }
 
-  /* ---------------- panel: resumen de la ronda ---------------- */
+  /* ---------------- panel: dejar jugar a todos otra vez ---------------- */
+  case 'admin-reset': {
+    if ($method !== 'POST') jsonOut(array('ok' => false, 'error' => 'Método no permitido.'), 405);
+    $secret = isset($body['secret']) ? trim((string) $body['secret']) : '';
+    if (!stCheckAdminSecret($secret)) jsonOut(array('ok' => false, 'error' => 'Clave de administrador incorrecta.'), 403);
+
+    $final = stWithWriteLock(function ($state) {
+      $state['attempts'] = array();
+      return $state;
+    });
+    if (!is_array($final)) jsonOut(array('ok' => false, 'error' => 'No se pudo reiniciar.'), 500);
+    jsonOut(array('ok' => true));
+  }
+
+  /* ---------------- panel: resumen del periodo ---------------- */
   case 'admin-status': {
     $secret = isset($_GET['secret']) ? trim((string) $_GET['secret']) : '';
     if (!stCheckAdminSecret($secret)) jsonOut(array('ok' => false, 'error' => 'Clave de administrador incorrecta.'), 403);
     $state = stReadState();
 
-    $deLaRonda = array();
+    // Los del periodo vigente: es lo que le importa al admin ahora mismo, y
+    // coincide con el tope de ganadores que se está aplicando.
+    $delPeriodo = array();
     foreach ($state['attempts'] as $a) {
-      if (isset($a['roundId']) && $a['roundId'] === $state['roundId']) $deLaRonda[] = $a;
+      if (stInPeriod($a, $cfg)) $delPeriodo[] = $a;
     }
-    usort($deLaRonda, function ($x, $y) { return (int) $y['startedAt'] - (int) $x['startedAt']; });
+    usort($delPeriodo, function ($x, $y) { return (int) $y['startedAt'] - (int) $x['startedAt']; });
 
     $participantes = array();
-    foreach ($deLaRonda as $a) $participantes[$a['deviceId']] = true;
+    foreach ($delPeriodo as $a) $participantes[$a['deviceId']] = true;
 
     $lista = array();
-    foreach (array_slice($deLaRonda, 0, 60) as $a) {
+    foreach (array_slice($delPeriodo, 0, 60) as $a) {
       $lista[] = array(
         'name' => isset($a['name']) && $a['name'] !== '' ? $a['name'] : '(sin nombre)',
         'startedAt' => (int) $a['startedAt'],
@@ -393,17 +400,14 @@ switch ($action) {
 
     jsonOut(array(
       'ok' => true,
-      'roundId' => $state['roundId'],
-      'roundStatus' => $state['roundStatus'],
-      'roundStartedAt' => $state['roundStartedAt'],
-      'roundEndedAt' => $state['roundEndedAt'],
       'inWindow' => stInWindow($cfg),
       'targetMs' => $cfg['targetMs'],
       'precision' => $cfg['precision'],
+      'attemptsReset' => $cfg['attemptsReset'],
       'maxWinners' => $cfg['maxWinners'],
-      'winners' => stCountWinners($state),
+      'winners' => stCountWinners($state, $cfg),
       'participants' => count($participantes),
-      'attempts' => count($deLaRonda),
+      'attempts' => count($delPeriodo),
       'log' => $lista,
       'serverNow' => stNowMs(),
     ));
