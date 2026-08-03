@@ -1083,6 +1083,27 @@
           });
         };
 
+        /* Subir una foto JUSTO DEBAJO de esta. El botón de "+ Agregar imagen"
+           siempre la manda al final y después toca subirla a mano hasta su
+           lugar; así entra derecho donde va. */
+        var insertBtn = node.querySelector('[data-role="insert"]');
+        var insertInput = node.querySelector('[data-role="insert-input"]');
+        insertBtn.onclick = function () { insertInput.click(); };
+        insertInput.onchange = function () {
+          var file = insertInput.files[0];
+          if (!file) return;
+          insertBtn.disabled = true;
+          insertBtn.textContent = "Subiendo…";
+          uploadImage(file, function (rel) {
+            insertInput.value = "";
+            if (!rel) { insertBtn.disabled = false; insertBtn.textContent = "⬇️ Subir foto aquí debajo"; return; }
+            items.splice(idx + 1, 0, rel);
+            markDirty();
+            renderImageLists();
+            renderCarouselAdmins();
+          });
+        };
+
         list.appendChild(node);
       });
     });
@@ -1669,6 +1690,8 @@
     return dp.methodOrder;
   }
 
+  var prizeRowsOpen = {};   // qué filas dejó abiertas, para no cerrárselas al repintar
+
   function renderPrizeMethodOrder() {
     var list = $("[data-prize-method-order]");
     if (!list) return;
@@ -1685,28 +1708,87 @@
       });
     }
 
+    /* Antes de vaciar la lista hay que SACAR las secciones de configuración,
+       o `innerHTML = ""` las destruiría junto con sus campos ya enlazados.
+       Se guardan en un cajón oculto y se vuelven a meter en la fila que toca.
+       Mover un nodo no rompe nada: renderForms() los enlazó por
+       data-form/data-field y esas referencias sobreviven al cambio de padre. */
+    var cajon = $("[data-prize-config-stash]");
+    $$("[data-prize-config]").forEach(function (sec) {
+      if (cajon) cajon.appendChild(sec);
+    });
+
     list.innerHTML = "";
     order.forEach(function (key) {
       var meta = PRIZE_METHOD_META[key];
       var activa = !!(dp[key] && dp[key].active);
+
       var row = document.createElement("div");
-      row.className = "home-block" + (activa ? "" : " is-off");
+      row.className = "prize-method-row" + (activa ? "" : " is-off");
       row.setAttribute("data-sort-item", "");
       row.innerHTML =
-        '<span class="home-block-icon">' + meta.icon + "</span>" +
-        '<span class="home-block-label">' + escHTML(meta.label) + "</span>" +
-        '<span class="home-block-tag">' + (activa ? "activa" : "desactivada") + "</span>" +
-        '<span class="image-list-grip">⠿</span>';
+        '<div class="pm-head">' +
+          '<span class="image-list-grip">⠿</span>' +
+          '<button type="button" class="pm-toggle" data-pm-toggle>' +
+            '<span class="pm-icon">' + meta.icon + "</span>" +
+            '<span class="pm-name">' + escHTML(meta.label) + "</span>" +
+            '<span class="pm-tag">' + (activa ? "activa" : "desactivada") + "</span>" +
+            '<span class="pm-caret">▸</span>' +
+          "</button>" +
+          '<button type="button" class="pm-active" data-pm-active title="Activar / desactivar">' +
+            (activa ? "✅" : "🚫") + "</button>" +
+        "</div>" +
+        '<div class="pm-body" hidden></div>';
+
+      var body = row.querySelector(".pm-body");
+      var caret = row.querySelector(".pm-caret");
+      var seccion = cajon ? cajon.querySelector('[data-prize-config="' + key + '"]') : null;
+      if (seccion) {
+        seccion.open = true;              // la fila ya hace de plegable
+        body.appendChild(seccion);
+      }
+
+      /* Se recuerda cuáles estaban abiertas: tocar el interruptor repinta la
+         lista, y sin esto se le cerraría en la cara la sección que está
+         editando. */
+      var abierta = prizeRowsOpen[key];
+      body.hidden = !abierta;
+      caret.textContent = abierta ? "▾" : "▸";
+      row.classList.toggle("is-open", !!abierta);
+
+      row.querySelector("[data-pm-toggle]").onclick = function () {
+        body.hidden = !body.hidden;
+        prizeRowsOpen[key] = !body.hidden;
+        caret.textContent = body.hidden ? "▸" : "▾";
+        row.classList.toggle("is-open", !body.hidden);
+      };
+
+      /* El interruptor de la cabecera y el de adentro son EL MISMO dato: acá
+         solo se dispara el de adentro, para no tener dos fuentes que se
+         puedan contradecir. */
+      row.querySelector("[data-pm-active]").onclick = function () {
+        var sw = $('[data-field="dailyPrize.' + key + '.active"]');
+        if (!sw) return;
+        sw.checked = !sw.checked;
+        sw.dispatchEvent(new Event("input", { bubbles: true }));
+        sw.dispatchEvent(new Event("change", { bubbles: true }));
+      };
+
       list.appendChild(row);
     });
   }
 
-  /* La etiqueta "activa/desactivada" de cada fila sigue al interruptor de esa
-     forma de ganar, que vive más abajo en el mismo panel. */
+  /* La etiqueta y el ✅/🚫 de cada fila siguen al interruptor de esa forma de
+     ganar, que ahora vive dentro de la misma fila. Se engancha por delegación
+     porque las secciones cambian de lugar en cada repintado. */
   function initPrizeMethodOrder() {
-    Object.keys(PRIZE_METHOD_META).forEach(function (key) {
-      var sw = $('[data-field="dailyPrize.' + key + '.active"]');
-      if (sw) sw.addEventListener("change", renderPrizeMethodOrder);
+    var panel = $('[data-panel="premio"]');
+    if (!panel) return;
+    panel.addEventListener("change", function (e) {
+      var f = e.target && e.target.getAttribute && e.target.getAttribute("data-field");
+      if (!f) return;
+      var m = f.match(/^dailyPrize\.(\w+)\.active$/);
+      if (m && PRIZE_METHOD_META[m[1]]) renderPrizeMethodOrder();
     });
   }
 
@@ -2125,6 +2207,319 @@
     }
     initRuletaAddPrize();
     initRuletaSave();
+  }
+
+  /* ==================== 📊 Historial y 👥 Clientes ====================
+     Todo sale de api/history.php, que no guarda nada nuevo: junta lo que ya
+     escriben las demás dinámicas y lo separa por categoría. */
+  var HISTORY_API = "../api/history.php";
+  var PRESENCE_API = "../api/presence.php";
+  var NOTIF_API = "../api/notifications.php";
+  var histAbierta = {};        // qué categorías dejó abiertas
+  var histPeriodo = {};        // el periodo elegido en cada una
+  var panelPollTimer = null;   // refresco automático de la pestaña abierta
+
+  function fmtFecha(ms) {
+    if (!ms) return "—";
+    return new Date(Number(ms)).toLocaleString();
+  }
+
+  /* ---- Presencia ---- */
+  function fetchPresence() {
+    var box = $("[data-presence-stats]");
+    if (!box) return;
+    fetch(PRESENCE_API + "?action=count&_=" + Date.now(), { credentials: "same-origin", cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (!res || !res.ok) { box.innerHTML = '<p class="hint">No se pudo consultar.</p>'; return; }
+        var filas = [
+          ["Conectados ahora", res.online],
+          ["Entraron hoy", res.today],
+          ["Entraron ayer", res.yesterday]
+        ];
+        box.innerHTML = filas.map(function (f) {
+          return '<div class="ruleta-stat"><span class="ruleta-stat-value">' + escHTML(String(f[1])) +
+            '</span><span class="ruleta-stat-label">' + f[0] + "</span></div>";
+        }).join("");
+      })
+      .catch(function () { box.innerHTML = '<p class="hint">No se pudo conectar.</p>'; });
+  }
+
+  /* ---- Historial por categoría ---- */
+  function fetchHistorySummary() {
+    var cont = $("[data-history-cats]");
+    var statusEl = $("[data-history-status]");
+    if (!cont) return;
+    fetch(HISTORY_API + "?action=summary&_=" + Date.now(), { credentials: "same-origin", cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (!res || !res.ok) {
+          if (statusEl) statusEl.textContent = (res && res.error) || "No se pudo consultar el historial.";
+          return;
+        }
+        if (statusEl) statusEl.textContent = "";
+        cont.innerHTML = "";
+        res.cats.forEach(function (c) { cont.appendChild(buildHistoryRow(c)); });
+      })
+      .catch(function () { if (statusEl) statusEl.textContent = "No se pudo conectar con el servidor."; });
+  }
+
+  function buildHistoryRow(c) {
+    var row = document.createElement("div");
+    row.className = "ruleta-prize-row";
+    var abierta = !!histAbierta[c.cat];
+    var periodo = histPeriodo[c.cat] || "all";
+
+    row.innerHTML =
+      '<div class="rp-head">' +
+        '<button type="button" class="rp-toggle" data-h-toggle>' +
+          '<span class="rp-icon">' + c.icon + "</span>" +
+          '<span class="rp-name">' + escHTML(c.label) + "</span>" +
+          '<span class="rp-prob">' + c.total + "</span>" +
+          '<span class="rp-caret">' + (abierta ? "▾" : "▸") + "</span>" +
+        "</button>" +
+      "</div>" +
+      '<div class="rp-body"' + (abierta ? "" : " hidden") + ">" +
+        '<div class="history-controls">' +
+          '<select data-h-period>' +
+            '<option value="day">Hoy</option>' +
+            '<option value="week">Últimos 7 días</option>' +
+            '<option value="month">Últimos 30 días</option>' +
+            '<option value="all">Todo</option>' +
+          "</select>" +
+          '<button type="button" class="btn btn-ghost" data-h-reset>🗑️ Reiniciar este historial</button>' +
+        "</div>" +
+        '<div class="history-rows" data-h-rows></div>' +
+      "</div>";
+
+    var body = row.querySelector(".rp-body");
+    var caret = row.querySelector(".rp-caret");
+    var sel = row.querySelector("[data-h-period]");
+    sel.value = periodo;
+
+    row.querySelector("[data-h-toggle]").onclick = function () {
+      body.hidden = !body.hidden;
+      histAbierta[c.cat] = !body.hidden;
+      caret.textContent = body.hidden ? "▸" : "▾";
+      row.classList.toggle("is-open", !body.hidden);
+      if (!body.hidden) fetchHistoryRows(c.cat, row);
+    };
+    sel.onchange = function () {
+      histPeriodo[c.cat] = sel.value;
+      fetchHistoryRows(c.cat, row);
+    };
+    row.querySelector("[data-h-reset]").onclick = function () {
+      if (!confirm('¿Reiniciar el historial de "' + c.label + '"?\n\nSe borra solo el de esta dinámica; las demás no se tocan. Los premios que un cliente todavía puede reclamar NO se borran.')) return;
+      fetch(HISTORY_API + "?action=reset", {
+        method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reset", cat: c.cat })
+      }).then(function (r) { return r.json(); })
+        .then(function (res) {
+          if (!res || !res.ok) { alert((res && res.error) || "No se pudo reiniciar."); return; }
+          if (res.kept) alert("Listo. Se conservaron " + res.kept + " premio(s) que el cliente todavía puede reclamar.");
+          fetchHistorySummary();
+        })
+        .catch(function () { alert("No se pudo conectar con el servidor."); });
+    };
+
+    if (abierta) fetchHistoryRows(c.cat, row);
+    return row;
+  }
+
+  function fetchHistoryRows(cat, row) {
+    var cont = row.querySelector("[data-h-rows]");
+    var periodo = histPeriodo[cat] || "all";
+    cont.innerHTML = '<p class="hint">Consultando…</p>';
+    fetch(HISTORY_API + "?action=list&cat=" + encodeURIComponent(cat) + "&period=" + encodeURIComponent(periodo) + "&_=" + Date.now(),
+      { credentials: "same-origin", cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (!res || !res.ok) { cont.innerHTML = '<p class="hint">No se pudo consultar.</p>'; return; }
+        var aviso = res.onlyWinners
+          ? '<p class="hint">En esta dinámica solo queda registro de quien <strong>gana</strong>: los sellos y los reclamos del día no se guardan en el servidor.</p>'
+          : "";
+        if (!res.rows.length) { cont.innerHTML = aviso + '<p class="hint">Nada en este periodo.</p>'; return; }
+        cont.innerHTML = aviso + res.rows.map(function (r2) {
+          return '<p class="hint history-row"><strong>' + escHTML(r2.name) + "</strong> — " + escHTML(r2.text) +
+            (r2.status ? " · " + escHTML(r2.status) : "") + "<br><span class='history-when'>" + escHTML(fmtFecha(r2.ts)) + "</span></p>";
+        }).join("") + (res.total > res.rows.length
+          ? '<p class="hint">Mostrando ' + res.rows.length + " de " + res.total + ".</p>" : "");
+      })
+      .catch(function () { cont.innerHTML = '<p class="hint">No se pudo conectar.</p>'; });
+  }
+
+  /* ---- Clientes ---- */
+  function fetchCustomers() {
+    var cont = $("[data-customers-list]");
+    var statusEl = $("[data-customers-status]");
+    if (!cont) return;
+    var q = ($("[data-customers-search]") || {}).value || "";
+    fetch(HISTORY_API + "?action=customers&q=" + encodeURIComponent(q) + "&_=" + Date.now(),
+      { credentials: "same-origin", cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (!res || !res.ok) {
+          if (statusEl) statusEl.textContent = (res && res.error) || "No se pudo consultar.";
+          return;
+        }
+        if (statusEl) statusEl.textContent = res.total + " cliente(s) con nombre registrado.";
+        if (!res.customers.length) {
+          cont.innerHTML = '<p class="hint">Todavía nadie ha dado su nombre.</p>';
+          return;
+        }
+        cont.innerHTML = "";
+        res.customers.forEach(function (c) { cont.appendChild(buildCustomerRow(c)); });
+      })
+      .catch(function () { if (statusEl) statusEl.textContent = "No se pudo conectar con el servidor."; });
+  }
+
+  function buildCustomerRow(c) {
+    var row = document.createElement("div");
+    row.className = "ruleta-prize-row";
+    row.innerHTML =
+      '<div class="rp-head">' +
+        '<button type="button" class="rp-toggle" data-c-toggle>' +
+          '<span class="rp-icon">👤</span>' +
+          '<span class="rp-name">' + escHTML(c.name) + "</span>" +
+          '<span class="rp-prob">' + c.prizes + " 🎁</span>" +
+          '<span class="rp-caret">▸</span>' +
+        "</button>" +
+      "</div>" +
+      '<div class="rp-body" hidden>' +
+        '<p class="hint">Premios: <strong>' + c.prizes + "</strong> · entregados: <strong>" + c.delivered +
+          "</strong> · sin reclamar: <strong>" + c.pending + "</strong></p>" +
+        '<p class="hint">Última vez en la página: ' + escHTML(fmtFecha(c.lastSeen)) +
+          " · nombre puesto el " + escHTML(fmtFecha(c.updatedAt)) + "</p>" +
+        '<div class="field-grid">' +
+          "<label>Título <input type='text' data-c-title placeholder='📣 TOPPINGS'></label>" +
+          "<label class='full'>Mensaje para " + escHTML(c.name) +
+            " <textarea rows='3' data-c-message placeholder='Ej: Tu código de premio es AMIGO 🎁'></textarea></label>" +
+        "</div>" +
+        '<button type="button" class="btn btn-primary" data-c-send>Enviar mensaje</button>' +
+        '<p class="hint" data-c-status></p>' +
+      "</div>";
+
+    var body = row.querySelector(".rp-body");
+    var caret = row.querySelector(".rp-caret");
+    row.querySelector("[data-c-toggle]").onclick = function () {
+      body.hidden = !body.hidden;
+      caret.textContent = body.hidden ? "▸" : "▾";
+      row.classList.toggle("is-open", !body.hidden);
+    };
+
+    row.querySelector("[data-c-send]").onclick = function () {
+      var titulo = row.querySelector("[data-c-title]").value;
+      var msg = row.querySelector("[data-c-message]").value;
+      var st = row.querySelector("[data-c-status]");
+      if (!msg.trim()) { st.textContent = "Escribí el mensaje."; return; }
+      st.textContent = "Enviando…";
+      enviarAviso(c.deviceId, titulo, msg, function (ok, err) {
+        st.textContent = ok ? "Enviado ✓" : (err || "No se pudo enviar.");
+        if (ok) { row.querySelector("[data-c-message]").value = ""; fetchNotifSent(); }
+      });
+    };
+    return row;
+  }
+
+  function enviarAviso(deviceId, title, message, cb) {
+    fetch(NOTIF_API + "?action=admin-send", {
+      method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "admin-send", deviceId: deviceId, title: title, message: message })
+    }).then(function (r) { return r.json(); })
+      .then(function (res) { cb(!!(res && res.ok), res && res.error); })
+      .catch(function () { cb(false, "No se pudo conectar con el servidor."); });
+  }
+
+  function fetchNotifSent() {
+    var cont = $("[data-notif-sent-list]");
+    if (!cont) return;
+    fetch(NOTIF_API + "?action=admin-list&_=" + Date.now(), { credentials: "same-origin", cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (!res || !res.ok) { cont.innerHTML = '<p class="hint">No se pudo consultar.</p>'; return; }
+        if (!res.items.length) { cont.innerHTML = '<p class="hint">Todavía no has enviado ningún mensaje.</p>'; return; }
+        cont.innerHTML = res.items.map(function (n) {
+          return '<div class="ruleta-search-row-result">' +
+            "<strong>" + escHTML(n.title) + "</strong> " +
+            (n.toAll ? '<span class="rp-tag">a todos</span>' : "") +
+            "<br>" + escHTML(n.message) +
+            '<br><span class="hint">' + escHTML(fmtFecha(n.createdAt)) + " · leído por " + n.readCount + "</span>" +
+            '<button type="button" class="btn btn-ghost" data-notif-del="' + escHTML(n.id) + '">Borrar</button>' +
+          "</div>";
+        }).join("");
+        $$("[data-notif-del]", cont).forEach(function (b) {
+          b.addEventListener("click", function () {
+            if (!confirm("¿Borrar este mensaje? Los clientes que no lo hayan leído ya no lo verán.")) return;
+            fetch(NOTIF_API + "?action=admin-delete", {
+              method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "admin-delete", id: b.getAttribute("data-notif-del") })
+            }).then(function (r) { return r.json(); }).then(function () { fetchNotifSent(); });
+          });
+        });
+      })
+      .catch(function () { cont.innerHTML = '<p class="hint">No se pudo conectar.</p>'; });
+  }
+
+  /* El panel se refresca solo mientras la pestaña está abierta: si un cliente
+     se cambia el nombre, acá se ve sin tener que recargar. Se apaga al salir
+     de la pestaña para no consultar de gratis. */
+  function startPanelPoll(which) {
+    stopPanelPoll();
+    panelPollTimer = setInterval(function () {
+      if (which === "historial") { fetchPresence(); fetchHistorySummary(); }
+      else { fetchCustomers(); fetchNotifSent(); }
+    }, 15000);
+  }
+  function stopPanelPoll() {
+    if (panelPollTimer) { clearInterval(panelPollTimer); panelPollTimer = null; }
+  }
+
+  function initHistoryTabs() {
+    var tabHist = $('[data-tab="historial"]');
+    if (tabHist) {
+      tabHist.addEventListener("click", function () {
+        fetchPresence(); fetchHistorySummary(); fetchCodesStats();
+        startPanelPoll("historial");
+      });
+    }
+    var tabCli = $('[data-tab="clientes"]');
+    if (tabCli) {
+      tabCli.addEventListener("click", function () {
+        fetchCustomers(); fetchNotifSent();
+        startPanelPoll("clientes");
+      });
+    }
+    // al irse a cualquier otra pestaña se apaga el refresco
+    $$("[data-tab]").forEach(function (t) {
+      var name = t.getAttribute("data-tab");
+      if (name !== "historial" && name !== "clientes") t.addEventListener("click", stopPanelPoll);
+    });
+
+    var buscar = $("[data-customers-search]");
+    if (buscar) {
+      buscar.addEventListener("input", function () {
+        clearTimeout(buscar.__t);
+        buscar.__t = setTimeout(fetchCustomers, 300);
+      });
+    }
+    var refrescar = $("[data-customers-refresh]");
+    if (refrescar) refrescar.addEventListener("click", function () { fetchCustomers(); fetchNotifSent(); });
+
+    var enviarTodos = $("[data-notif-send-all]");
+    if (enviarTodos) {
+      enviarTodos.addEventListener("click", function () {
+        var titulo = ($("[data-notif-all-title]") || {}).value || "";
+        var msg = ($("[data-notif-all-message]") || {}).value || "";
+        var st = $("[data-notif-all-status]");
+        if (!msg.trim()) { if (st) st.textContent = "Escribí el mensaje."; return; }
+        if (!confirm("¿Enviar este mensaje a TODOS los clientes?")) return;
+        if (st) st.textContent = "Enviando…";
+        enviarAviso("*", titulo, msg, function (ok, err) {
+          if (st) st.textContent = ok ? "Enviado a todos ✓" : (err || "No se pudo enviar.");
+          if (ok) { $("[data-notif-all-message]").value = ""; fetchNotifSent(); }
+        });
+      });
+    }
   }
 
   /* ==================== 🎟️ Códigos de Premio (cupones a mano) ====================
@@ -2547,6 +2942,7 @@
     initChallengeReset();
     initRuletaTab();
     initRedeemTab();
+    initHistoryTabs();
     initCodesSearch();
     initCarouselPreviewModal();
     initSave();

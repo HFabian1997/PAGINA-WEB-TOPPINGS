@@ -233,13 +233,13 @@ a.btn { text-decoration: none; }
 }
 
 /* Reemplazar la foto conservando su posición. Va donde antes estaba el asa. */
-.image-list-replace {
+.image-list-replace, .image-list-insert {
   width: 100%; margin-top: .4rem; padding: .45rem;
   border-radius: 8px; border: 1px solid var(--line); background: var(--bg-2);
   color: var(--ink-soft); font-size: .72rem; font-weight: 700; cursor: pointer;
 }
-.image-list-replace:hover { border-color: var(--accent); color: var(--accent); }
-.image-list-replace:disabled { opacity: .5; cursor: default; }
+.image-list-replace:hover, .image-list-insert:hover { border-color: var(--accent); color: var(--accent); }
+.image-list-replace:disabled, .image-list-insert:disabled { opacity: .5; cursor: default; }
 
 /* ---- Bloques de la página de inicio ---- */
 .home-blocks { display: flex; flex-direction: column; gap: .5rem; margin-bottom: 1rem; }
@@ -477,6 +477,48 @@ body.is-sorting-active { user-select: none; }
 .ruleta-prize-grid textarea { min-width: 0; max-width: 100%; }
 .ruleta-prize-remove { font-size: .78rem; }
 
+/* ---- 🧱 Formas de ganar: orden + activar + configurar, todo en una fila ----
+   Mismo patrón plegable que los premios de la ruleta y los códigos: en el
+   celular solo se abre la que se está editando. */
+.prize-method-rows { display: flex; flex-direction: column; gap: .6rem; margin-bottom: 1.25rem; }
+.prize-method-row {
+  position: relative;
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: .5rem .6rem;
+}
+.prize-method-row.is-open { border-color: var(--accent); }
+.prize-method-row.is-off { opacity: .55; }
+.pm-head { display: flex; align-items: center; gap: .4rem; }
+.prize-method-row .image-list-grip { position: static; flex: none; }
+.pm-toggle {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: .5rem;
+  background: none; border: 0; color: var(--ink); cursor: pointer;
+  padding: .4rem .2rem; font: inherit; text-align: left;
+}
+.pm-icon { font-size: 1.15rem; flex: none; }
+.pm-name {
+  flex: 1; min-width: 0; font-weight: 700; font-size: .9rem;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pm-tag {
+  flex: none; font-size: .6rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--ink-mute); border: 1px solid var(--line); border-radius: 999px; padding: .1rem .4rem;
+}
+.pm-caret { flex: none; color: var(--ink-mute); }
+/* En el celular la etiqueta le comía el nombre ("Cronóm…"); el ✅/🚫 de al
+   lado ya dice si está activa, así que sobra. */
+@media (max-width: 520px) { .pm-tag { display: none; } }
+.pm-active {
+  flex: none; width: 32px; height: 32px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--bg-2); cursor: pointer; font-size: .9rem;
+}
+.pm-body { padding: .2rem 0 0; }
+.pm-body[hidden] { display: none; }
+/* la fila ya hace de plegable: el título propio de la sección estorba */
+.pm-body > .admin-collapsible > summary { display: none; }
+.pm-body > .admin-collapsible { border: 0; padding: 0; margin: 0; background: none; }
+[data-prize-config-stash][hidden] { display: none; }
+
 /* ---- ⏱️ Cronómetro: modo "Detén el tiempo" ---- */
 [data-crono-mode][hidden] { display: none; }
 .stoptime-target-row { display: flex; align-items: center; gap: .35rem; }
@@ -489,6 +531,22 @@ body.is-sorting-active { user-select: none; }
 .stoptime-round-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1rem; }
 .stoptime-log { display: flex; flex-direction: column; max-height: 320px; overflow-y: auto; }
 .stoptime-log-row { margin: .15rem 0; }
+
+/* ---- 📊 Historial y 👥 Clientes ----
+   Reutilizan las filas plegadas de la ruleta (.ruleta-prize-row): una sola
+   abierta a la vez es lo que hace usable esto en el celular. */
+.history-cats, .customers-list, .notif-sent-list {
+  display: flex; flex-direction: column; gap: .6rem; margin-bottom: 1.25rem;
+}
+.history-controls { display: flex; flex-wrap: wrap; gap: .6rem; margin-bottom: .8rem; }
+.history-controls select { flex: 1 1 160px; min-width: 0; }
+.history-rows { display: flex; flex-direction: column; max-height: 420px; overflow-y: auto; }
+.history-row {
+  margin: 0; padding: .5rem 0; border-bottom: 1px solid var(--line); line-height: 1.4;
+}
+.history-row:last-child { border-bottom: 0; }
+.history-when { color: var(--ink-mute); font-size: .72rem; }
+.notif-sent-list .ruleta-search-row-result .btn { margin-top: .5rem; }
 
 /* ---- 🎟️ Códigos de Premio ----
    Reutiliza las filas plegadas de la ruleta (.ruleta-prize-row y compañía):
@@ -506,8 +564,18 @@ body.is-sorting-active { user-select: none; }
 
 .ruleta-savebar { display: flex; align-items: center; justify-content: flex-end; gap: 1rem; margin-bottom: 2rem; }
 
-.ruleta-search-row { display: flex; gap: .6rem; margin-bottom: 1rem; }
-.ruleta-search-row input { flex: 1; }
+/* El campo, el filtro y el botón se acomodan en varios renglones si no caben.
+   Sin `wrap` y sin `min-width: 0`, el <select> (que trae el ancho de su opción
+   más larga) empujaba el botón "Buscar" fuera de la pantalla en el celular. */
+.ruleta-search-row { display: flex; flex-wrap: wrap; gap: .6rem; margin-bottom: 1rem; }
+.ruleta-search-row > * { min-width: 0; }
+.ruleta-search-row input { flex: 1 1 100%; }
+.ruleta-search-row select { flex: 1 1 60%; max-width: 100%; }
+.ruleta-search-row .btn { flex: 0 0 auto; }
+@media (min-width: 720px) {
+  .ruleta-search-row input { flex: 1 1 auto; }
+  .ruleta-search-row select { flex: 0 1 auto; }
+}
 .ruleta-search-results { display: flex; flex-direction: column; gap: .6rem; margin-bottom: 1.5rem; }
 .ruleta-search-row-result {
   background: var(--card); border: 1px solid var(--line); border-radius: 10px;

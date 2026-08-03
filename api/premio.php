@@ -7,6 +7,7 @@
 date_default_timezone_set('America/Bogota');
 require_once __DIR__ . '/ruleta-lib.php';
 require_once __DIR__ . '/codes-lib.php';
+require_once __DIR__ . '/rename-lib.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -454,6 +455,12 @@ if ($method === 'POST') {
       $outcome = array('ok' => true, 'state' => publicState($state));
       return $state;
     });
+
+    /* El nombre también tiene que llegar al libro de premios, a los canjes, a
+       los tiros de la ruleta y a los intentos del cronómetro — si no, el panel
+       sigue mostrando el nombre viejo. Va FUERA del candado de premio.json:
+       cada archivo tiene el suyo. */
+    $outcome['renamed'] = renameInAllRecords($deviceId, $newName);
     jsonOut($outcome);
   }
 

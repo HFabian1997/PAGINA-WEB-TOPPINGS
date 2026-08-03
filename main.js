@@ -2011,7 +2011,7 @@
     var claimBtn = $('[data-prize-claim-btn="loyalty"]', card);
     if (scanBtn) scanBtn.onclick = openLoyaltyScanModal;
     if (scanHintEl) scanHintEl.textContent = info.scanHintText || "Escanea el código QR que está en el local para sumar tu sello de hoy 📱";
-    if (claimBtn) claimBtn.textContent = info.claimButtonLabel || "🎁 Reclamar premio";
+    // el texto del botón lo pone render(), que es quien sabe cuántos sellos faltan
 
     function getStamps() { return Math.min(required, Number(localStorage.getItem(LOYALTY_STAMPS_KEY) || 0)); }
 
@@ -2032,13 +2032,29 @@
           stampsEl.appendChild(dot);
         }
       }
+      /* El botón del premio está SIEMPRE visible, con los mismos dos estados
+         que el cronómetro: gris avisando cuánto falta, verde cuando ya se
+         puede reclamar. Antes aparecía de la nada al último sello, así que el
+         cliente no sabía que había premio ni cuánto le faltaba. */
+      if (claimBtn) {
+        claimBtn.hidden = false;
+        claimBtn.disabled = !full;
+        claimBtn.classList.toggle("is-ready", full);
+        claimBtn.classList.toggle("is-locked", !full);
+        if (full) {
+          claimBtn.textContent = info.claimButtonLabel || "🎁 Reclamar premio";
+        } else {
+          var faltan = required - stamps;
+          claimBtn.textContent = "Te falta" + (faltan === 1 ? "" : "n") + " " + faltan +
+            " sello" + (faltan === 1 ? "" : "s") + " para reclamar";
+        }
+      }
+
       if (full) {
         if (statusEl) statusEl.hidden = true;
         if (scanHintEl) scanHintEl.hidden = true;
         if (scanBtn) scanBtn.hidden = true;
-        if (claimBtn) claimBtn.hidden = false;
       } else {
-        if (claimBtn) claimBtn.hidden = true;
         if (scanHintEl) scanHintEl.hidden = false;
         if (scanBtn) scanBtn.hidden = false;
         if (statusEl) {
@@ -2868,7 +2884,7 @@
     tickets = tickets || lastGiftTickets || [];
     var dismissed = getDismissedCodes();
     var visible = codes.filter(function (c) { return dismissed.indexOf(c.code) === -1; });
-    if (!visible.length && !tickets.length) {
+    if (!visible.length && !tickets.length && !lastNotifs.length) {
       list.innerHTML = "";
       if (empty) empty.hidden = false;
       if (gotoBtn) gotoBtn.hidden = false;
@@ -2876,6 +2892,17 @@
     }
     if (empty) empty.hidden = true;
     if (gotoBtn) gotoBtn.hidden = true;
+
+    /* Los avisos del negocio van primero: puede haber un código de premio ahí
+       adentro y no se puede perder entre los premios. */
+    var notifsHtml = lastNotifs.map(function (n) {
+      return '<div class="gift-code-row is-notif">' +
+        '<span class="gift-code-icon">📣</span>' +
+        '<span class="gift-code-info"><strong>' + escHTML(n.title || "Mensaje de TOPPINGS") + '</strong><br>' +
+        '<span class="hint">' + escHTML(n.message) + '</span></span>' +
+        '<button type="button" class="btn btn-primary gift-code-claim-btn" data-notif-read="' + escHTML(n.id) + '">Leído</button>' +
+      '</div>';
+    }).join("");
     // Los tiros de ruleta sin usar van primero: quedan guardados aquí para
     // girarlos cuando el cliente quiera (aunque haya cerrado la ruleta sin jugar).
     var ticketsHtml = tickets.map(function (t) {
@@ -2886,7 +2913,7 @@
         '<button type="button" class="btn btn-primary gift-code-claim-btn" data-spin-ticket="' + escHTML(t.id) + '">Girar</button>' +
       '</div>';
     }).join("");
-    list.innerHTML = ticketsHtml + visible.map(function (c) {
+    list.innerHTML = notifsHtml + ticketsHtml + visible.map(function (c) {
       if (c.status === "expired") {
         return '<div class="gift-code-row is-expired">' +
           '<span class="gift-code-icon">' + (c.prizeIcon || "🎁") + '</span>' +
@@ -2920,6 +2947,12 @@
         if (window.__openRuletaModal) window.__openRuletaModal();
       });
     });
+    $$("[data-notif-read]", list).forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        markNotifRead(btn.getAttribute("data-notif-read"));
+        safe(refreshGiftFab, "refreshGiftFab");
+      });
+    });
     $$(".gift-code-dismiss-btn", list).forEach(function (btn) {
       btn.addEventListener("click", function () {
         var code = btn.getAttribute("data-dismiss-code");
@@ -2940,6 +2973,53 @@
     });
   }
 
+  /* ---- Latido: para que el panel sepa cuánta gente hay ahora en la página ----
+     setInterval y no requestAnimationFrame: rAF se congela cuando la pestaña
+     no está pintando, y entonces alguien que dejó la página abierta en segundo
+     plano dejaría de contarse. */
+  var PRESENCE_API = "api/presence.php";
+  function initPresencePing() {
+    function ping() {
+      fetch(PRESENCE_API + "?action=ping", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "ping", deviceId: getDeviceId() })
+      }).catch(function () {});
+    }
+    ping();
+    setInterval(ping, 60000);
+  }
+
+  /* ---- Avisos que manda el negocio ---- */
+  var NOTIF_API = "api/notifications.php";
+  var lastNotifs = [];
+  var notifShown = {};   // los que ya se abrieron en ESTA visita, para no repetir
+
+  function markNotifRead(id) {
+    fetch(NOTIF_API + "?action=read", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "read", deviceId: getDeviceId(), id: id })
+    }).catch(function () {});
+    lastNotifs = lastNotifs.filter(function (n) { return n.id !== id; });
+  }
+
+  /* Se abre la ventana con el aviso. Solo se marca como leído al cerrarla, no
+     al mostrarla: si cierra sin leer bien, el aviso sigue en el panel 🎁 y no
+     se pierde el código. */
+  function showNotif(n) {
+    if (notifShown[n.id]) return;
+    notifShown[n.id] = true;
+    var texto = (n.title ? n.title + "\n\n" : "") + n.message;
+    openPrizeModal(texto, "", null, {
+      label: "Entendido",
+      onClick: function () {
+        var modal = $("[data-prize-modal]");
+        if (modal) modal.hidden = true;
+        markNotifRead(n.id);
+        safe(refreshGiftFab, "refreshGiftFab");
+      }
+    });
+  }
+
   function refreshGiftFab() {
     var btn = $("[data-fab-gift]");
     if (!btn) return;
@@ -2952,11 +3032,17 @@
     var ticketsReq = fetch(RULETA_API_MAIN + "?action=status&deviceId=" + encodeURIComponent(deviceId) + "&_=" + Date.now(), { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .catch(function () { return null; });
+    // avisos del negocio para este cliente
+    var notifReq = fetch(NOTIF_API + "?action=mine&deviceId=" + encodeURIComponent(deviceId) + "&_=" + Date.now(), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .catch(function () { return null; });
 
-    Promise.all([codesReq, ticketsReq])
+    Promise.all([codesReq, ticketsReq, notifReq])
       .then(function (both) {
         var res = both[0];
         var rul = both[1];
+        var ntf = both[2];
+        lastNotifs = (ntf && ntf.ok && ntf.items) || [];
         var codes = (res && res.ok && res.codes) || [];
         var tickets = (rul && rul.ok && rul.active && rul.myTickets) || [];
         var dismissed = getDismissedCodes();
@@ -2980,13 +3066,16 @@
         // el botón ahora vive en el header (reemplaza al menú) — siempre
         // queda visible, solo el numerito rojo aparece/desaparece
         var visible = codes.filter(function (c) { return dismissed.indexOf(c.code) === -1; });
-        var total = visible.length + tickets.length;
+        var total = visible.length + tickets.length + lastNotifs.length;
         var badge = $("[data-fab-gift-badge]", btn);
         if (badge) {
           badge.hidden = !total;
           if (total) badge.textContent = String(total);
         }
         renderGiftCodesList(codes, tickets);
+
+        // el aviso más viejo sin leer se abre solo; los demás quedan en el panel
+        if (lastNotifs.length) safe(function () { showNotif(lastNotifs[0]); }, "showNotif");
       })
       .catch(function () {});
   }
@@ -3226,6 +3315,7 @@
     safe(initDeliverPrizeFlow, "initDeliverPrizeFlow");
     safe(initGiftFab, "initGiftFab");
     safe(initRedeemCode, "initRedeemCode");
+    safe(initPresencePing, "initPresencePing");
     safe(refreshGiftFab, "refreshGiftFab");
     setInterval(function () { safe(refreshGiftFab, "refreshGiftFab"); }, 30000);
 

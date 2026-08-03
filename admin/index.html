@@ -8,8 +8,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap">
-<link rel="stylesheet" href="admin.css?v=20260802a">
-<link rel="stylesheet" href="../lib/cat-carousel.css?v=20260802a">
+<link rel="stylesheet" href="admin.css?v=20260803a">
+<link rel="stylesheet" href="../lib/cat-carousel.css?v=20260803a">
 </head>
 <body>
 
@@ -52,6 +52,8 @@
     <button class="admin-tab" data-tab="premio">Premio del día</button>
     <button class="admin-tab" data-tab="ruleta">🎡 Ruleta</button>
     <button class="admin-tab" data-tab="redeem">🎟️ Códigos de Premio</button>
+    <button class="admin-tab" data-tab="historial">📊 Historial</button>
+    <button class="admin-tab" data-tab="clientes">👥 Clientes</button>
     <button class="admin-tab" data-tab="stikers">Stikers encontrados</button>
 
     <span class="admin-tab-group-label">⚙️ Configuración general</span>
@@ -269,9 +271,12 @@
       <label>🔒 PIN de empleados (distinto de tu clave de administrador — lo usan para abrir "Entregar premio" en el local) <input type="text" data-field="pin"></label>
     </div>
 
-    <h3>🧱 Orden de las formas de ganar</h3>
-    <p class="hint">Arrastrá desde el asa ⠿ para cambiar el orden en que el cliente las ve. La primera de la lista es la que sale de entrada. Las que estén desactivadas no se muestran, pero se quedan en la lista para cuando las vuelvas a activar.</p>
-    <div class="home-blocks" data-prize-method-order></div>
+    <h3>🧱 Formas de ganar</h3>
+    <p class="hint">Todo en un solo lugar: arrastrá desde el asa ⠿ para cambiar el orden en que el cliente las ve (la primera es la que sale de entrada), tocá ✅/🚫 para activarla o desactivarla, y tocá el nombre para abrir su configuración. Las desactivadas no se muestran en la web, pero se quedan acá con todo lo que tengas configurado.</p>
+    <div class="prize-method-rows" data-prize-method-order></div>
+    <!-- Cajón donde esperan las secciones de configuración mientras se repinta
+         la lista. Se mueven de acá a su fila; nunca se destruyen. -->
+    <div data-prize-config-stash hidden></div>
 
     <h3>🎠 Movimiento automático</h3>
     <p class="hint">Las formas de ganar van pasando solas, para que el cliente las vea todas sin tener que deslizar. Si él elige una, se detiene y se queda ahí; vuelve a moverse cuando desplaza la página. Mientras alguien juega TOPPINGS RUN nunca se mueve.</p>
@@ -296,7 +301,7 @@
       <label>Texto pequeño debajo de "Entregar premio" <textarea data-field="deliverPrizeSubtext" rows="2"></textarea></label>
     </div>
 
-    <details class="admin-collapsible">
+    <details class="admin-collapsible" data-prize-config="cronometro">
       <summary>⏱️ Cronómetro</summary>
       <p class="hint">Un temporizador que se repite solo, igual para todos los que visiten la página. Mientras cuenta, el botón sale en gris (no está listo); al llegar a cero se pone verde y se queda esperando a que alguien lo reclame — le pide su nombre y se restablece por el mismo tiempo, dejando un aviso de quién ganó hoy. Nunca queda bloqueado del todo: siempre vuelve a estar disponible en la siguiente vuelta.</p>
       <label class="switch"><input type="checkbox" data-field="dailyPrize.cronometro.active"> Activar esta forma de ganar</label>
@@ -422,7 +427,7 @@
       </div>
     </details>
 
-    <details class="admin-collapsible">
+    <details class="admin-collapsible" data-prize-config="loyalty">
       <summary>🎟️ Tarjeta de fidelidad</summary>
       <p class="hint">El cliente escribe su nombre la primera vez, y luego suma un sello escaneando el código QR que tengas en el local (impreso o en una pantalla) — sin pedir código a nadie. Máximo un sello al día por cliente. Al completar los sellos, puede reclamar su premio — reclamar no bloquea a nadie más: cada cliente completa y reclama la suya, y solo su propia tarjeta se reinicia después.</p>
       <label class="switch"><input type="checkbox" data-field="dailyPrize.loyalty.active"> Activar esta forma de ganar</label>
@@ -454,7 +459,7 @@
       </div>
     </details>
 
-    <details class="admin-collapsible">
+    <details class="admin-collapsible" data-prize-config="challenge">
       <summary>🎯 Reto del día</summary>
       <p class="hint">Escribe el reto y, si quieres, una pista de dónde está escondido. Para reclamar el premio, el cliente sube una foto como prueba de que lo encontró (en vez de un código) — la foto se publica sola en "Stikers encontrados", no necesitas subirla tú. Puedes permitir varios ganadores por día, y reiniciarlo manualmente cuando quieras para abrir más cupos el mismo día.</p>
       <label class="switch"><input type="checkbox" data-field="dailyPrize.challenge.active"> Activar esta forma de ganar</label>
@@ -526,7 +531,7 @@
       </div><!-- /data-challenge-mode="photo" -->
     </details>
 
-    <details class="admin-collapsible">
+    <details class="admin-collapsible" data-prize-config="toppingsRun">
       <summary>🛹 Toppings Run + Ranking</summary>
       <p class="hint">Un minijuego tipo "corredor infinito" — el cliente esquiva obstáculos con Papa Skater o Helado BMX. Solo el jugador que quede en el puesto #1 del ranking (diario, semanal o por horas, según elijas abajo) puede reclamar el premio; los demás ven el botón deshabilitado.</p>
       <label class="switch"><input type="checkbox" data-field="dailyPrize.toppingsRun.active"> Activar esta forma de ganar</label>
@@ -593,9 +598,7 @@
         <button type="button" class="btn btn-ghost" data-codes-search-btn>Buscar</button>
       </div>
       <div class="ruleta-search-results" data-codes-search-results></div>
-
-      <h4>📊 Estadísticas</h4>
-      <div class="ruleta-stats-grid" data-codes-stats></div>
+      <p class="hint">Las estadísticas y el historial completo se mudaron a la pestaña <strong>📊 Historial</strong>, que tiene más espacio.</p>
     </details>
   </section>
 
@@ -636,6 +639,52 @@
       <span class="save-status" data-redeem-save-status></span>
       <button type="button" class="btn btn-primary" data-redeem-save-btn>Guardar códigos</button>
     </div>
+  </section>
+
+  <section class="admin-panel" data-panel="historial" hidden>
+    <h2>📊 Historial</h2>
+    <p class="hint">Todo lo que ha pasado, separado por dinámica. Tocá una para abrirla y elegir si querés ver lo de hoy, la semana, el mes o todo. Cada una se reinicia por separado: reiniciar el historial del juego no toca el de la ruleta.</p>
+
+    <h3>📈 En vivo</h3>
+    <div class="ruleta-stats-grid" data-presence-stats></div>
+
+    <h3>🎁 Premios en total</h3>
+    <div class="ruleta-stats-grid" data-codes-stats></div>
+
+    <h3>🗂️ Historial por dinámica</h3>
+    <p class="hint" data-history-status></p>
+    <div class="history-cats" data-history-cats></div>
+
+    <h3>🧹 Borrado automático</h3>
+    <p class="hint">Para que el historial no crezca para siempre. Lo que tenga más días que esto se borra solo — salvo los premios que el cliente todavía puede reclamar, esos nunca se borran.</p>
+    <div class="field-grid" data-form="history">
+      <label>Borrar lo que tenga más de (días, 0 = nunca) <input type="number" min="0" data-field="autoDeleteDays"></label>
+    </div>
+  </section>
+
+  <section class="admin-panel" data-panel="clientes" hidden>
+    <h2>👥 Clientes</h2>
+    <p class="hint">Todos los que dieron su nombre en la página, con los premios que ganaron. Podés mandarle un mensaje a uno solo o a todos: le sale en una ventana apenas esté en la página y le queda guardado en el botón 🎁, así que si le mandás un código de premio no se pierde.</p>
+
+    <div class="ruleta-search-row">
+      <input type="text" placeholder="Buscar por nombre" data-customers-search>
+      <button type="button" class="btn btn-ghost" data-customers-refresh>🔄 Actualizar</button>
+    </div>
+
+    <h3>📣 Mensaje para todos</h3>
+    <div class="field-grid">
+      <label>Título <input type="text" data-notif-all-title placeholder="📣 TOPPINGS"></label>
+      <label class="full">Mensaje <textarea rows="3" data-notif-all-message placeholder="Ej: Hoy 2x1 en salchipapas hasta las 8 pm 🍟"></textarea></label>
+    </div>
+    <button type="button" class="btn btn-primary" data-notif-send-all>Enviar a todos</button>
+    <p class="hint" data-notif-all-status></p>
+
+    <h3>Lista de clientes</h3>
+    <p class="hint" data-customers-status></p>
+    <div class="customers-list" data-customers-list></div>
+
+    <h3>📨 Mensajes enviados</h3>
+    <div class="notif-sent-list" data-notif-sent-list></div>
   </section>
 
   <section class="admin-panel" data-panel="stikers" hidden>
@@ -776,6 +825,8 @@
     <button type="button" class="image-list-hide" data-role="hide"></button>
     <button type="button" class="image-list-replace" data-role="replace">🔄 Reemplazar imagen</button>
     <input type="file" accept="image/*" data-role="replace-input" hidden>
+    <button type="button" class="image-list-insert" data-role="insert">⬇️ Subir foto aquí debajo</button>
+    <input type="file" accept="image/*" data-role="insert-input" hidden>
   </div>
 </template>
 
@@ -803,7 +854,7 @@
 
 <script src="lib/qrcode.min.js"></script>
 <!-- mismo carrusel que ve el cliente, para que la vista previa sea idéntica -->
-<script src="../lib/cat-carousel.js?v=20260802a"></script>
-<script defer src="admin.js?v=20260802a"></script>
+<script src="../lib/cat-carousel.js?v=20260803a"></script>
+<script defer src="admin.js?v=20260803a"></script>
 </body>
 </html>

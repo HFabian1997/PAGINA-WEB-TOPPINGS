@@ -710,6 +710,10 @@ body.no-animations .claim-waiting-spinner { animation: none; }
   flex: none; padding: .45rem .8rem; border-radius: var(--radius-sm); border: 1px solid var(--accent);
   background: var(--accent); color: var(--accent-ink); font-weight: 700; cursor: pointer; font-size: .82rem;
 }
+/* Aviso del negocio: se distingue de los premios para que no se confunda con
+   uno, y va siempre arriba de la lista. */
+.gift-code-row.is-notif { border-color: var(--accent); background: rgba(255,212,0,.07); }
+.gift-code-row.is-notif .hint { color: var(--ink); white-space: pre-wrap; }
 .gift-code-row.is-pending { border-color: #2ecc71; }
 .gift-code-row.is-pending .hint { color: #2ecc71; }
 .gift-code-row.is-expired { border-color: #ff6b6b; }
