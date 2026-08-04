@@ -91,13 +91,24 @@ switch ($action) {
 
   /* -------- panel: mandarse una de prueba -------- */
   case 'test': {
-    pRequireAdmin();
-    if ($method !== 'POST') pOut(array('ok' => false, 'error' => 'Método no permitido.'), 405);
-    $deviceId = isset($body['deviceId']) ? trim((string) $body['deviceId']) : '';
-    if ($deviceId === '') pOut(array('ok' => false, 'error' => 'Falta el aparato.'), 400);
+    /* Entra la sesión del panel o la clave del cron; lo segundo permite
+       probar desde fuera sin usar la contraseña de Fabián. Sin deviceId va a
+       todos los suscritos, que es lo que hace falta al estrenar esto. */
+    $cfg = pushConfig();
+    $secreto = isset($_GET['secret']) ? (string) $_GET['secret'] : '';
+    $conClave = !empty($cfg['cronSecret']) && hash_equals((string) $cfg['cronSecret'], $secreto);
+    if (!$conClave) {
+      pRequireAdmin();
+      if ($method !== 'POST') pOut(array('ok' => false, 'error' => 'Método no permitido.'), 405);
+    }
 
-    $subs = psDe($deviceId);
-    if (!count($subs)) pOut(array('ok' => false, 'error' => 'Ese aparato no tiene las notificaciones activadas.'), 400);
+    $deviceId = isset($body['deviceId']) ? trim((string) $body['deviceId']) : '';
+    if ($deviceId === '' && isset($_GET['deviceId'])) $deviceId = trim((string) $_GET['deviceId']);
+
+    $destinos = $deviceId !== '' ? array($deviceId) : ($conClave ? psTodos() : array());
+    if (!count($destinos)) {
+      pOut(array('ok' => false, 'error' => 'Todavía no hay ningún aparato con las notificaciones activadas.'), 400);
+    }
 
     $datos = array(
       'title' => 'TOPPINGS 🍟',
@@ -108,13 +119,15 @@ switch ($action) {
     $detalle = array();
     $enviadas = 0;
     require_once __DIR__ . '/webpush-lib.php';
-    foreach ($subs as $s) {
-      $r = pushEnviar($s, $datos);
-      psAnotarResultado($deviceId, $s['endpoint'], $r['ok'], $r['muerta']);
-      if ($r['ok']) $enviadas++;
-      $detalle[] = array('code' => $r['code'], 'ok' => $r['ok'], 'error' => $r['error']);
+    foreach ($destinos as $dev) {
+      foreach (psDe($dev) as $s) {
+        $r = pushEnviar($s, $datos);
+        psAnotarResultado($dev, $s['endpoint'], $r['ok'], $r['muerta']);
+        if ($r['ok']) $enviadas++;
+        $detalle[] = array('code' => $r['code'], 'ok' => $r['ok'], 'error' => $r['error']);
+      }
     }
-    pOut(array('ok' => $enviadas > 0, 'enviadas' => $enviadas, 'de' => count($subs), 'detalle' => $detalle));
+    pOut(array('ok' => $enviadas > 0, 'enviadas' => $enviadas, 'aparatos' => count($detalle), 'detalle' => $detalle));
   }
 
   /**
