@@ -17,6 +17,7 @@ require_once __DIR__ . '/codes-lib.php';
 require_once __DIR__ . '/ruleta-lib.php';
 require_once __DIR__ . '/redeem-lib.php';
 require_once __DIR__ . '/stoptime-lib.php';
+require_once __DIR__ . '/customers-lib.php';
 
 session_name('toppings_admin_sess');
 session_set_cookie_params(array(
@@ -361,8 +362,10 @@ switch ($action) {
   case 'customers': {
     hRequireAdmin();
     $q = isset($_GET['q']) ? trim((string) $_GET['q']) : '';
-    $run = hReadJson($RUN_FILE, array());
-    $names = isset($run['names']) && is_array($run['names']) ? $run['names'] : array();
+    // el registro vive en su propio archivo (customers.json); si todavía no
+    // existe, customersRead() lo siembra con lo que haya en el del ranking
+    $reg = customersRead();
+    $names = $reg['customers'];
     $codes = codesReadState();
     $pres = hReadJson($PRESENCE_FILE, array());
     $seen = isset($pres['seen']) && is_array($pres['seen']) ? $pres['seen'] : array();

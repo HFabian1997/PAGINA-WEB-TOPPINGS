@@ -1817,6 +1817,11 @@
     renderAllRewardTypeVisibility();
     fetchCodesStats();
     renderChallengeStatus();
+    /* Los premios de la ruleta y los códigos se cargan al ENTRAR al panel, no
+       al abrir su pestaña: así el botón de guardar nunca puede mandar una
+       lista vacía por no haberla mirado todavía, que fue como se borraron. */
+    fetchRuletaAdmin();
+    fetchRedeemAdmin();
   }
 
   /* ---------------- personalización: mostrar solo el campo del tipo de fondo elegido ---------------- */
@@ -1995,7 +2000,8 @@
      acción de girar usa en el servidor. Por eso tiene su propio ciclo
      cargar/guardar, aparte del botón general "Guardar cambios". */
   var ruletaState = { active: false, title: "RULETA TOPPINGS", winTitle: "¡GANASTE!", loseTitle: "¡QUÉ MALA SUERTE!", whatsappNumber: "", soundEnabled: true, confettiEnabled: true, prizeExpiryHours: 24, prizes: [] };
-  var ruletaLoaded = false;
+  var ruletaLoaded = false;        // ¿el servidor llegó a darnos los premios?
+  var ruletaServerCount = 0;       // cuántos había, para avisar antes de vaciarlos
 
   function fetchRuletaAdmin() {
     fetch(RULETA_API + "?action=admin-status", { credentials: "same-origin" })
@@ -2011,6 +2017,10 @@
         ruletaState.confettiEnabled = res.confettiEnabled;
         ruletaState.prizeExpiryHours = res.prizeExpiryHours || 24;
         ruletaState.prizes = res.prizes || [];
+        // igual que en los códigos: la bandera se marca al recibir la
+        // respuesta buena, no al pedirla
+        ruletaLoaded = true;
+        ruletaServerCount = ruletaState.prizes.length;
         renderRuletaForm();
         renderRuletaPrizes();
       })
@@ -2177,6 +2187,22 @@
     if (!btn) return;
     btn.addEventListener("click", function () {
       var statusEl = $("[data-ruleta-save-status]");
+
+      /* Guardar reemplaza TODOS los premios de la ruleta. Si nunca llegamos a
+         cargarlos, mandarlos sería borrarlos. */
+      if (!ruletaLoaded) {
+        if (statusEl) {
+          statusEl.textContent = "Todavía no se cargó la ruleta. Recargá la página antes de guardar.";
+          statusEl.className = "save-status is-error";
+        }
+        fetchRuletaAdmin();
+        return;
+      }
+      if (!ruletaState.prizes.length && ruletaServerCount > 0) {
+        if (!confirm("Vas a dejar la ruleta sin ningún premio. Se van a borrar los " +
+            ruletaServerCount + " que hay guardados. ¿Seguro?")) return;
+      }
+
       if (statusEl) { statusEl.textContent = "Guardando…"; statusEl.className = "save-status"; }
       fetch(RULETA_API + "?action=admin-config", {
         method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
@@ -2199,10 +2225,12 @@
   }
 
   function initRuletaTab() {
+    // Reintenta si la primera carga (la de renderAll) no llegó bien; si ya
+    // está cargada no se vuelve a pedir.
     var tabBtn = $('[data-tab="ruleta"]');
     if (tabBtn) {
       tabBtn.addEventListener("click", function () {
-        if (!ruletaLoaded) { ruletaLoaded = true; fetchRuletaAdmin(); }
+        if (!ruletaLoaded) fetchRuletaAdmin();
       });
     }
     initRuletaAddPrize();
@@ -2216,6 +2244,7 @@
   var PRESENCE_API = "../api/presence.php";
   var NOTIF_API = "../api/notifications.php";
   var histAbierta = {};        // qué categorías dejó abiertas
+  var customerRowsOpen = {};   // qué fichas de cliente dejó abiertas
   var histPeriodo = {};        // el periodo elegido en cada una
   var panelPollTimer = null;   // refresco automático de la pestaña abierta
 
@@ -2402,8 +2431,16 @@
 
     var body = row.querySelector(".rp-body");
     var caret = row.querySelector(".rp-caret");
+
+    // se recuerda cuál dejó abierta, para que el refresco no se la cierre
+    var abierta = !!customerRowsOpen[c.deviceId];
+    body.hidden = !abierta;
+    caret.textContent = abierta ? "▾" : "▸";
+    row.classList.toggle("is-open", abierta);
+
     row.querySelector("[data-c-toggle]").onclick = function () {
       body.hidden = !body.hidden;
+      customerRowsOpen[c.deviceId] = !body.hidden;
       caret.textContent = body.hidden ? "▸" : "▾";
       row.classList.toggle("is-open", !body.hidden);
     };
@@ -2543,9 +2580,22 @@
   /* El panel se refresca solo mientras la pestaña está abierta: si un cliente
      se cambia el nombre, acá se ve sin tener que recargar. Se apaga al salir
      de la pestaña para no consultar de gratis. */
+  /* ¿Está escribiendo algo en esta pestaña? Refrescar reconstruye las fichas,
+     y si lo hace mientras escribe le desaparece el campo y el celular cierra
+     el teclado. Mejor esperar a la vuelta siguiente. */
+  function estaEscribiendo(panelName) {
+    var el = document.activeElement;
+    if (!el) return false;
+    var t = (el.tagName || "").toLowerCase();
+    if (t !== "input" && t !== "textarea" && t !== "select") return false;
+    var panel = $('[data-panel="' + panelName + '"]');
+    return !!(panel && panel.contains(el));
+  }
+
   function startPanelPoll(which) {
     stopPanelPoll();
     panelPollTimer = setInterval(function () {
+      if (estaEscribiendo(which)) return;
       if (which === "historial") { fetchPresence(); fetchHistorySummary(); }
       else { fetchCustomers(); fetchNotifSent(); }
     }, 15000);
@@ -2624,7 +2674,8 @@
      content.json se sobrescribe completo en cada guardado del panel. */
   var REDEEM_API = "../api/redeem.php";
   var redeemState = { codes: [] };
-  var redeemLoaded = false;
+  var redeemLoaded = false;      // ¿el servidor llegó a darnos la lista de verdad?
+  var redeemServerCount = 0;     // cuántos había, para avisar antes de vaciarla
 
   function fetchRedeemAdmin() {
     var statusEl = $("[data-redeem-status]");
@@ -2637,6 +2688,11 @@
           return;
         }
         redeemState.codes = res.codes || [];
+        /* La bandera se marca CUANDO el servidor respondió bien, no al
+           disparar la consulta: si falla, el guardado sabe que no tiene la
+           lista de verdad y se niega a mandar una vacía. */
+        redeemLoaded = true;
+        redeemServerCount = redeemState.codes.length;
         if (statusEl) { statusEl.textContent = ""; statusEl.style.color = ""; }
         renderRedeemCodes();
       })
@@ -2861,6 +2917,23 @@
     if (!btn) return;
     btn.addEventListener("click", function () {
       var statusEl = $("[data-redeem-save-status]");
+
+      /* Guardar reemplaza la lista ENTERA en el servidor. Si nunca llegamos a
+         cargarla, mandarla sería borrar todo lo que había — que es justo lo
+         que pasó una vez. */
+      if (!redeemLoaded) {
+        if (statusEl) {
+          statusEl.textContent = "Todavía no se cargaron los códigos. Recargá la página antes de guardar.";
+          statusEl.className = "save-status is-error";
+        }
+        fetchRedeemAdmin();
+        return;
+      }
+      if (!redeemState.codes.length && redeemServerCount > 0) {
+        if (!confirm("Vas a dejar la lista sin ningún código. Se van a borrar los " +
+            redeemServerCount + " que hay guardados. ¿Seguro?")) return;
+      }
+
       var vacio = redeemState.codes.some(function (c) { return !String(c.code || "").trim(); });
       if (vacio) {
         if (statusEl) { statusEl.textContent = "Hay un código sin palabra escrita."; statusEl.className = "save-status is-error"; }
@@ -2890,7 +2963,7 @@
     var tabBtn = $('[data-tab="redeem"]');
     if (tabBtn) {
       tabBtn.addEventListener("click", function () {
-        if (!redeemLoaded) { redeemLoaded = true; fetchRedeemAdmin(); }
+        if (!redeemLoaded) fetchRedeemAdmin();
       });
     }
     initRedeemAdd();

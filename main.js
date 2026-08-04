@@ -279,10 +279,21 @@
   }
   /* Solo le avisa al servidor cuando el nombre cambió de verdad — así
      reclamar el cronómetro cada rato no reescribe el registro una y otra vez. */
+  /* Antes esto se hacía UNA sola vez y nunca más: si el servidor perdía el
+     registro (pasó), el celular creía que ya lo había avisado y no lo volvía a
+     intentar jamás. Ahora se guarda el nombre CON la fecha y se vuelve a avisar
+     si pasó más de una semana, así el registro se repara solo. */
+  var REGISTER_TTL_MS = 7 * 24 * 60 * 60 * 1000;
   function registerNameOnce(name) {
-    var already = null;
-    try { already = localStorage.getItem(REGISTERED_NAME_KEY); } catch (e) {}
-    if (name === already) return;
+    var guardado = null;
+    try { guardado = localStorage.getItem(REGISTERED_NAME_KEY); } catch (e) {}
+    if (guardado) {
+      var info = null;
+      try { info = JSON.parse(guardado); } catch (e) {}
+      // el formato viejo era el nombre pelado: cuenta como vencido y se
+      // vuelve a registrar una vez
+      if (info && info.name === name && info.at && (Date.now() - info.at) < REGISTER_TTL_MS) return;
+    }
     fetch(RUN_API + "?action=register-name", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -293,7 +304,9 @@
         // solo se da por registrado si el servidor lo confirmó — si falla,
         // se vuelve a intentar la próxima vez en vez de quedar a medias
         if (res && res.ok) {
-          try { localStorage.setItem(REGISTERED_NAME_KEY, name); } catch (e) {}
+          try {
+            localStorage.setItem(REGISTERED_NAME_KEY, JSON.stringify({ name: name, at: Date.now() }));
+          } catch (e) {}
         }
       })
       .catch(function () {});

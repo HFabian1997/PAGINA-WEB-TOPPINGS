@@ -15,6 +15,7 @@
  * ya usaban en premio.php.
  */
 date_default_timezone_set('America/Bogota');
+require_once __DIR__ . '/customers-lib.php';
 require_once __DIR__ . '/ruleta-lib.php';
 require_once __DIR__ . '/codes-lib.php';
 
@@ -246,6 +247,9 @@ function rememberName(&$state, $deviceId, $name) {
   $deviceId = trim((string) $deviceId);
   $name = trim((string) $name);
   if ($deviceId === '' || $name === '') return;
+  // El registro de verdad vive en customers.json; acá se sigue guardando una
+  // copia porque el ranking la usa para adoptar filas y renombrar.
+  rememberCustomer($deviceId, $name);
   $state['names'][$deviceId] = array('name' => $name, 'updatedAt' => nowMs());
   // tope de seguridad: si algún día crece mucho, se quedan los más recientes
   if (count($state['names']) > $GLOBALS['MAX_NAMES']) {
@@ -257,6 +261,9 @@ function rememberName(&$state, $deviceId, $name) {
 /** ¿Otro dispositivo ya usa este nombre? Mira el registro permanente y, por
  *  si acaso, también los puntajes del evento en curso. */
 function nameTakenByOther($state, $name, $deviceId) {
+  // el registro de clientes es la fuente principal; lo de acá abajo queda como
+  // respaldo por si algún nombre solo existe en este archivo
+  if (customerNameTaken($name, $deviceId)) return true;
   $needle = function_exists('mb_strtolower') ? mb_strtolower($name) : strtolower($name);
   foreach ($state['names'] as $ownerId => $info) {
     $owner = function_exists('mb_strtolower') ? mb_strtolower((string) $info['name']) : strtolower((string) $info['name']);

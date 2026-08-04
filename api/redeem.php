@@ -17,6 +17,7 @@
  * requireAdminAuth().
  */
 date_default_timezone_set('America/Bogota');
+require_once __DIR__ . '/customers-lib.php';
 require_once __DIR__ . '/redeem-lib.php';
 require_once __DIR__ . '/codes-lib.php';
 require_once __DIR__ . '/ruleta-lib.php';
@@ -82,6 +83,9 @@ switch ($action) {
     }
     if ($code === '') jsonOut(array('ok' => false, 'reason' => 'not_found'), 400);
     if ($deviceId === '') jsonOut(array('ok' => false, 'error' => 'Falta identificar el dispositivo.'), 400);
+    // Queda registrado como cliente sin pedirle el nombre otra vez: acá ya
+    // viene, y así el registro se repara solo cuando la gente juega.
+    rememberCustomer($deviceId, $name);
 
     $outcome = array('ok' => false, 'reason' => 'not_found');
 

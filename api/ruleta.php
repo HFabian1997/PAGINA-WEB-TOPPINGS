@@ -7,6 +7,7 @@
  * decidido y anima la rueda hasta ese segmento.
  */
 date_default_timezone_set('America/Bogota');
+require_once __DIR__ . '/customers-lib.php';
 require_once __DIR__ . '/ruleta-lib.php';
 require_once __DIR__ . '/codes-lib.php';
 
@@ -133,6 +134,9 @@ switch ($action) {
     $name = isset($body['name']) ? trim((string) $body['name']) : '';
     if (function_exists('mb_substr')) $name = mb_substr($name, 0, $MAX_NAME_CHARS);
     if ($deviceId === '') jsonOut(array('ok' => false, 'error' => 'Falta identificar el dispositivo.'), 400);
+    // Queda registrado como cliente sin pedirle el nombre otra vez: acá ya
+    // viene, y así el registro se repara solo cuando la gente juega.
+    rememberCustomer($deviceId, $name);
 
     $outcome = array('ok' => false, 'error' => 'No se pudo procesar el giro.');
     ruletaWithWriteLock(function ($state) use ($deviceId, $name, &$outcome) {

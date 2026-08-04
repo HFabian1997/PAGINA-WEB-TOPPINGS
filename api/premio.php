@@ -5,6 +5,7 @@
  * vean el mismo estado (si el premio de hoy ya fue reclamado).
  */
 date_default_timezone_set('America/Bogota');
+require_once __DIR__ . '/customers-lib.php';
 require_once __DIR__ . '/ruleta-lib.php';
 require_once __DIR__ . '/codes-lib.php';
 require_once __DIR__ . '/rename-lib.php';
@@ -326,6 +327,10 @@ if ($method === 'POST') {
     $photoDataUrl = isset($body['photo']) ? (string) $body['photo'] : '';
     $deviceId = isset($body['deviceId']) ? trim((string) $body['deviceId']) : '';
     if (function_exists('mb_substr')) $deviceId = mb_substr($deviceId, 0, 64);
+
+    // Queda registrado como cliente sin pedirle el nombre otra vez: acá ya
+    // viene, y así el registro se repara solo cuando la gente reclama.
+    rememberCustomer($deviceId, $name);
 
     $outcome = array('ok' => false, 'error' => 'No se pudo procesar el reclamo.');
 
