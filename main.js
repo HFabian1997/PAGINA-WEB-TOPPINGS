@@ -3274,6 +3274,33 @@
 
   // Punto de entrada compartido para abrir el panel de premios desde
   // cualquier otro módulo (ej. la ruleta, tras un giro ganador).
+  /* ---- limpieza de las notificaciones al celular ----
+     Se probaron y se quitaron: el cartel del permiso resultaba molesto.
+
+     Esto NO es código muerto. El service worker que llegamos a instalar queda
+     guardado EN EL NAVEGADOR de quien haya entrado mientras estuvo activo, y
+     sigue registrado aunque el archivo ya no esté en el servidor. El sw.js que
+     dejamos se desinstala solo, pero esto lo vuelve seguro: da de baja la
+     suscripción, quita el registro y borra las marcas que quedaron en el
+     celular. Se puede quitar dentro de unos meses. */
+  function limpiarPushViejo() {
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function (regs) {
+        regs.forEach(function (reg) {
+          if (reg.pushManager) {
+            reg.pushManager.getSubscription()
+              .then(function (sub) { if (sub) sub.unsubscribe(); })
+              .catch(function () {});
+          }
+          reg.unregister();
+        });
+      }).catch(function () {});
+    }
+    ["toppings_push_preguntado", "toppings_push_estado"].forEach(function (k) {
+      try { localStorage.removeItem(k); } catch (e) {}
+    });
+  }
+
   window.__openGiftPanel = function () {
     refreshGiftFab();
     var modal = $("[data-gift-codes-modal]");
@@ -3401,6 +3428,7 @@
     safe(initGiftFab, "initGiftFab");
     safe(initRedeemCode, "initRedeemCode");
     safe(initPresencePing, "initPresencePing");
+    safe(limpiarPushViejo, "limpiarPushViejo");
     safe(refreshGiftFab, "refreshGiftFab");
     setInterval(function () { safe(refreshGiftFab, "refreshGiftFab"); }, 30000);
 

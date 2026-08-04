@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/data-path.php';
 /**
  * Almacenamiento del editor visual (overrides de posición/tamaño/texto/
  * visibilidad por elemento, por página, por tipo de dispositivo). Mismo
@@ -11,8 +12,8 @@
  */
 
 if (!function_exists('editorDataFile')) {
-  function editorDataFile() { return __DIR__ . '/data/page-editor.json'; }
-  function editorLockFile() { return __DIR__ . '/data/page-editor.lock'; }
+  function editorDataFile() { return toppingsDataFile('page-editor.json'); }
+  function editorLockFile() { return toppingsDataFile('page-editor.lock'); }
 
   define('EDITOR_MAX_HISTORY_PER_KEY', 20);
 

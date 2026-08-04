@@ -13,6 +13,7 @@
  * nunca salen del celular del cliente.
  */
 date_default_timezone_set('America/Bogota');
+require_once __DIR__ . '/data-path.php';
 require_once __DIR__ . '/codes-lib.php';
 require_once __DIR__ . '/ruleta-lib.php';
 require_once __DIR__ . '/redeem-lib.php';
@@ -39,9 +40,9 @@ header('Pragma: no-cache');
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
 
 $CONTENT_FILE = __DIR__ . '/../admin/content.json';
-$RUN_FILE = __DIR__ . '/data/run-leaderboard.json';
-$PREMIO_FILE = __DIR__ . '/data/premio.json';
-$PRESENCE_FILE = __DIR__ . '/data/presence.json';
+$RUN_FILE = toppingsDataFile('run-leaderboard.json');
+$PREMIO_FILE = toppingsDataFile('premio.json');
+$PRESENCE_FILE = toppingsDataFile('presence.json');
 $MAX_ROWS = 200;
 
 function jsonOut($arr, $code = 200) { http_response_code($code); echo json_encode($arr); exit; }

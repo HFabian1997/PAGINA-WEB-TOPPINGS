@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/data-path.php';
 /**
  * Libro compartido de códigos de premio, usado por TODAS las dinámicas
  * (cronómetro, fidelidad, reto, Toppings Run y Ruleta) para que el cliente
@@ -11,8 +12,8 @@
  */
 
 if (!function_exists('codesDataFile')) {
-  function codesDataFile() { return __DIR__ . '/data/prize-codes.json'; }
-  function codesLockFile() { return __DIR__ . '/data/prize-codes.lock'; }
+  function codesDataFile() { return toppingsDataFile('prize-codes.json'); }
+  function codesLockFile() { return toppingsDataFile('prize-codes.lock'); }
 
   function codesDefaultState() {
     return array('codes' => array());

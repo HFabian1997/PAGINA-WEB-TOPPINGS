@@ -9,6 +9,7 @@
  * quién lo leyó, sin tener que crear una copia por persona.
  */
 date_default_timezone_set('America/Bogota');
+require_once __DIR__ . '/data-path.php';
 require_once __DIR__ . '/codes-lib.php';
 require_once __DIR__ . '/ruleta-lib.php';
 
@@ -31,8 +32,8 @@ header('Pragma: no-cache');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
 
-$DATA_FILE = __DIR__ . '/data/notifications.json';
-$LOCK_FILE = __DIR__ . '/data/notifications.lock';
+$DATA_FILE = toppingsDataFile('notifications.json');
+$LOCK_FILE = toppingsDataFile('notifications.lock');
 $MAX_ITEMS = 300;
 $MAX_TITLE = 80;
 $MAX_MSG = 600;

@@ -6,6 +6,7 @@
  * api/ai-config.php, bloqueado por .htaccess, y jamás se manda al navegador.
  */
 date_default_timezone_set('America/Bogota');
+require_once __DIR__ . '/data-path.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -21,8 +22,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 $CONTENT_FILE = __DIR__ . '/../admin/content.json';
 $AI_CONFIG_FILE = __DIR__ . '/ai-config.php';
-$THROTTLE_FILE = __DIR__ . '/data/assistant-throttle.json';
-$THROTTLE_LOCK = __DIR__ . '/data/assistant-throttle.lock';
+$THROTTLE_FILE = toppingsDataFile('assistant-throttle.json');
+$THROTTLE_LOCK = toppingsDataFile('assistant-throttle.lock');
 $THROTTLE_WINDOW_SECONDS = 60;
 $THROTTLE_MAX_PER_WINDOW = 15;
 $MAX_MESSAGE_CHARS = 800;

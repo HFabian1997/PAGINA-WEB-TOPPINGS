@@ -15,6 +15,7 @@
  * ya usaban en premio.php.
  */
 date_default_timezone_set('America/Bogota');
+require_once __DIR__ . '/data-path.php';
 require_once __DIR__ . '/customers-lib.php';
 require_once __DIR__ . '/ruleta-lib.php';
 require_once __DIR__ . '/codes-lib.php';
@@ -41,7 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
   exit;
 }
 
-$DATA_DIR = __DIR__ . '/data';
+$DATA_DIR = toppingsDataDir();
 $DATA_FILE = $DATA_DIR . '/run-leaderboard.json';
 $LOCK_FILE = $DATA_DIR . '/run-leaderboard.lock';
 $CONTENT_FILE = __DIR__ . '/../admin/content.json';

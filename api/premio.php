@@ -5,6 +5,7 @@
  * vean el mismo estado (si el premio de hoy ya fue reclamado).
  */
 date_default_timezone_set('America/Bogota');
+require_once __DIR__ . '/data-path.php';
 require_once __DIR__ . '/customers-lib.php';
 require_once __DIR__ . '/ruleta-lib.php';
 require_once __DIR__ . '/codes-lib.php';
@@ -28,7 +29,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
   exit;
 }
 
-$DATA_DIR = __DIR__ . '/data';
+$DATA_DIR = toppingsDataDir();
 $DATA_FILE = $DATA_DIR . '/premio.json';
 $LOCK_FILE = $DATA_DIR . '/premio.lock';
 $UPLOADS_DIR = __DIR__ . '/uploads';

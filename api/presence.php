@@ -12,6 +12,7 @@
  * misma pasada y no en una segunda vuelta.
  */
 date_default_timezone_set('America/Bogota');
+require_once __DIR__ . '/data-path.php';
 
 session_name('toppings_admin_sess');
 session_set_cookie_params(array(
@@ -32,8 +33,8 @@ header('Pragma: no-cache');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
 
-$DATA_FILE = __DIR__ . '/data/presence.json';
-$LOCK_FILE = __DIR__ . '/data/presence.lock';
+$DATA_FILE = toppingsDataFile('presence.json');
+$LOCK_FILE = toppingsDataFile('presence.lock');
 $VIVO_MS = 2 * 60 * 1000;    // "conectado ahora" = visto en los últimos 2 min
 $GUARDAR_MS = 5 * 60 * 1000; // se olvida lo más viejo que esto
 $MAX_DIAS = 90;              // el conteo por día no crece para siempre

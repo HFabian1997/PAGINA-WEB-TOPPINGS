@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/data-path.php';
 /**
  * Códigos de premio canjeables ("cupones") — la palabra o frase que el admin
  * reparte y el cliente escribe en el panel 🎁 para desbloquear un premio.
@@ -19,8 +20,8 @@
  */
 
 if (!function_exists('redeemDataFile')) {
-  function redeemDataFile() { return __DIR__ . '/data/redeem-codes.json'; }
-  function redeemLockFile() { return __DIR__ . '/data/redeem-codes.lock'; }
+  function redeemDataFile() { return toppingsDataFile('redeem-codes.json'); }
+  function redeemLockFile() { return toppingsDataFile('redeem-codes.lock'); }
 
   function redeemDefaultState() {
     return array('codes' => array(), 'redemptions' => array());

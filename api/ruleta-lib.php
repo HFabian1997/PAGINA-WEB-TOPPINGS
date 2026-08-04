@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/data-path.php';
 /**
  * Funciones compartidas de la Ruleta TOPPINGS, usadas tanto por ruleta.php
  * como por premio.php y run-leaderboard.php (estos últimos las incluyen
@@ -11,8 +12,8 @@
  */
 
 if (!function_exists('ruletaDataFile')) {
-  function ruletaDataFile() { return __DIR__ . '/data/ruleta.json'; }
-  function ruletaLockFile() { return __DIR__ . '/data/ruleta.lock'; }
+  function ruletaDataFile() { return toppingsDataFile('ruleta.json'); }
+  function ruletaLockFile() { return toppingsDataFile('ruleta.lock'); }
 
   function ruletaDefaultState() {
     return array(

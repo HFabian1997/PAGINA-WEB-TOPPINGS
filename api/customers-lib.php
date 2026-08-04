@@ -1,18 +1,19 @@
 <?php
+require_once __DIR__ . '/data-path.php';
 /**
  * Registro de clientes: quién dio su nombre, y cuándo.
  *
- * Vivía dentro de run-leaderboard.json (clave `names`), y eso fue justamente
- * lo que permitió que se borrara: ese archivo se maneja como "datos del juego"
- * y un despliegue con una copia local vieja se lo llevó por delante. Acá tiene
- * su propio archivo, que nunca se despliega.
+ * Vivía dentro de run-leaderboard.json (clave `names`) y tiene archivo propio
+ * desde que se perdió una vez. Lo que de verdad lo protege es dónde vive: ver
+ * data-path.php — los datos están fuera de public_html porque el despliegue
+ * reemplaza esa carpeta entera y borra todo lo que no venga en el paquete.
  *
  * Mismo patrón de escritura atómica + candado que el resto del proyecto.
  */
 
 if (!function_exists('customersDataFile')) {
-  function customersDataFile() { return __DIR__ . '/data/customers.json'; }
-  function customersLockFile() { return __DIR__ . '/data/customers.lock'; }
+  function customersDataFile() { return toppingsDataFile('customers.json'); }
+  function customersLockFile() { return toppingsDataFile('customers.lock'); }
 
   function customersDefaultState() { return array('customers' => array()); }
 
@@ -28,7 +29,7 @@ if (!function_exists('customersDataFile')) {
    * run-leaderboard.json — así no se pierde nada de lo que quede ahí de antes.
    */
   function customersSeedFromLeaderboard() {
-    $file = __DIR__ . '/data/run-leaderboard.json';
+    $file = toppingsDataFile('run-leaderboard.json');
     if (!file_exists($file)) return array();
     $raw = @file_get_contents($file);
     $d = $raw ? json_decode($raw, true) : null;

@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/data-path.php';
 /**
  * "Detén el tiempo" — el segundo modo del cronómetro. Aparece un cronómetro
  * subiendo y el cliente tiene que detenerlo justo en el tiempo que el admin
@@ -14,8 +15,8 @@
  */
 
 if (!function_exists('stDataFile')) {
-  function stDataFile() { return __DIR__ . '/data/stoptime.json'; }
-  function stLockFile() { return __DIR__ . '/data/stoptime.lock'; }
+  function stDataFile() { return toppingsDataFile('stoptime.json'); }
+  function stLockFile() { return toppingsDataFile('stoptime.lock'); }
 
   /* No hay rondas: el juego está siempre disponible dentro de sus fechas, y
      quién puede jugar lo decide únicamente cada cuánto se renuevan los
