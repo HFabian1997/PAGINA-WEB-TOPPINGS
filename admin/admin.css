@@ -461,6 +461,16 @@ body.is-sorting-active { user-select: none; }
   flex: none; width: 32px; height: 32px; border-radius: 8px;
   border: 1px solid var(--line); background: var(--bg-2); cursor: pointer; font-size: .9rem;
 }
+/* Borrar la fila sin tener que abrirla. Va en rojo apagado y no en el gris del
+   botón de al lado: están pegados y uno apaga mientras el otro borra para
+   siempre — tienen que distinguirse de un vistazo. */
+.rp-remove {
+  flex: none; width: 32px; height: 32px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--bg-2); cursor: pointer;
+  font-size: .85rem; line-height: 1; color: var(--ink-mute);
+  transition: color .15s ease, border-color .15s ease;
+}
+.rp-remove:hover, .rp-remove:focus-visible { color: var(--danger); border-color: var(--danger); }
 .rp-body { padding: .6rem .2rem .2rem; border-top: 1px solid var(--line); margin-top: .4rem; }
 .rp-body[hidden] { display: none; }
 .ruleta-prize-row .image-list-grip { position: static; }

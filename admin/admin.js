@@ -2173,6 +2173,7 @@
           '<span class="rp-caret">▸</span>' +
         "</button>" +
         '<button type="button" class="rp-active" data-rp-active title="Activo / desactivado"></button>' +
+        '<button type="button" class="rp-remove" data-rp-remove title="Quitar este premio" aria-label="Quitar este premio">✕</button>' +
       "</div>" +
       '<div class="rp-body" hidden>' +
         '<div class="ruleta-prize-grid">' +
@@ -2183,7 +2184,6 @@
           '<label>Límite diario (-1 = sin límite) <input type="number" data-p="dailyLimit"></label>' +
         "</div>" +
         '<label class="switch-inline"><input type="checkbox" data-p="claimable"> Es un premio de verdad (si lo apagas, es tipo "sigue intentando")</label>' +
-        '<button type="button" class="btn btn-ghost ruleta-prize-remove">🗑️ Quitar este premio</button>' +
       "</div>";
 
     var body = row.querySelector(".rp-body");
@@ -2230,7 +2230,7 @@
       };
     });
 
-    row.querySelector(".ruleta-prize-remove").addEventListener("click", function () {
+    row.querySelector("[data-rp-remove]").addEventListener("click", function () {
       if (!confirm("¿Quitar este premio de la ruleta?")) return;
       ruletaState.prizes.splice(idx, 1);
       renderRuletaPrizes();
@@ -2862,6 +2862,7 @@
           '<span class="rp-caret">▸</span>' +
         "</button>" +
         '<button type="button" class="rp-active" data-rp-active title="Activo / desactivado"></button>' +
+        '<button type="button" class="rp-remove" data-rp-remove title="Quitar este código" aria-label="Quitar este código">✕</button>' +
       "</div>" +
       '<div class="rp-body" hidden>' +
         '<div class="ruleta-prize-grid">' +
@@ -2902,7 +2903,6 @@
           '<div data-rc-log></div>' +
         "</details>" +
 
-        '<button type="button" class="btn btn-ghost ruleta-prize-remove">🗑️ Quitar este código</button>' +
       "</div>";
 
     var body = row.querySelector(".rp-body");
@@ -2997,7 +2997,7 @@
         }).join("")
       : '<p class="hint">Todavía nadie lo ha usado.</p>';
 
-    row.querySelector(".ruleta-prize-remove").addEventListener("click", function () {
+    row.querySelector("[data-rp-remove]").addEventListener("click", function () {
       if (!confirm('¿Quitar el código "' + (c.code || "") + '"? Quien ya lo canjeó se queda con su premio.')) return;
       redeemState.codes.splice(idx, 1);
       renderRedeemCodes();
