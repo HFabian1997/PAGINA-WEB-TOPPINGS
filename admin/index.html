@@ -251,25 +251,24 @@
   <section class="admin-panel" data-panel="zona" hidden>
     <h2>🔥 Zona Secreta</h2>
     <p class="hint">Esto es su propia página (misterio.html). Un botón amarillo con "?" aparece flotando en todo el sitio a los 5 segundos; al rato sale una burbuja invitando a mirar (el texto de abajo es lo que dice esa burbuja) y si nadie hace clic, la burbuja se esconde sola — el botón se puede volver a presionar para que salga otra vez. Sube aquí la imagen (o imágenes) que se ven al entrar a esa página.</p>
+    <h3>🖼️ Imágenes de la página</h3>
+    <div class="gallery-admin-grid" data-image-list="zonaSecreta.images"></div>
+    <label class="btn btn-primary file-btn">+ Agregar imagen
+      <input type="file" accept="image/*" data-add-image-list="zonaSecreta.images" hidden>
+    </label>
+
+    <h3>✍️ Textos</h3>
     <div class="field-grid" data-form="zonaSecreta">
       <label>Título de la página <textarea data-field="title" rows="2"></textarea></label>
       <label class="full">Texto pequeño debajo del título <textarea data-field="subtitle" rows="2"></textarea></label>
       <label class="full">Texto de la burbuja del botón flotante <textarea data-field="bubbleText" placeholder="Promo del día" rows="2"></textarea></label>
     </div>
-    <div class="gallery-admin-grid" data-image-list="zonaSecreta.images"></div>
-    <label class="btn btn-primary file-btn">+ Agregar imagen
-      <input type="file" accept="image/*" data-add-image-list="zonaSecreta.images" hidden>
-    </label>
   </section>
 
   <section class="admin-panel" data-panel="premio" hidden>
     <h2>Premio del día</h2>
     <p class="hint">Activa las formas de ganar que quieras: cronómetro, tarjeta de fidelidad y/o reto del día. Si activas más de una, el cliente puede cambiar entre ellas en la web (deslizando o con las flechas). Cada forma es independiente: el cronómetro nunca se bloquea (siempre se puede volver a reclamar). La tarjeta de fidelidad tampoco se bloquea — cada cliente completa y reclama la suya sin afectar a los demás. El reto del día sí tiene un límite de ganadores por día (configurable más abajo). Al reclamar se abre un regalo animado que revela el premio, con un botón para avisar por WhatsApp.</p>
     <label class="switch"><input type="checkbox" data-field="dailyPrize.active"> Mostrar esta sección en la web</label>
-
-    <div class="field-grid" data-form="deliverySettings">
-      <label>🔒 PIN de empleados (distinto de tu clave de administrador — lo usan para abrir "Entregar premio" en el local) <input type="text" data-field="pin"></label>
-    </div>
 
     <h3>🧱 Formas de ganar</h3>
     <p class="hint">Todo en un solo lugar: arrastrá desde el asa ⠿ para cambiar el orden en que el cliente las ve (la primera es la que sale de entrada), tocá ✅/🚫 para activarla o desactivarla, y tocá el nombre para abrir su configuración. Las desactivadas no se muestran en la web, pero se quedan acá con todo lo que tengas configurado.</p>
@@ -278,28 +277,34 @@
          la lista. Se mueven de acá a su fila; nunca se destruyen. -->
     <div data-prize-config-stash hidden></div>
 
-    <h3>🎠 Movimiento automático</h3>
-    <p class="hint">Las formas de ganar van pasando solas, para que el cliente las vea todas sin tener que deslizar. Si él elige una, se detiene y se queda ahí; vuelve a moverse cuando desplaza la página. Mientras alguien juega TOPPINGS RUN nunca se mueve.</p>
-    <label class="switch"><input type="checkbox" data-field="dailyPrize.carousel.active"> Que pasen solas</label>
-    <div class="field-grid" data-form="dailyPrize.carousel">
-      <label>Tiempo en cada una (segundos) <input type="number" min="1.5" step="0.5" data-field="intervalSeconds"></label>
-      <label>Dirección
-        <select data-field="direction">
-          <option value="ltr">Hacia adelante</option>
-          <option value="rtl">Hacia atrás</option>
-        </select>
-      </label>
-    </div>
+    <details class="admin-collapsible">
+      <summary>🎠 Movimiento automático</summary>
+      <p class="hint">Las formas de ganar van pasando solas, para que el cliente las vea todas sin tener que deslizar. Si él elige una, se detiene y se queda ahí; vuelve a moverse cuando desplaza la página. Mientras alguien juega TOPPINGS RUN nunca se mueve.</p>
+      <label class="switch"><input type="checkbox" data-field="dailyPrize.carousel.active"> Que pasen solas</label>
+      <div class="field-grid" data-form="dailyPrize.carousel">
+        <label>Tiempo en cada una (segundos) <input type="number" min="1.5" step="0.5" data-field="intervalSeconds"></label>
+        <label>Dirección
+          <select data-field="direction">
+            <option value="ltr">Hacia adelante</option>
+            <option value="rtl">Hacia atrás</option>
+          </select>
+        </label>
+      </div>
+    </details>
 
-    <div class="field-grid" data-form="dailyPrize">
-      <label class="full">Texto arriba de la sección <textarea data-field="kicker" rows="2"></textarea></label>
-      <label class="full">Posición en la página
-        <input type="text" value="Se mueve desde Portada → 🧱 Bloques del inicio" disabled>
-      </label>
-      <label>Texto del botón "Reclamar premio" <textarea data-field="claimPrizeButtonLabel" rows="2"></textarea></label>
-      <label>Texto del botón "Entregar premio" <textarea data-field="deliverPrizeButtonLabel" rows="2"></textarea></label>
-      <label>Texto pequeño debajo de "Entregar premio" <textarea data-field="deliverPrizeSubtext" rows="2"></textarea></label>
-    </div>
+    <details class="admin-collapsible">
+      <summary>✍️ Textos de la sección</summary>
+      <p class="hint">Lo que el cliente lee alrededor de las formas de ganar.</p>
+      <div class="field-grid" data-form="dailyPrize">
+        <label class="full">Texto arriba de la sección <textarea data-field="kicker" rows="2"></textarea></label>
+        <label class="full">Posición en la página
+          <input type="text" value="Se mueve desde Portada → 🧱 Bloques del inicio" disabled>
+        </label>
+        <label>Texto del botón "Reclamar premio" <textarea data-field="claimPrizeButtonLabel" rows="2"></textarea></label>
+        <label>Texto del botón "Entregar premio" <textarea data-field="deliverPrizeButtonLabel" rows="2"></textarea></label>
+        <label>Texto pequeño debajo de "Entregar premio" <textarea data-field="deliverPrizeSubtext" rows="2"></textarea></label>
+      </div>
+    </details>
 
     <details class="admin-collapsible" data-prize-config="cronometro">
       <summary>⏱️ Cronómetro</summary>
@@ -583,8 +588,13 @@
     </details>
 
     <details class="admin-collapsible">
-      <summary>🎁 Validar / Entregar premios + 📊 Estadísticas</summary>
-      <p class="hint">Cubre TODOS los premios (cronómetro, fidelidad, reto, juego y Ruleta) — un solo lugar para buscar códigos, anular uno si hace falta, y ver las estadísticas completas.</p>
+      <summary>🎁 Validar / Entregar premios</summary>
+      <p class="hint">Cubre TODOS los premios (cronómetro, fidelidad, reto, juego y Ruleta) — un solo lugar para buscar códigos y anular uno si hace falta.</p>
+
+      <div class="field-grid" data-form="deliverySettings">
+        <label class="full">🔒 PIN de empleados (distinto de tu clave de administrador — lo usan para abrir "Entregar premio" en el local) <input type="text" data-field="pin"></label>
+      </div>
+
       <div class="ruleta-search-row">
         <input type="text" placeholder="Código o nombre del cliente" data-codes-search-input>
         <select data-codes-status-filter>
@@ -606,20 +616,24 @@
     <h2>🎡 Ruleta TOPPINGS</h2>
     <p class="hint">La ruleta es una recompensa que cualquiera de las 4 formas de ganar de "Premio del día" puede entregar — elige "Giro en la Ruleta" como Tipo de premio ahí. Aquí configuras los premios de la ruleta y el número de WhatsApp para reclamarlos. Para validar códigos y ver estadísticas (incluidos los premios de la Ruleta), ve a la pestaña "Premio del día".</p>
     <label class="switch"><input type="checkbox" data-ruleta-field="active"> Activar Ruleta</label>
-    <div class="field-grid">
-      <label class="full">Título <input type="text" data-ruleta-field="title"></label>
-      <label>Mensaje cuando GANA <input type="text" data-ruleta-field="winTitle" placeholder="¡GANASTE!"></label>
-      <label>Mensaje cuando NO gana <input type="text" data-ruleta-field="loseTitle" placeholder="¡QUÉ MALA SUERTE!"></label>
-      <label>Número de WhatsApp (vacío = usa el de la pestaña Negocio) <input type="text" data-ruleta-field="whatsappNumber"></label>
-      <label>Vigencia del premio ganado (horas) <input type="number" min="1" data-ruleta-field="prizeExpiryHours"></label>
-      <label class="switch-inline"><input type="checkbox" data-ruleta-field="soundEnabled"> Sonido al girar</label>
-      <label class="switch-inline"><input type="checkbox" data-ruleta-field="confettiEnabled"> Confeti al ganar</label>
-    </div>
 
-    <h3>Premios de la ruleta</h3>
+    <h3>🎁 Premios de la ruleta</h3>
     <p class="ruleta-prob-sum" data-ruleta-prob-sum>Suma de probabilidades activas: 0%</p>
     <div class="ruleta-prizes-list" data-ruleta-prizes-list></div>
     <button type="button" class="btn btn-primary" data-ruleta-add-prize>+ Agregar premio</button>
+
+    <details class="admin-collapsible">
+      <summary>⚙️ Ajustes generales</summary>
+      <div class="field-grid">
+        <label class="full">Título <input type="text" data-ruleta-field="title"></label>
+        <label>Mensaje cuando GANA <input type="text" data-ruleta-field="winTitle" placeholder="¡GANASTE!"></label>
+        <label>Mensaje cuando NO gana <input type="text" data-ruleta-field="loseTitle" placeholder="¡QUÉ MALA SUERTE!"></label>
+        <label>Número de WhatsApp (vacío = usa el de la pestaña Negocio) <input type="text" data-ruleta-field="whatsappNumber"></label>
+        <label>Vigencia del premio ganado (horas) <input type="number" min="1" data-ruleta-field="prizeExpiryHours"></label>
+        <label class="switch-inline"><input type="checkbox" data-ruleta-field="soundEnabled"> Sonido al girar</label>
+        <label class="switch-inline"><input type="checkbox" data-ruleta-field="confettiEnabled"> Confeti al ganar</label>
+      </div>
+    </details>
 
     <div class="ruleta-savebar">
       <span class="save-status" data-ruleta-save-status></span>
@@ -664,7 +678,7 @@
 
   <section class="admin-panel" data-panel="clientes" hidden>
     <h2>👥 Clientes</h2>
-    <p class="hint">Todos los que dieron su nombre en la página, con los premios que ganaron. Podés mandarle un mensaje a uno solo o a todos: le sale en una ventana apenas esté en la página y le queda guardado en el botón 🎁, así que si le mandás un código de premio no se pierde.</p>
+    <p class="hint">Todos los que dieron su nombre en la página, con los premios que ganaron. Buscá por nombre o filtrá por cuándo vinieron; tocá un cliente para ver su ficha y mandarle un mensaje solo a él.</p>
 
     <div class="ruleta-search-row">
       <input type="text" placeholder="Buscar por nombre" data-customers-search>
@@ -677,8 +691,11 @@
       <button type="button" class="btn btn-ghost" data-customers-refresh>🔄 Actualizar</button>
     </div>
 
+    <p class="hint" data-customers-status></p>
+    <div class="customers-list" data-customers-list></div>
+
     <h3>📣 Mensaje para todos</h3>
-    <p class="hint">Si es solo un mensaje ("gracias por visitarnos"), al cliente le baja una notificación y ya — <strong>no le sale ninguna ventana de premio ni botón de reclamar</strong>. Si le pones un premio, le sale la misma notificación más un botón para verlo.</p>
+    <p class="hint">Le llega a todos los clientes: le sale en una ventana apenas esté en la página y le queda guardado en el botón 🎁, así que si le mandás un código de premio no se pierde. Si es solo un mensaje ("gracias por visitarnos"), al cliente le baja una notificación y ya — <strong>no le sale ninguna ventana de premio ni botón de reclamar</strong>. Si le pones un premio, le sale la misma notificación más un botón para verlo.</p>
     <div class="field-grid" data-notif-form="all">
       <label>Título <input type="text" data-notif-title placeholder="📣 TOPPINGS"></label>
       <label class="full">Mensaje <textarea rows="3" data-notif-message placeholder="Ej: Hoy 2x1 en salchipapas hasta las 8 pm 🍟"></textarea></label>
@@ -699,10 +716,6 @@
     </div>
     <button type="button" class="btn btn-primary" data-notif-send-all>Enviar a todos</button>
     <p class="hint" data-notif-all-status></p>
-
-    <h3>Lista de clientes</h3>
-    <p class="hint" data-customers-status></p>
-    <div class="customers-list" data-customers-list></div>
 
     <h3>📨 Mensajes enviados</h3>
     <div class="notif-sent-list" data-notif-sent-list></div>
@@ -740,7 +753,9 @@
     <h2>🎨 Personalización de la página</h2>
     <p class="hint">Cambia el fondo, los colores y el tamaño de las letras de todo el sitio (todas las páginas). Los valores de aquí abajo son los que ya tenías — cámbialos solo si quieres algo distinto.</p>
 
-    <div class="field-grid" data-form="customization">
+    <details class="admin-collapsible">
+      <summary>🖌️ Fondo y colores</summary>
+      <div class="field-grid" data-form="customization">
       <label class="full">Fondo de la página
         <select data-field="backgroundType" data-bg-type-select>
           <option value="texture">Textura urbana (la de siempre)</option>
@@ -771,7 +786,10 @@
       </label>
     </div>
 
-    <h3>🪟 Ventanas emergentes</h3>
+    </details>
+
+    <details class="admin-collapsible">
+      <summary>🪟 Ventanas emergentes</summary>
     <p class="hint">Son los avisos que le salen al cliente encima de la página: premios, escanear el QR, nombre repetido, la ruleta.</p>
     <div class="field-grid" data-form="customization.modal">
       <label>Estilo
@@ -785,14 +803,20 @@
     <label class="switch" data-modal-field="urban"><input type="checkbox" data-field="customization.modal.drip"> Que la pintura chorree hacia abajo</label>
     <label class="switch" data-modal-field="urban"><input type="checkbox" data-field="customization.modal.texture"> Textura de muro en el fondo de la ventana</label>
 
-    <h3>Efectos</h3>
+    </details>
+
+    <details class="admin-collapsible">
+      <summary>✨ Efectos</summary>
     <label class="switch"><input type="checkbox" data-field="customization.effects.animations"> Animaciones (movimientos y transiciones)</label>
     <label class="switch"><input type="checkbox" data-field="customization.effects.glow"> Brillo/resplandor en botones y acentos</label>
     <label class="switch"><input type="checkbox" data-field="customization.effects.scrollButtons"> Flecha para subir/bajar de página (aparece al deslizar)</label>
     <label class="switch"><input type="checkbox" data-field="customization.effects.scrollHint"> Aviso "desliza" en la portada (al centro, sobre el borde izquierdo; desaparece al desplazar)</label>
     <label class="switch"><input type="checkbox" data-field="customization.effects.pageNavArrows"> Flechas para cambiar entre Comidas/Helados/Bebidas (aparecen al deslizar)</label>
 
-    <h3>🎵 Música de fondo</h3>
+    </details>
+
+    <details class="admin-collapsible">
+      <summary>🎵 Música de fondo</summary>
     <p class="hint">Sube una canción o pista instrumental (mp3, ogg, wav o m4a). El celular del cliente nunca deja que suene sola apenas abre la página — le aparece un botón flotante 🎵 para que la active cuando quiera, y se sigue escuchando si cambia de página sin recargar.</p>
     <label class="switch"><input type="checkbox" data-field="music.active"> Activar música de fondo</label>
     <div class="field-grid" data-form="music">
@@ -806,6 +830,7 @@
         <input type="range" min="0" max="1" step="0.05" data-field="volume">
       </label>
     </div>
+    </details>
   </section>
 
   <div class="admin-savebar">
