@@ -13,6 +13,7 @@
 <link rel="stylesheet" href="styles.css?v=20260803b">
 <link rel="stylesheet" href="lib/cat-carousel.css?v=20260803b">
 <link rel="stylesheet" href="editor/page-editor.css?v=20260803b">
+<link rel="stylesheet" href="game/ruleta.css?v=20260803b">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 fill=%22%23111%22/><text x=%2250%22 y=%2268%22 font-size=%2260%22 text-anchor=%22middle%22 fill=%22%23FFD400%22 font-family=%22sans-serif%22 font-weight=%22900%22>T</text></svg>">
 </head>
 <body data-category="bebidas">
@@ -102,6 +103,135 @@
 <audio data-bg-music loop preload="none"></audio>
 <noscript><style>.fab-bubble{opacity:1!important;transform:none!important;pointer-events:auto!important}.fab-mystery{display:none}</style></noscript>
 
+<div class="prize-modal" data-prize-modal hidden>
+  <div class="prize-modal-backdrop" data-prize-modal-close></div>
+  <div class="prize-modal-card">
+    <button type="button" class="prize-modal-close" data-prize-modal-close aria-label="Cerrar">&times;</button>
+    <p class="section-kicker">Premio del día</p>
+    <button type="button" class="gift-box" data-gift-box aria-label="Abrir regalo">🎁</button>
+    <div class="prize-reveal" data-prize-reveal hidden>
+      <p class="prize-reveal-title">🎉 Ganaste el premio</p>
+      <p class="prize-reveal-text" data-prize-text></p>
+      <a class="btn btn-primary btn-lg" data-whatsapp-link data-prize-whatsapp href="#" target="_blank" rel="noopener">📲 Reclamar por WhatsApp</a>
+    </div>
+  </div>
+</div>
+
+<div class="code-modal" data-code-modal hidden>
+  <div class="prize-modal-backdrop" data-code-modal-close></div>
+  <div class="prize-modal-card code-modal-card">
+    <button type="button" class="prize-modal-close" data-code-modal-close aria-label="Cerrar">&times;</button>
+    <p class="code-modal-title" data-code-modal-title>Pídele el código al mesero</p>
+    <input type="text" class="code-modal-input" data-code-modal-input placeholder="Código secreto" autocomplete="off">
+    <p class="code-modal-error" data-code-modal-error hidden>Código incorrecto. Pregúntale de nuevo al mesero.</p>
+    <button type="button" class="btn btn-primary btn-lg" data-code-modal-confirm>Confirmar</button>
+  </div>
+</div>
+
+<div class="scan-modal" data-scan-modal hidden>
+  <div class="prize-modal-backdrop" data-scan-modal-close></div>
+  <div class="prize-modal-card scan-modal-card">
+    <button type="button" class="prize-modal-close" data-scan-modal-close aria-label="Cerrar">&times;</button>
+    <p class="code-modal-title">Apunta al código QR</p>
+    <div class="scan-video-wrap">
+      <video class="scan-video" data-scan-video playsinline muted></video>
+      <div class="scan-frame"></div>
+    </div>
+    <p class="scan-status" data-scan-status>Acércate al código QR del local 📱</p>
+    <canvas data-scan-canvas hidden></canvas>
+  </div>
+</div>
+
+<div class="ruleta-modal" data-ruleta-modal hidden>
+  <div class="prize-modal-backdrop" data-ruleta-close></div>
+  <div class="ruleta-card">
+    <button type="button" class="ruleta-icon-btn ruleta-close" data-ruleta-close aria-label="Cerrar">&times;</button>
+    <button type="button" class="ruleta-icon-btn ruleta-mute" data-ruleta-mute aria-label="Silenciar sonido">🔊</button>
+
+    <h2 class="ruleta-title" data-ruleta-title>RULETA TOPPINGS</h2>
+    <p class="ruleta-tickets" data-ruleta-tickets>Tiros disponibles: 0</p>
+
+    <div class="ruleta-stage" data-ruleta-stage="idle">
+      <div class="ruleta-wheel-wrap">
+        <canvas class="ruleta-canvas" data-ruleta-canvas width="320" height="320"></canvas>
+        <div class="ruleta-pointer"></div>
+      </div>
+      <button type="button" class="btn btn-primary ruleta-spin-btn" data-ruleta-spin>GIRAR</button>
+      <p class="ruleta-hint" data-ruleta-hint hidden>No tienes tiros disponibles. Completa una dinámica para conseguir uno.</p>
+    </div>
+
+    <div class="ruleta-stage" data-ruleta-stage="result" hidden>
+      <p class="ruleta-result-title" data-ruleta-result-title>¡GANASTE!</p>
+      <p class="ruleta-result-name" data-ruleta-result-name></p>
+      <p class="ruleta-result-hint" data-ruleta-result-hint hidden>Puedes ver y reclamar tu premio en el botón de regalo 🎁 (abajo, debajo de WhatsApp). Recuerda: debes estar en el local — no se entrega a domicilio ni para llevar.</p>
+      <div class="ruleta-result-actions" data-ruleta-result-actions hidden>
+        <button type="button" class="btn btn-primary" data-ruleta-view-prizes>🎁 Ver mis premios</button>
+      </div>
+      <button type="button" class="btn btn-ghost" data-ruleta-again>Volver</button>
+    </div>
+
+    <div class="ruleta-stage" data-ruleta-stage="disabled" hidden>
+      <p class="ruleta-hint">La Ruleta TOPPINGS no está disponible en este momento.</p>
+    </div>
+
+    <p class="ruleta-terms">Un tiro se consume por cada giro. El premio debe reclamarse en el local antes de la fecha de vencimiento.</p>
+  </div>
+</div>
+
+<div class="prize-modal claim-prize-modal" data-claim-prize-modal hidden>
+  <div class="prize-modal-backdrop" data-claim-prize-close></div>
+  <div class="prize-modal-card claim-prize-card">
+    <button type="button" class="prize-modal-close" data-claim-prize-close aria-label="Cerrar">&times;</button>
+
+    <div class="claim-prize-stage" data-claim-stage="code">
+      <p class="section-kicker" data-claim-prize-title></p>
+      <p class="claim-prize-hint">Escribe el código que ganaste</p>
+      <input type="text" class="code-modal-input" data-claim-code-input placeholder="TOP-XXXXXX" autocomplete="off" autocapitalize="characters">
+      <p class="claim-prize-error" data-claim-prize-error hidden></p>
+      <button type="button" class="btn btn-primary btn-lg" data-claim-verify-btn>Verificar</button>
+    </div>
+
+    <div class="claim-prize-stage" data-claim-stage="confirm" hidden>
+      <p class="claim-prize-title">🎉 Vas a reclamar:</p>
+      <p class="claim-prize-name" data-claim-prize-name></p>
+      <p class="claim-prize-hint">Presiona el botón para solicitar la entrega. Tienes 24 horas para reclamarlo — se entrega únicamente en el local, no aplica domicilios.</p>
+      <button type="button" class="btn btn-primary btn-lg" data-claim-request-btn>Solicitar premio</button>
+    </div>
+
+    <div class="claim-prize-stage" data-claim-stage="waiting" hidden>
+      <p class="claim-prize-title">🎁 Solicitud enviada.</p>
+      <p class="claim-prize-hint">Espera mientras uno de nuestros empleados confirma tu entrega. Recuerda: debes estar en el local — no se entrega a domicilio ni para llevar.</p>
+      <div class="claim-waiting-spinner" aria-hidden="true"></div>
+    </div>
+
+    <div class="claim-prize-stage" data-claim-stage="delivered" hidden>
+      <p class="claim-prize-title">✅ Tu premio fue entregado correctamente.</p>
+    </div>
+  </div>
+</div>
+
+<div class="prize-modal deliver-prize-modal" data-deliver-prize-modal hidden>
+  <div class="prize-modal-backdrop" data-deliver-prize-close></div>
+  <div class="prize-modal-card deliver-prize-card">
+    <button type="button" class="prize-modal-close" data-deliver-prize-close aria-label="Cerrar">&times;</button>
+
+    <div class="deliver-prize-stage" data-deliver-stage="pin">
+      <p class="section-kicker" data-deliver-prize-title></p>
+      <p class="claim-prize-hint" data-deliver-prize-subtext-2></p>
+      <input type="password" inputmode="numeric" class="code-modal-input" data-deliver-pin-input placeholder="PIN de empleado" autocomplete="off">
+      <input type="text" class="code-modal-input" data-deliver-name-input placeholder="Tu nombre" autocomplete="off">
+      <p class="claim-prize-error" data-deliver-prize-error hidden></p>
+      <button type="button" class="btn btn-primary btn-lg" data-deliver-login-btn>Entrar</button>
+    </div>
+
+    <div class="deliver-prize-stage" data-deliver-stage="pending" hidden>
+      <p class="section-kicker">Premios pendientes</p>
+      <div class="deliver-pending-list" data-deliver-pending-list></div>
+      <p class="claim-prize-hint" data-deliver-pending-empty hidden>No hay premios pendientes por entregar.</p>
+    </div>
+  </div>
+</div>
+
 <div class="prize-modal gift-codes-modal" data-gift-codes-modal hidden>
   <div class="prize-modal-backdrop" data-gift-codes-close></div>
   <div class="prize-modal-card gift-codes-card">
@@ -143,6 +273,7 @@
 <script defer src="lib/manifest.js"></script>
 <script defer src="lib/cat-carousel.js?v=20260803b"></script>
 <script defer src="main.js?v=20260803b"></script>
+<script defer src="game/ruleta.js?v=20260803b"></script>
 <script defer src="editor/page-editor.js?v=20260803b"></script>
 </body>
 </html>

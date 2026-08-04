@@ -3028,41 +3028,14 @@
     lastNotifs = lastNotifs.filter(function (n) { return n.id !== id; });
   }
 
-  /* La ruleta (su marcado y game/ruleta.js) vive SOLO en la portada. Desde
-     comidas, helados, bebidas o la página secreta, window.__openRuletaModal
-     no existe y el botón de girar no hacía absolutamente nada — el cliente
-     tenía el tiro y no podía usarlo.
-
-     Acá se resuelve: si la ruleta no está en esta página, se deja una marca y
-     se manda a la portada, que la abre sola al llegar. */
-  var ABRIR_RULETA_KEY = "toppings_abrir_ruleta";
-
+  /* La ruleta ahora está en las CINCO páginas (su marcado y game/ruleta.js),
+     así que se abre donde esté el cliente. Antes vivía solo en la portada y
+     había que mandarlo para allá, que era molesto: si estaba mirando helados,
+     reclamar lo sacaba de ahí. */
   function abrirRuleta() {
     if (window.__openRuletaModal) { window.__openRuletaModal(); return; }
-    try { sessionStorage.setItem(ABRIR_RULETA_KEY, "1"); } catch (e) {}
-    location.href = "index.html";
-  }
-
-  /* Al llegar a la portada: si veníamos a girar, se abre. game/ruleta.js
-     publica __openRuletaModal en su propio arranque, que puede terminar
-     después que este, así que se reintenta un momento. */
-  function abrirRuletaSiVeniamosAEso() {
-    var pendiente = null;
-    try { pendiente = sessionStorage.getItem(ABRIR_RULETA_KEY); } catch (e) {}
-    if (!pendiente) return;
-    try { sessionStorage.removeItem(ABRIR_RULETA_KEY); } catch (e) {}
-
-    var intentos = 0;
-    var id = setInterval(function () {
-      intentos++;
-      if (window.__openRuletaModal) {
-        clearInterval(id);
-        safe(function () { window.__openRuletaModal(); }, "abrirRuleta");
-      } else if (intentos > 40) {          // ~4 s y nos rendimos
-        clearInterval(id);
-        safe(function () { window.__openGiftPanel(); }, "abrirRuletaRespaldo");
-      }
-    }, 100);
+    // último recurso, por si alguna página quedara sin la ruleta
+    if (window.__openGiftPanel) window.__openGiftPanel();
   }
 
   /* Qué dice y adónde lleva el botón del aviso, según lo que el negocio le
@@ -3470,7 +3443,6 @@
     safe(initGiftFab, "initGiftFab");
     safe(initRedeemCode, "initRedeemCode");
     safe(initPresencePing, "initPresencePing");
-    safe(abrirRuletaSiVeniamosAEso, "abrirRuletaSiVeniamosAEso");
     safe(limpiarPushViejo, "limpiarPushViejo");
     safe(refreshGiftFab, "refreshGiftFab");
     setInterval(function () { safe(refreshGiftFab, "refreshGiftFab"); }, 30000);
