@@ -8,6 +8,9 @@ admin/content.json
 # Clave de la API de IA
 api/ai-config.php
 
+# Llave privada de las notificaciones push (VAPID) y la clave del cron
+api/push-config.php
+
 # Datos reales de clientes: nombres, puntajes, códigos de premio,
 # reclamos del día. No es código, es información de personas.
 api/data/*.json

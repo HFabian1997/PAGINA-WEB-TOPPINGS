@@ -3280,6 +3280,238 @@
     if (modal) modal.hidden = false;
   };
 
+  /* ================= Notificaciones en el celular =================
+     El cliente puede recibir avisos aunque tenga la página cerrada.
+
+     Regla que pidió Fabián: NO se le pide permiso al navegador apenas entra.
+     Primero se le muestra un cartel nuestro explicando para qué sirve, y el
+     permiso de verdad solo se pide si toca "Activar". Si dice "Ahora no", se
+     guarda y no se le vuelve a insistir — puede prenderlo después desde el
+     panel 🎁.
+
+     Por qué importa: si se pide de una y dice que no, el navegador bloquea el
+     permiso PARA SIEMPRE en ese aparato y no hay forma de volver a pedirlo
+     desde la página. Un solo "no" apresurado lo pierde de por vida. */
+
+  var PUSH_API = "api/push.php";
+  var PUSH_ASKED_KEY = "toppings_push_preguntado";   // ya vio el cartel
+  var PUSH_STATE_KEY = "toppings_push_estado";       // "si" | "ahora-no"
+  var swListo = null;                                // promesa del registro
+
+  function pushSoportado() {
+    return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  }
+
+  /* iPhone solo entrega notificaciones si la página está agregada a la
+     pantalla de inicio. Detectamos las dos cosas para poder explicárselo. */
+  function esIOS() {
+    return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+           (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  }
+  function estaInstalada() {
+    return window.navigator.standalone === true ||
+           matchMedia("(display-mode: standalone)").matches;
+  }
+
+  function registrarSW() {
+    if (!("serviceWorker" in navigator)) return Promise.reject(new Error("sin soporte"));
+    if (swListo) return swListo;
+    // el deviceId viaja en la dirección: adentro del worker no hay
+    // localStorage y lo necesita para re-registrarse si rotan las llaves
+    swListo = navigator.serviceWorker.register("sw.js?d=" + encodeURIComponent(getDeviceId()))
+      .then(function () { return navigator.serviceWorker.ready; });
+    return swListo;
+  }
+
+  function urlB64ABytes(base64) {
+    var relleno = "=".repeat((4 - (base64.length % 4)) % 4);
+    var normal = (base64 + relleno).replace(/-/g, "+").replace(/_/g, "/");
+    var crudo = atob(normal);
+    var bytes = new Uint8Array(crudo.length);
+    for (var i = 0; i < crudo.length; i++) bytes[i] = crudo.charCodeAt(i);
+    return bytes;
+  }
+
+  /** Pide el permiso real y guarda la suscripción en el servidor. */
+  function activarPush() {
+    if (!pushSoportado()) return Promise.reject(new Error("sin soporte"));
+    return Notification.requestPermission()
+      .then(function (permiso) {
+        if (permiso !== "granted") throw new Error("permiso " + permiso);
+        return registrarSW();
+      })
+      .then(function (reg) {
+        return fetch(PUSH_API + "?action=key", { cache: "no-store" })
+          .then(function (r) { return r.json(); })
+          .then(function (res) {
+            if (!res || !res.ok || !res.publicKey) throw new Error("sin llave");
+            return reg.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: urlB64ABytes(res.publicKey)
+            });
+          });
+      })
+      .then(function (sub) {
+        return fetch(PUSH_API + "?action=subscribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ deviceId: getDeviceId(), subscription: sub.toJSON() })
+        }).then(function (r) { return r.json(); });
+      })
+      .then(function (res) {
+        if (!res || !res.ok) throw new Error("no se guardó");
+        try { localStorage.setItem(PUSH_STATE_KEY, "si"); } catch (e) {}
+        return true;
+      });
+  }
+
+  function desactivarPush() {
+    try { localStorage.setItem(PUSH_STATE_KEY, "ahora-no"); } catch (e) {}
+    var cuerpo = { deviceId: getDeviceId(), endpoint: "" };
+    var quitarLocal = registrarSW()
+      .then(function (reg) { return reg.pushManager.getSubscription(); })
+      .then(function (sub) { return sub ? sub.unsubscribe() : null; })
+      .catch(function () {});
+    return quitarLocal.then(function () {
+      return fetch(PUSH_API + "?action=unsubscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(cuerpo)
+      }).catch(function () {});
+    });
+  }
+
+  function pushEstaActivo() {
+    if (!pushSoportado()) return Promise.resolve(false);
+    if (Notification.permission !== "granted") return Promise.resolve(false);
+    return registrarSW()
+      .then(function (reg) { return reg.pushManager.getSubscription(); })
+      .then(function (sub) { return !!sub; })
+      .catch(function () { return false; });
+  }
+
+  /* ---- el cartel que se muestra ANTES de pedir el permiso ---- */
+
+  function construirCartelPush() {
+    var caja = document.createElement("div");
+    caja.className = "push-ask";
+    caja.setAttribute("role", "dialog");
+    caja.setAttribute("aria-label", "Activar notificaciones");
+    caja.innerHTML =
+      '<div class="push-ask-card">' +
+        '<div class="push-ask-emoji">🔔</div>' +
+        '<p class="push-ask-text">¿Quieres recibir premios, promociones y avisos de TOPPINGS directamente en tu celular?</p>' +
+        '<div class="push-ask-actions">' +
+          '<button type="button" class="push-ask-yes" data-push-yes>ACTIVAR NOTIFICACIONES</button>' +
+          '<button type="button" class="push-ask-no" data-push-no>Ahora no</button>' +
+        '</div>' +
+        '<p class="push-ask-hint" data-push-hint hidden></p>' +
+      '</div>';
+    return caja;
+  }
+
+  function cerrarCartel(caja) {
+    caja.classList.remove("is-visible");
+    setTimeout(function () { if (caja.parentNode) caja.parentNode.removeChild(caja); }, 250);
+  }
+
+  /** Los pasos para el iPhone, que no puede recibir push desde el navegador. */
+  function textoIOS() {
+    return "En iPhone los avisos solo llegan si agregas TOPPINGS a tu pantalla de inicio: " +
+           "toca el botón Compartir ⬆️ de abajo, elige “Agregar a inicio” y vuelve a entrar desde ahí.";
+  }
+
+  function mostrarCartelPush() {
+    if ($(".push-ask")) return;
+    var caja = construirCartelPush();
+    document.body.appendChild(caja);
+    requestAnimationFrame(function () { caja.classList.add("is-visible"); });
+
+    var hint = $("[data-push-hint]", caja);
+    var siBtn = $("[data-push-yes]", caja);
+
+    // iPhone sin instalar: no tiene sentido pedir el permiso, no va a llegar
+    if (esIOS() && !estaInstalada()) {
+      siBtn.textContent = "CÓMO ACTIVARLAS";
+      siBtn.onclick = function () {
+        hint.hidden = false;
+        hint.textContent = textoIOS();
+        siBtn.disabled = true;
+        try { localStorage.setItem(PUSH_ASKED_KEY, "1"); } catch (e) {}
+      };
+    } else {
+      siBtn.onclick = function () {
+        siBtn.disabled = true;
+        siBtn.textContent = "Activando…";
+        activarPush()
+          .then(function () {
+            hint.hidden = false;
+            hint.textContent = "✅ Listo. Te avisaremos cuando tengas un premio.";
+            setTimeout(function () { cerrarCartel(caja); }, 1800);
+          })
+          .catch(function (e) {
+            hint.hidden = false;
+            hint.textContent = String(e && e.message).indexOf("denied") >= 0
+              ? "Las notificaciones quedaron bloqueadas en este navegador. Puedes volver a permitirlas desde la configuración del sitio."
+              : "No se pudieron activar. Puedes intentarlo más tarde desde el botón 🎁.";
+            siBtn.disabled = false;
+            siBtn.textContent = "ACTIVAR NOTIFICACIONES";
+          });
+      };
+    }
+
+    $("[data-push-no]", caja).onclick = function () {
+      try { localStorage.setItem(PUSH_STATE_KEY, "ahora-no"); } catch (e) {}
+      cerrarCartel(caja);
+    };
+
+    try { localStorage.setItem(PUSH_ASKED_KEY, "1"); } catch (e) {}
+  }
+
+  function initPush() {
+    if (!pushSoportado()) return;
+    // el worker se registra siempre: hace falta para recibir, y no molesta
+    registrarSW().catch(function () {});
+
+    // el service worker avisa cuando el cliente toca una notificación
+    navigator.serviceWorker.addEventListener("message", function (ev) {
+      var d = ev.data || {};
+      if (d.tipo !== "toppings-push-click") return;
+      // NO se reclama nada solo: únicamente se abre el panel para que mire
+      if (d.que === "premio" || d.que === "regalo" || d.que === "ruleta") {
+        safe(function () { window.__openGiftPanel(); }, "push-click");
+      }
+    });
+
+    var yaPregunto = false, estado = "";
+    try {
+      yaPregunto = localStorage.getItem(PUSH_ASKED_KEY) === "1";
+      estado = localStorage.getItem(PUSH_STATE_KEY) || "";
+    } catch (e) {}
+
+    // ya dijo que no: no se insiste nunca más por su cuenta
+    if (estado === "ahora-no") return;
+    if (Notification.permission === "denied") return;
+
+    // ya lo aceptó: solo revisamos que la suscripción siga viva
+    if (Notification.permission === "granted") {
+      pushEstaActivo().then(function (activo) { if (!activo) activarPush().catch(function () {}); });
+      return;
+    }
+
+    if (yaPregunto) return;
+
+    /* No apenas entra: se espera a que lleve un rato mirando, para que el
+       cartel no sea lo primero que ve. */
+    setTimeout(function () { safe(mostrarCartelPush, "cartelPush"); }, 25000);
+  }
+
+  // para poder prenderlas después desde el panel 🎁
+  window.__activarPush = activarPush;
+  window.__desactivarPush = desactivarPush;
+  window.__pushEstaActivo = pushEstaActivo;
+  window.__mostrarCartelPush = mostrarCartelPush;
+
   /* ---- Modal genérico de texto (hoy se usa para pedir el nombre del cliente) ---- */
   function openNameModal(onSubmit) {
     var modal = $("[data-code-modal]");
@@ -3401,6 +3633,7 @@
     safe(initGiftFab, "initGiftFab");
     safe(initRedeemCode, "initRedeemCode");
     safe(initPresencePing, "initPresencePing");
+    safe(initPush, "initPush");
     safe(refreshGiftFab, "refreshGiftFab");
     setInterval(function () { safe(refreshGiftFab, "refreshGiftFab"); }, 30000);
 

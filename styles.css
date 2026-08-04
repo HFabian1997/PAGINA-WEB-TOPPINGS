@@ -1253,3 +1253,41 @@ body.no-animations .scroll-hint-text { animation: none; }
   .daily-prize-claim, .gift-box { animation: none; }
   .gift-box.is-open { transition: opacity .2s ease; opacity: 0; }
 }
+
+/* ---- cartel de notificaciones ----
+   Se muestra ANTES de pedirle permiso al navegador. Es a propósito: si el
+   navegador pregunta y el cliente dice que no, queda bloqueado para siempre
+   en ese aparato. Con este paso previo, el "no" lo damos nosotros y se puede
+   volver a ofrecer más adelante. */
+.push-ask {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 940;
+  padding: 0 var(--gutter) calc(1rem + env(safe-area-inset-bottom));
+  display: flex; justify-content: center;
+  opacity: 0; transform: translateY(1rem);
+  transition: opacity .25s var(--ease-out), transform .25s var(--ease-out);
+  pointer-events: none;
+}
+.push-ask.is-visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
+.push-ask-card {
+  width: 100%; max-width: 420px;
+  background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: 0 10px 40px rgba(0,0,0,.6);
+  padding: 1.1rem 1.15rem 1rem; text-align: center;
+}
+.push-ask-emoji { font-size: 1.9rem; line-height: 1; margin-bottom: .5rem; }
+.push-ask-text { font-size: .92rem; line-height: 1.45; margin: 0 0 .9rem; }
+.push-ask-actions { display: flex; flex-direction: column; gap: .5rem; }
+.push-ask-yes {
+  width: 100%; padding: .8rem 1rem; border: 0; border-radius: 999px;
+  background: var(--accent); color: #111; font-weight: 800; font-size: .88rem;
+  letter-spacing: .02em; cursor: pointer;
+}
+.push-ask-yes:disabled { opacity: .6; cursor: default; }
+.push-ask-no {
+  width: 100%; padding: .6rem 1rem; border: 0; border-radius: 999px;
+  background: transparent; color: var(--ink-mute); font-size: .85rem; cursor: pointer;
+}
+.push-ask-hint {
+  margin: .8rem 0 0; font-size: .82rem; line-height: 1.4; color: var(--ink-mute);
+}
+.push-ask-hint[hidden] { display: none; }
