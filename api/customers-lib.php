@@ -104,10 +104,17 @@ if (!function_exists('customersDataFile')) {
       $actual = isset($state['customers'][$deviceId]['name']) ? $state['customers'][$deviceId]['name'] : null;
       if ($actual === $name) return null;   // nada que cambiar
 
+      $ahora = (int) round(microtime(true) * 1000);
+      $antes = isset($state['customers'][$deviceId]) && is_array($state['customers'][$deviceId])
+        ? $state['customers'][$deviceId] : array();
       $state['customers'][$deviceId] = array(
         'name' => $name,
-        'updatedAt' => (int) round(microtime(true) * 1000),
-      );
+        'updatedAt' => $ahora,
+        // si está haciendo algo, está visitando: sirve para el filtro de
+        // hoy/semana/mes de la lista de clientes
+        'lastSeenAt' => $ahora,
+        // no se pierde nada más que hubiera guardado antes
+      ) + $antes;
       if (count($state['customers']) > $MAX) {
         uasort($state['customers'], function ($a, $b) { return (int) $b['updatedAt'] - (int) $a['updatedAt']; });
         $state['customers'] = array_slice($state['customers'], 0, $MAX, true);
@@ -116,6 +123,44 @@ if (!function_exists('customersDataFile')) {
       return $state;
     });
     return $guardado;
+  }
+
+  /**
+   * Anota que este cliente pasó por la página.
+   *
+   * Hacía falta porque presence.json solo sirve para "cuántos hay conectados
+   * AHORA": borra todo lo que tenga más de 5 minutos, y la lista por día se
+   * reinicia al cambiar el día. Con eso no se puede saber quién vino esta
+   * semana o este mes. Acá queda guardado de verdad, junto al cliente.
+   *
+   * Dos cuidados:
+   * - Solo se anota a quien YA está en el registro (o sea, quien dio su
+   *   nombre). Si no, el archivo se llenaría de visitantes anónimos.
+   * - El latido llega cada minuto; escribir cada vez sería absurdo. Se lee
+   *   sin candado y solo se toma el candado si de verdad hay que escribir.
+   */
+  function customersTouch($deviceId) {
+    $deviceId = trim((string) $deviceId);
+    if ($deviceId === '') return false;
+
+    $MIN_ENTRE_ESCRITURAS = 10 * 60 * 1000;   // 10 minutos
+    $ahora = (int) round(microtime(true) * 1000);
+
+    $state = customersRead();
+    if (!isset($state['customers'][$deviceId])) return false;   // todavía no dio su nombre
+    $ultimo = isset($state['customers'][$deviceId]['lastSeenAt'])
+      ? (int) $state['customers'][$deviceId]['lastSeenAt'] : 0;
+    if ($ahora - $ultimo < $MIN_ENTRE_ESCRITURAS) return false;
+
+    customersWithWriteLock(function ($st) use ($deviceId, $ahora, $MIN_ENTRE_ESCRITURAS) {
+      if (!isset($st['customers'][$deviceId])) return null;
+      // se vuelve a comprobar dentro del candado, por si otro proceso ya lo hizo
+      $u = isset($st['customers'][$deviceId]['lastSeenAt']) ? (int) $st['customers'][$deviceId]['lastSeenAt'] : 0;
+      if ($ahora - $u < $MIN_ENTRE_ESCRITURAS) return null;
+      $st['customers'][$deviceId]['lastSeenAt'] = $ahora;
+      return $st;
+    });
+    return true;
   }
 
   /** ¿Otro dispositivo ya usa este nombre? (para el aviso de nombre repetido) */

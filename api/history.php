@@ -384,6 +384,21 @@ switch ($action) {
       if ($porDispositivo[$d]['last'] === null || $ts > $porDispositivo[$d]['last']) $porDispositivo[$d]['last'] = $ts;
     }
 
+    /* Desde cuándo cuenta una visita. "hoy" y "mes" son de calendario (desde
+       las 00:00 de hoy / desde el día 1), no "las últimas 24 h": es lo que
+       espera uno al mirar la lista. La semana son los últimos 7 días. */
+    $periodo = isset($_GET['periodo']) ? (string) $_GET['periodo'] : 'todos';
+    if (!in_array($periodo, array('hoy', 'semana', 'mes', 'todos'), true)) $periodo = 'todos';
+    $desde = 0;
+    if ($periodo === 'hoy')     $desde = strtotime('today') * 1000;
+    if ($periodo === 'semana')  $desde = (time() - 7 * 24 * 3600) * 1000;
+    if ($periodo === 'mes')     $desde = strtotime('first day of this month 00:00') * 1000;
+
+    $totalSinFiltro = 0;
+    foreach ($names as $unInfo) {
+      if (is_array($unInfo) && isset($unInfo['name']) && trim((string) $unInfo['name']) !== '') $totalSinFiltro++;
+    }
+
     $qLower = function_exists('mb_strtolower') ? mb_strtolower($q) : strtolower($q);
     $out = array();
     foreach ($names as $deviceId => $info) {
@@ -394,11 +409,22 @@ switch ($action) {
         if (strpos($nLower, $qLower) === false) continue;
       }
       $p = isset($porDispositivo[$deviceId]) ? $porDispositivo[$deviceId] : array('total' => 0, 'delivered' => 0, 'pending' => 0, 'last' => null);
+
+      /* La última visita sale del registro del cliente, no de presence.json:
+         ese solo guarda los últimos 5 minutos (sirve para "cuántos hay
+         conectados ahora") y por eso esta columna salía casi siempre vacía. */
+      $ultimaVisita = is_array($info) && isset($info['lastSeenAt']) ? (int) $info['lastSeenAt'] : 0;
+      $enLinea = isset($seen[$deviceId]);        // activo en los últimos 5 min
+      if ($enLinea && (int) $seen[$deviceId] > $ultimaVisita) $ultimaVisita = (int) $seen[$deviceId];
+
+      if ($desde > 0 && $ultimaVisita < $desde) continue;   // filtro hoy/semana/mes
+
       $out[] = array(
         'deviceId' => $deviceId,
         'name' => $nombre,
         'updatedAt' => is_array($info) && isset($info['updatedAt']) ? (int) $info['updatedAt'] : 0,
-        'lastSeen' => isset($seen[$deviceId]) ? (int) $seen[$deviceId] : null,
+        'lastSeen' => $ultimaVisita > 0 ? $ultimaVisita : null,
+        'online' => $enLinea,
         'prizes' => $p['total'],
         'delivered' => $p['delivered'],
         'pending' => $p['pending'],
@@ -410,7 +436,8 @@ switch ($action) {
       return $y - $x;
     });
 
-    jsonOut(array('ok' => true, 'total' => count($out), 'customers' => array_slice($out, 0, 300), 'serverNow' => hNowMs()));
+    jsonOut(array('ok' => true, 'total' => count($out), 'totalSinFiltro' => $totalSinFiltro,
+      'periodo' => $periodo, 'customers' => array_slice($out, 0, 300), 'serverNow' => hNowMs()));
   }
 
   default:

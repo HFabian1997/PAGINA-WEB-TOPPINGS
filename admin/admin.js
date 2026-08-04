@@ -2513,7 +2513,9 @@
     var statusEl = $("[data-customers-status]");
     if (!cont) return;
     var q = ($("[data-customers-search]") || {}).value || "";
-    fetch(HISTORY_API + "?action=customers&q=" + encodeURIComponent(q) + "&_=" + Date.now(),
+    var periodo = ($("[data-customers-period]") || {}).value || "todos";
+    fetch(HISTORY_API + "?action=customers&q=" + encodeURIComponent(q) +
+          "&periodo=" + encodeURIComponent(periodo) + "&_=" + Date.now(),
       { credentials: "same-origin", cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (res) {
@@ -2521,9 +2523,16 @@
           if (statusEl) statusEl.textContent = (res && res.error) || "No se pudo consultar.";
           return;
         }
-        if (statusEl) statusEl.textContent = res.total + " cliente(s) con nombre registrado.";
+        var ETIQUETA = { hoy: "que visitaron hoy", semana: "de los últimos 7 días", mes: "que visitaron este mes" };
+        if (statusEl) {
+          statusEl.textContent = periodo === "todos"
+            ? res.total + " cliente(s) con nombre registrado."
+            : res.total + " " + ETIQUETA[periodo] + " · " + res.totalSinFiltro + " en total";
+        }
         if (!res.customers.length) {
-          cont.innerHTML = '<p class="hint">Todavía nadie ha dado su nombre.</p>';
+          cont.innerHTML = periodo === "todos"
+            ? '<p class="hint">Todavía nadie ha dado su nombre.</p>'
+            : '<p class="hint">Ningún cliente ' + ETIQUETA[periodo] + '.</p>';
           return;
         }
         cont.innerHTML = "";
@@ -2762,6 +2771,10 @@
         buscar.__t = setTimeout(fetchCustomers, 300);
       });
     }
+    // el filtro de hoy/semana/mes recarga la lista al cambiarlo
+    var periodoSel = $("[data-customers-period]");
+    if (periodoSel) periodoSel.addEventListener("change", fetchCustomers);
+
     var refrescar = $("[data-customers-refresh]");
     if (refrescar) refrescar.addEventListener("click", function () { fetchCustomers(); fetchNotifSent(); });
 

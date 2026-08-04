@@ -13,6 +13,7 @@
  */
 date_default_timezone_set('America/Bogota');
 require_once __DIR__ . '/data-path.php';
+require_once __DIR__ . '/customers-lib.php';
 
 session_name('toppings_admin_sess');
 session_set_cookie_params(array(
@@ -122,6 +123,13 @@ switch ($action) {
       }
       return $state;
     });
+
+    /* Y queda anotado en el registro del cliente. presence.json solo sirve
+       para "cuántos hay ahora" (borra lo de hace más de 5 minutos), así que
+       sin esto no se podría saber quién vino esta semana o este mes. Solo
+       escribe si pasaron 10 minutos desde la última vez. */
+    customersTouch($deviceId);
+
     jsonOut(array('ok' => true));
   }
 

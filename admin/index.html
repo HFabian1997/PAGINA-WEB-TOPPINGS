@@ -668,6 +668,12 @@
 
     <div class="ruleta-search-row">
       <input type="text" placeholder="Buscar por nombre" data-customers-search>
+      <select data-customers-period aria-label="Mostrar clientes que visitaron">
+        <option value="hoy">Visitaron hoy</option>
+        <option value="semana">Últimos 7 días</option>
+        <option value="mes">Este mes</option>
+        <option value="todos" selected>Todos los clientes</option>
+      </select>
       <button type="button" class="btn btn-ghost" data-customers-refresh>🔄 Actualizar</button>
     </div>
 
