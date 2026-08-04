@@ -661,3 +661,23 @@ body.is-sorting-active { user-select: none; }
   border-radius: 50%; border: 1px solid var(--line); background: var(--card);
   color: var(--ink); cursor: pointer; font-size: 1.2rem; line-height: 1;
 }
+
+/* ---- avisito del guardado automático ----
+   Ya no hay que darle a "Guardar": cualquier cambio se manda solo. Este chip
+   es la única señal de que eso pasó, así que va fijo abajo y por encima de
+   todo, pero se quita solo cuando dice "Guardado" para no estorbar. */
+.autosave-chip {
+  /* por encima de la barra de abajo, que es fija y mide unos 68 px */
+  position: fixed; left: 50%; bottom: 5.5rem; transform: translateX(-50%) translateY(1.5rem);
+  z-index: 950; padding: .55rem 1rem; border-radius: 999px;
+  background: var(--bg-2); color: var(--ink);
+  border: 1px solid var(--line); box-shadow: 0 6px 20px rgba(0,0,0,.45);
+  font-size: .85rem; font-weight: 600; white-space: nowrap;
+  max-width: calc(100vw - 2rem); overflow: hidden; text-overflow: ellipsis;
+  opacity: 0; pointer-events: none;
+  transition: opacity .18s ease, transform .18s ease;
+}
+.autosave-chip.is-visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+.autosave-chip.is-guardado { border-color: #3ddc84; color: #3ddc84; }
+.autosave-chip.is-error,
+.autosave-chip.is-espera { border-color: #ffb020; color: #ffb020; }

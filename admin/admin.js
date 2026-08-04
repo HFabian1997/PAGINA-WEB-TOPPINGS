@@ -39,9 +39,109 @@
     el.textContent = text;
     el.className = "save-status" + (cls ? " " + cls : "");
   }
+
+  /* ================= guardado automático =================
+     No hay que darle a ningún botón: cualquier cambio se guarda solo poco
+     después, y si se sale de la pestaña o le da atrás se manda de una.
+
+     Cada "cual" es una de las tres cosas que se guardan por separado:
+     el contenido general, la ruleta y los códigos. Cada una tiene su propio
+     temporizador para que escribir en una no dispare el guardado de otra.
+
+     Las funciones que de verdad guardan las registra cada sección con
+     registrarGuardador(); acá solo se decide CUÁNDO. */
+  var ESPERA_MS = 900;          // se espera a que deje de escribir
+  var guardadores = {};         // cual -> function(motivo, cb)
+  var timers = {};              // cual -> id de setTimeout
+  var enVuelo = {};             // cual -> ¿hay un guardado andando?
+  var vueltaPendiente = {};     // cual -> cambió algo mientras guardaba
+  var huboFallo = false;        // el último intento no llegó al servidor
+
+  function registrarGuardador(cual, fn) { guardadores[cual] = fn; }
+
+  /* Los premios y códigos nuevos llevaban el id vacío y se lo ponía el
+     servidor... en CADA guardado. Con el guardado automático eso sería un id
+     distinto por tecla, y como los canjes se guardan por id, el historial y el
+     conteo de usos se perderían. Ahora el id nace acá y no cambia más. */
+  function nuevoId(prefijo) {
+    return prefijo + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  }
+
+  function programarGuardado(cual) {
+    if (!guardadores[cual]) return;
+    chipEstado("escribiendo");
+    if (timers[cual]) clearTimeout(timers[cual]);
+    timers[cual] = setTimeout(function () {
+      timers[cual] = null;
+      guardarAhora(cual, "auto");
+    }, ESPERA_MS);
+  }
+
+  function guardarAhora(cual, motivo) {
+    var fn = guardadores[cual];
+    if (!fn) return;
+    if (timers[cual]) { clearTimeout(timers[cual]); timers[cual] = null; }
+    // si ya hay uno andando, se anota para repetir al terminar en vez de
+    // mandar dos a la vez y que el servidor los mezcle
+    if (enVuelo[cual]) { vueltaPendiente[cual] = true; return; }
+
+    enVuelo[cual] = true;
+    chipEstado("guardando");
+    fn(motivo, function (ok, mensaje) {
+      enVuelo[cual] = false;
+      if (ok === false) huboFallo = true;
+      else if (ok === true) huboFallo = false;
+      if (vueltaPendiente[cual]) {
+        vueltaPendiente[cual] = false;
+        guardarAhora(cual, "auto");
+        return;
+      }
+      chipEstado(ok === false ? "error" : (ok === "omitido" ? "espera" : "guardado"), mensaje);
+    });
+  }
+
+  /* Manda TODO lo que esté pendiente ya mismo. Se usa al salir de la página,
+     al cambiar de pestaña y al minimizar: es lo que hace que "darle atrás"
+     no pierda nada. */
+  function guardarTodoPendiente(motivo) {
+    Object.keys(guardadores).forEach(function (cual) {
+      if (timers[cual] || vueltaPendiente[cual]) guardarAhora(cual, motivo || "salida");
+    });
+  }
+
+  /* ---- el avisito flotante ---- */
+  var chipEl = null, chipTimer = null;
+  function chipEstado(estado, mensaje) {
+    if (!chipEl) {
+      chipEl = document.createElement("div");
+      chipEl.className = "autosave-chip";
+      chipEl.setAttribute("role", "status");
+      document.body.appendChild(chipEl);
+    }
+    // la barra de abajo es fija y cambia de alto según se parta el texto en
+    // pantallas angostas, así que se mide en vez de adivinar
+    var barra = $(".admin-savebar");
+    chipEl.style.bottom = ((barra ? barra.getBoundingClientRect().height : 60) + 12) + "px";
+    var textos = {
+      escribiendo: "✍️ Escribiendo…",
+      guardando: "⏳ Guardando…",
+      guardado: "✅ Guardado",
+      espera: "⏸️ Sin guardar todavía",
+      error: "⚠️ No se pudo guardar"
+    };
+    chipEl.textContent = mensaje || textos[estado] || "";
+    chipEl.className = "autosave-chip is-" + estado + " is-visible";
+    if (chipTimer) clearTimeout(chipTimer);
+    // el "guardado" se va solo; los avisos que importan se quedan
+    if (estado === "guardado") {
+      chipTimer = setTimeout(function () { chipEl.classList.remove("is-visible"); }, 2200);
+    }
+  }
+
   function markDirty() {
     state.dirty = true;
     setSaveStatus("Cambios sin guardar", "");
+    programarGuardado("contenido");
   }
 
   /* Las rutas se guardan relativas a la RAÍZ del sitio ("assets/img/foto.jpg"),
@@ -190,6 +290,8 @@
         btn.classList.add("is-active");
         var name = btn.getAttribute("data-tab");
         $$("[data-panel]").forEach(function (p) { p.hidden = p.getAttribute("data-panel") !== name; });
+        // cambiar de pestaña cuenta como "ya terminé acá": lo pendiente se manda
+        guardarTodoPendiente("cambio-pestaña");
       });
     });
   }
@@ -2037,6 +2139,7 @@
       else input.value = ruletaState[key] == null ? "" : ruletaState[key];
       input.oninput = function () {
         ruletaState[key] = input.type === "checkbox" ? input.checked : input.value;
+        programarGuardado("ruleta");
       };
     });
   }
@@ -2099,6 +2202,7 @@
       paintActive();
       row.classList.toggle("is-off", p.active === false);
       renderRuletaProbSum();
+      programarGuardado("ruleta");
     };
 
     $$("[data-p]", row).forEach(function (input) {
@@ -2122,6 +2226,7 @@
           } else if (p.claimable && tag) { tag.remove(); }
         }
         if (key === "probability") renderRuletaProbSum();
+        programarGuardado("ruleta");
       };
     });
 
@@ -2129,6 +2234,7 @@
       if (!confirm("¿Quitar este premio de la ruleta?")) return;
       ruletaState.prizes.splice(idx, 1);
       renderRuletaPrizes();
+      programarGuardado("ruleta");
     });
     return row;
   }
@@ -2140,11 +2246,12 @@
     if (!list.__sortable) {
       list.__sortable = true;
       makeSortable(list, function (from, to) {
-        // la ruleta no tiene marca de "cambios sin guardar": edita su propio
-        // estado y se guarda con su botón aparte
+        // la ruleta tiene su propio estado y su propio guardado, aparte del
+        // contenido general
         var arr = ruletaState.prizes;
         arr.splice(to, 0, arr.splice(from, 1)[0]);
         renderRuletaPrizes();
+        programarGuardado("ruleta");
       });
     }
 
@@ -2166,7 +2273,7 @@
     if (!btn) return;
     btn.addEventListener("click", function () {
       ruletaState.prizes.push({
-        id: "", name: "Nuevo premio", icon: "🎁", color: "#ffd400",
+        id: nuevoId("prz_"), name: "Nuevo premio", icon: "🎁", color: "#ffd400",
         probability: 0, dailyLimit: -1, active: true, claimable: true
       });
       renderRuletaPrizes();
@@ -2179,14 +2286,17 @@
         var nombre = ultima.querySelector('[data-p="name"]');
         if (nombre) { nombre.focus(); nombre.select(); }
       }
+      programarGuardado("ruleta");
     });
   }
 
   function initRuletaSave() {
-    var btn = $("[data-ruleta-save-btn]");
-    if (!btn) return;
-    btn.addEventListener("click", function () {
+    /* forzado = lo pidió el botón a mano; auto = lo disparó un cambio.
+       La diferencia importa en un solo caso: dejar la ruleta sin premios.
+       Eso sola no se guarda nunca — hay que pedirlo con el botón y confirmar. */
+    registrarGuardador("ruleta", function (motivo, listo) {
       var statusEl = $("[data-ruleta-save-status]");
+      var forzado = motivo === "boton";
 
       /* Guardar reemplaza TODOS los premios de la ruleta. Si nunca llegamos a
          cargarlos, mandarlos sería borrarlos. */
@@ -2196,32 +2306,52 @@
           statusEl.className = "save-status is-error";
         }
         fetchRuletaAdmin();
+        listo(false, "⚠️ La ruleta no cargó — recargá");
         return;
       }
       if (!ruletaState.prizes.length && ruletaServerCount > 0) {
+        if (!forzado) {
+          // vaciar la lista entera no se hace solo: se avisa y se espera
+          if (statusEl) {
+            statusEl.textContent = "Quitaste todos los premios. Dale al botón de guardar para confirmarlo.";
+            statusEl.className = "save-status is-error";
+          }
+          listo("omitido", "⏸️ Quitaste todo — confirmá con el botón");
+          return;
+        }
         if (!confirm("Vas a dejar la ruleta sin ningún premio. Se van a borrar los " +
-            ruletaServerCount + " que hay guardados. ¿Seguro?")) return;
+            ruletaServerCount + " que hay guardados. ¿Seguro?")) { listo("omitido"); return; }
       }
 
       if (statusEl) { statusEl.textContent = "Guardando…"; statusEl.className = "save-status"; }
       fetch(RULETA_API + "?action=admin-config", {
         method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(ruletaState)
+        body: JSON.stringify(ruletaState),
+        keepalive: motivo === "salida"
       }).then(function (r) { return r.json(); })
         .then(function (res) {
           if (res && res.ok) {
             if (statusEl) { statusEl.textContent = "Guardado ✓"; statusEl.className = "save-status is-ok"; }
-            if (Math.abs((res.probabilitySum || 0) - 100) > 0.05) {
+            ruletaServerCount = ruletaState.prizes.length;
+            // el aviso de las probabilidades solo cuando lo pidió a mano: si
+            // saltara solo, interrumpiría mientras escribe los porcentajes
+            if (forzado && Math.abs((res.probabilitySum || 0) - 100) > 0.05) {
               alert("Ojo: las probabilidades de los premios activos suman " + res.probabilitySum + "%, no 100%. La ruleta las ajusta sola al girar, pero puede que el resultado no sea el que esperas — revisa los porcentajes.");
             }
-          } else if (statusEl) {
-            statusEl.textContent = (res && res.error) || "No se pudo guardar."; statusEl.className = "save-status is-error";
+            listo(true);
+          } else {
+            if (statusEl) { statusEl.textContent = (res && res.error) || "No se pudo guardar."; statusEl.className = "save-status is-error"; }
+            listo(false, (res && res.error) ? "⚠️ " + res.error : null);
           }
         })
         .catch(function () {
           if (statusEl) { statusEl.textContent = "No se pudo conectar con el servidor."; statusEl.className = "save-status is-error"; }
+          listo(false, "⚠️ Sin conexión — no se guardó");
         });
     });
+
+    var btn = $("[data-ruleta-save-btn]");
+    if (btn) btn.addEventListener("click", function () { guardarAhora("ruleta", "boton"); });
   }
 
   function initRuletaTab() {
@@ -2777,6 +2907,7 @@
       c.active = !c.active;
       paintActive();
       row.classList.toggle("is-off", !c.active);
+      programarGuardado("codigos");
     };
 
     // solo se muestran los campos del tipo de premio elegido
@@ -2804,6 +2935,7 @@
           if (u) u.textContent = redeemUsesLabel(c);
         }
         if (key === "rewardType") paintType();
+        programarGuardado("codigos");
       };
     });
     typeSelect.addEventListener("change", paintType);
@@ -2819,9 +2951,10 @@
         "T" + pad(d.getHours()) + ":" + pad(d.getMinutes());
     }
     expInput.oninput = function () {
-      if (!expInput.value) { c.expiresAt = null; return; }
+      if (!expInput.value) { c.expiresAt = null; programarGuardado("codigos"); return; }
       var t = new Date(expInput.value).getTime();
       c.expiresAt = isNaN(t) ? null : t;
+      programarGuardado("codigos");
     };
 
     var genBtn = row.querySelector(".redeem-gen-btn");
@@ -2837,6 +2970,7 @@
           if (input) input.value = res.code;
           var n = row.querySelector(".rp-name");
           if (n) n.textContent = res.code;
+          programarGuardado("codigos");
         })
         .catch(function () { genBtn.disabled = false; });
     });
@@ -2854,6 +2988,7 @@
       if (!confirm('¿Quitar el código "' + (c.code || "") + '"? Quien ya lo canjeó se queda con su premio.')) return;
       redeemState.codes.splice(idx, 1);
       renderRedeemCodes();
+      programarGuardado("codigos");
     });
 
     return row;
@@ -2869,6 +3004,7 @@
         var arr = redeemState.codes;
         arr.splice(to, 0, arr.splice(from, 1)[0]);
         renderRedeemCodes();
+        programarGuardado("codigos");
       });
     }
 
@@ -2893,7 +3029,7 @@
     if (!btn) return;
     btn.addEventListener("click", function () {
       redeemState.codes.push({
-        id: "", code: "", internalName: "", description: "",
+        id: nuevoId("rdm_"), code: "", internalName: "", description: "",
         rewardType: "prize", prizeName: "", prizeIcon: "🎁", prizeExpiryHours: 24,
         wheelSpinCount: 1, wheelTicketExpiryHours: 24,
         maxUses: -1, usesPerPerson: 1, expiresAt: null, active: true,
@@ -2909,14 +3045,14 @@
         var campo = ultima.querySelector('[data-c="code"]');
         if (campo) campo.focus();
       }
+      programarGuardado("codigos");
     });
   }
 
   function initRedeemSave() {
-    var btn = $("[data-redeem-save-btn]");
-    if (!btn) return;
-    btn.addEventListener("click", function () {
+    registrarGuardador("codigos", function (motivo, listo) {
       var statusEl = $("[data-redeem-save-status]");
+      var forzado = motivo === "boton";
 
       /* Guardar reemplaza la lista ENTERA en el servidor. Si nunca llegamos a
          cargarla, mandarla sería borrar todo lo que había — que es justo lo
@@ -2927,36 +3063,60 @@
           statusEl.className = "save-status is-error";
         }
         fetchRedeemAdmin();
+        listo(false, "⚠️ Los códigos no cargaron — recargá");
         return;
       }
       if (!redeemState.codes.length && redeemServerCount > 0) {
+        if (!forzado) {
+          if (statusEl) {
+            statusEl.textContent = "Quitaste todos los códigos. Dale al botón de guardar para confirmarlo.";
+            statusEl.className = "save-status is-error";
+          }
+          listo("omitido", "⏸️ Quitaste todo — confirmá con el botón");
+          return;
+        }
         if (!confirm("Vas a dejar la lista sin ningún código. Se van a borrar los " +
-            redeemServerCount + " que hay guardados. ¿Seguro?")) return;
+            redeemServerCount + " que hay guardados. ¿Seguro?")) { listo("omitido"); return; }
       }
 
+      /* Un código recién agregado está en blanco hasta que escriba la palabra.
+         Guardarlo así lo perdería (el servidor descarta los vacíos), y avisar
+         a gritos mientras escribe sería molesto: se espera calladito. */
       var vacio = redeemState.codes.some(function (c) { return !String(c.code || "").trim(); });
       if (vacio) {
         if (statusEl) { statusEl.textContent = "Hay un código sin palabra escrita."; statusEl.className = "save-status is-error"; }
+        listo("omitido", "⏸️ Falta escribir la palabra del código");
         return;
       }
       if (statusEl) { statusEl.textContent = "Guardando…"; statusEl.className = "save-status"; }
       fetch(REDEEM_API + "?action=admin-save", {
         method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "admin-save", codes: redeemState.codes })
+        body: JSON.stringify({ action: "admin-save", codes: redeemState.codes }),
+        keepalive: motivo === "salida"
       }).then(function (r) { return r.json(); })
         .then(function (res) {
           if (res && res.ok) {
             if (statusEl) { statusEl.textContent = "Guardado ✓"; statusEl.className = "save-status is-ok"; }
-            // se relee para traer los id que el servidor asignó a los nuevos
-            fetchRedeemAdmin();
-          } else if (statusEl) {
-            statusEl.textContent = (res && res.error) || "No se pudo guardar."; statusEl.className = "save-status is-error";
+            redeemServerCount = redeemState.codes.length;
+            /* Solo se relee cuando lo pidió a mano. Releer redibuja la lista
+               entera, y si eso pasara solo cada vez que guarda, le cerraría el
+               teclado en la cara mientras escribe. Los id ya no hace falta
+               traerlos: se generan acá. */
+            if (forzado) fetchRedeemAdmin();
+            listo(true);
+          } else {
+            if (statusEl) { statusEl.textContent = (res && res.error) || "No se pudo guardar."; statusEl.className = "save-status is-error"; }
+            listo(false, (res && res.error) ? "⚠️ " + res.error : null);
           }
         })
         .catch(function () {
           if (statusEl) { statusEl.textContent = "No se pudo conectar con el servidor."; statusEl.className = "save-status is-error"; }
+          listo(false, "⚠️ Sin conexión — no se guardó");
         });
     });
+
+    var btn = $("[data-redeem-save-btn]");
+    if (btn) btn.addEventListener("click", function () { guardarAhora("codigos", "boton"); });
   }
 
   function initRedeemTab() {
@@ -3055,30 +3215,54 @@
 
   /* ---------------- save ---------------- */
   function initSave() {
-    $("[data-save-btn]").addEventListener("click", function () {
-      if (!state.content) return;
+    /* El contenido general se guarda entero cada vez, así que no hay riesgo de
+       borrar una lista a medias: o va todo el content.json o no va nada. */
+    registrarGuardador("contenido", function (motivo, listo) {
+      if (!state.content) { listo("omitido"); return; }
       setSaveStatus("Guardando…", "");
+      var cuerpo = JSON.stringify(state.content);
+      // keepalive: si se está yendo de la página, el navegador termina de
+      // mandarlo igual en vez de cortarlo a la mitad
       fetch(API + "?action=save-content", {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(state.content)
+        body: cuerpo,
+        keepalive: motivo === "salida"
       }).then(function (r) { return r.json(); })
         .then(function (res) {
           if (res && res.ok) {
             state.dirty = false;
             setSaveStatus("Guardado ✓ — ya está publicado en tu página", "is-ok");
+            listo(true);
           } else {
             setSaveStatus((res && res.error) || "No se pudo guardar.", "is-error");
+            listo(false, (res && res.error) ? "⚠️ " + res.error : null);
           }
         })
         .catch(function () {
           setSaveStatus("No se pudo conectar con el servidor.", "is-error");
+          listo(false, "⚠️ Sin conexión — no se guardó");
         });
     });
 
+    var btn = $("[data-save-btn]");
+    if (btn) btn.addEventListener("click", function () { guardarAhora("contenido", "boton"); });
+
+    /* Lo que hace que "darle atrás" no pierda nada: antes de que la página se
+       vaya, o apenas se minimiza / se cambia de app, se manda lo pendiente.
+       En el celular `pagehide` y `visibilitychange` son los únicos que llegan
+       de verdad — `beforeunload` muchas veces ni se dispara. */
+    window.addEventListener("pagehide", function () { guardarTodoPendiente("salida"); });
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "hidden") guardarTodoPendiente("salida");
+    });
     window.addEventListener("beforeunload", function (e) {
-      if (state.dirty) { e.preventDefault(); e.returnValue = ""; }
+      guardarTodoPendiente("salida");
+      /* Normalmente no se avisa nada: para eso está el guardado automático.
+         Pero si el último intento no llegó (sin señal, sesión vencida), irse
+         ahí sí perdería el trabajo — solo en ese caso se pregunta. */
+      if (huboFallo) { e.preventDefault(); e.returnValue = ""; }
     });
   }
 
