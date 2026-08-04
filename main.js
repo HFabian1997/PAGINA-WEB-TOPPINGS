@@ -2896,11 +2896,13 @@
     /* Los avisos del negocio van primero: puede haber un código de premio ahí
        adentro y no se puede perder entre los premios. */
     var notifsHtml = lastNotifs.map(function (n) {
+      var accion = notifPrizeAction(n);
       return '<div class="gift-code-row is-notif">' +
         '<span class="gift-code-icon">📣</span>' +
         '<span class="gift-code-info"><strong>' + escHTML(n.title || "Mensaje de TOPPINGS") + '</strong><br>' +
         '<span class="hint">' + escHTML(n.message) + '</span></span>' +
-        '<button type="button" class="btn btn-primary gift-code-claim-btn" data-notif-read="' + escHTML(n.id) + '">Leído</button>' +
+        '<button type="button" class="btn btn-primary gift-code-claim-btn" data-notif-read="' + escHTML(n.id) + '">' +
+          (accion ? escHTML(accion.label) : "Leído") + '</button>' +
       '</div>';
     }).join("");
     // Los tiros de ruleta sin usar van primero: quedan guardados aquí para
@@ -2949,7 +2951,12 @@
     });
     $$("[data-notif-read]", list).forEach(function (btn) {
       btn.addEventListener("click", function () {
-        markNotifRead(btn.getAttribute("data-notif-read"));
+        var id = btn.getAttribute("data-notif-read");
+        var n = null;
+        for (var i = 0; i < lastNotifs.length; i++) { if (lastNotifs[i].id === id) { n = lastNotifs[i]; break; } }
+        markNotifRead(id);
+        var accion = n && notifPrizeAction(n);
+        if (accion) safe(accion.run, "notifPrizeAction");
         safe(refreshGiftFab, "refreshGiftFab");
       });
     });
@@ -3002,22 +3009,82 @@
     lastNotifs = lastNotifs.filter(function (n) { return n.id !== id; });
   }
 
-  /* Se abre la ventana con el aviso. Solo se marca como leído al cerrarla, no
-     al mostrarla: si cierra sin leer bien, el aviso sigue en el panel 🎁 y no
-     se pierde el código. */
+  /* Qué dice y adónde lleva el botón del aviso, según lo que el negocio le
+     haya puesto. Sin premio no hay botón: es solo un mensaje. */
+  function notifPrizeAction(n) {
+    if (n.prizeType === "wheelSpins") {
+      return { label: "🎡 Girar la ruleta", run: function () {
+        if (window.__openRuletaModal) window.__openRuletaModal();
+        else if (window.__openGiftPanel) window.__openGiftPanel();
+      } };
+    }
+    if (n.prizeType === "direct") {
+      return { label: "🎁 Ver mi premio", run: function () {
+        if (window.__openGiftPanel) window.__openGiftPanel();
+      } };
+    }
+    if (n.prizeType === "code" && n.redeemCode) {
+      return { label: "🎟️ Canjear mi código", run: function () {
+        if (window.__openGiftPanel) window.__openGiftPanel();
+        // se le deja el código ya escrito para que solo toque canjear
+        var input = $("[data-redeem-input]");
+        if (input) {
+          input.value = n.redeemCode;
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          try { input.focus(); } catch (e) {}
+        }
+      } };
+    }
+    return null;
+  }
+
+  /* La notificación NO es la ventana del regalo: un "gracias por visitarnos"
+     no puede verse igual que ganarse un premio. Es una tarjeta que baja desde
+     arriba, no bloquea la página, y solo trae botón si de verdad hay premio.
+     Se marca como leída al cerrarla, no al mostrarla: si la cierra sin leer,
+     el aviso sigue en el panel 🎁 y un código no se pierde. */
   function showNotif(n) {
     if (notifShown[n.id]) return;
     notifShown[n.id] = true;
-    var texto = (n.title ? n.title + "\n\n" : "") + n.message;
-    openPrizeModal(texto, "", null, {
-      label: "Entendido",
-      onClick: function () {
-        var modal = $("[data-prize-modal]");
-        if (modal) modal.hidden = true;
-        markNotifRead(n.id);
+
+    var vieja = $("[data-notif-toast]");
+    if (vieja && vieja.parentNode) vieja.parentNode.removeChild(vieja);
+
+    var card = document.createElement("div");
+    card.className = "notif-toast";
+    card.setAttribute("data-notif-toast", "");
+    card.innerHTML =
+      '<button type="button" class="notif-toast-close" aria-label="Cerrar">&times;</button>' +
+      '<p class="notif-toast-title">' + escHTML(n.title || "📣 TOPPINGS") + "</p>" +
+      '<p class="notif-toast-msg">' + escHTML(n.message) + "</p>";
+
+    var accion = notifPrizeAction(n);
+    if (accion) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn btn-primary notif-toast-btn";
+      btn.textContent = accion.label;
+      btn.addEventListener("click", function () {
+        cerrar();
+        safe(accion.run, "notifPrizeAction");
+      });
+      card.appendChild(btn);
+    }
+
+    function cerrar() {
+      card.classList.remove("is-in");
+      markNotifRead(n.id);
+      setTimeout(function () {
+        if (card.parentNode) card.parentNode.removeChild(card);
         safe(refreshGiftFab, "refreshGiftFab");
-      }
-    });
+      }, 260);
+    }
+    card.querySelector(".notif-toast-close").addEventListener("click", cerrar);
+
+    document.body.appendChild(card);
+    // setTimeout y no rAF: en este proyecto rAF se congela en segundo plano y
+    // la tarjeta se quedaría sin la clase que la hace entrar
+    setTimeout(function () { card.classList.add("is-in"); }, 30);
   }
 
   function refreshGiftFab() {
@@ -3032,8 +3099,13 @@
     var ticketsReq = fetch(RULETA_API_MAIN + "?action=status&deviceId=" + encodeURIComponent(deviceId) + "&_=" + Date.now(), { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .catch(function () { return null; });
-    // avisos del negocio para este cliente
-    var notifReq = fetch(NOTIF_API + "?action=mine&deviceId=" + encodeURIComponent(deviceId) + "&_=" + Date.now(), { cache: "no-store" })
+    // avisos del negocio para este cliente. El nombre viaja porque un aviso
+    // para todos puede traer premio, y el premio se emite a nombre de quien lo
+    // recibe (ver "mine" en notifications.php).
+    var miNombre = "";
+    try { miNombre = localStorage.getItem(LOYALTY_NAME_KEY) || ""; } catch (e) {}
+    var notifReq = fetch(NOTIF_API + "?action=mine&deviceId=" + encodeURIComponent(deviceId) +
+      "&name=" + encodeURIComponent(miNombre) + "&_=" + Date.now(), { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .catch(function () { return null; });
 

@@ -144,6 +144,7 @@ p.hint { color: var(--ink-mute); font-size: .9rem; margin: 0 0 1.5rem; }
 [data-reward-field][hidden] { display: none; }
 [data-attempts-reset-field][hidden] { display: none; }
 [data-rc-field][hidden] { display: none; }
+[data-notif-prize-field][hidden] { display: none; }
 input[type="text"], input[type="number"], textarea, select {
   background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px;
   color: var(--ink); padding: .65rem .75rem; font: inherit; font-weight: 400;

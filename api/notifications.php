@@ -9,6 +9,8 @@
  * quién lo leyó, sin tener que crear una copia por persona.
  */
 date_default_timezone_set('America/Bogota');
+require_once __DIR__ . '/codes-lib.php';
+require_once __DIR__ . '/ruleta-lib.php';
 
 session_name('toppings_admin_sess');
 session_set_cookie_params(array(
@@ -76,6 +78,54 @@ function nWithLock($cb) {
   return is_array($res) ? $res : $state;
 }
 
+/** Normaliza el premio que lleva un aviso, si es que lleva alguno. */
+function nNormalizePrize($body) {
+  $tipo = isset($body['prizeType']) ? (string) $body['prizeType'] : 'none';
+  if (!in_array($tipo, array('none', 'direct', 'wheelSpins', 'code'), true)) $tipo = 'none';
+  if ($tipo === 'none') return array('prizeType' => 'none');
+  if ($tipo === 'code') {
+    $codigo = isset($body['redeemCode']) ? trim((string) $body['redeemCode']) : '';
+    if ($codigo === '') return array('prizeType' => 'none');
+    return array('prizeType' => 'code', 'redeemCode' => $codigo);
+  }
+  if ($tipo === 'wheelSpins') {
+    return array(
+      'prizeType' => 'wheelSpins',
+      'wheelSpinCount' => isset($body['wheelSpinCount']) && (int) $body['wheelSpinCount'] > 0 ? (int) $body['wheelSpinCount'] : 1,
+      'prizeExpiryHours' => isset($body['prizeExpiryHours']) && $body['prizeExpiryHours'] > 0 ? (float) $body['prizeExpiryHours'] : 24,
+    );
+  }
+  return array(
+    'prizeType' => 'direct',
+    'prizeName' => isset($body['prizeName']) && $body['prizeName'] !== '' ? (string) $body['prizeName'] : 'Premio especial',
+    'prizeIcon' => isset($body['prizeIcon']) && $body['prizeIcon'] !== '' ? (string) $body['prizeIcon'] : '🎁',
+    'prizeExpiryHours' => isset($body['prizeExpiryHours']) && $body['prizeExpiryHours'] > 0 ? (float) $body['prizeExpiryHours'] : 24,
+  );
+}
+
+/**
+ * Entrega el premio de un aviso a un dispositivo, con los mecanismos que ya
+ * existen. "code" no entrega nada: el código ya vive en redeem-codes.json y lo
+ * canjea el cliente con el flujo de siempre.
+ */
+function nEntregarPremio($item, $deviceId, $name) {
+  $tipo = isset($item['prizeType']) ? $item['prizeType'] : 'none';
+  if ($tipo === 'wheelSpins') {
+    $ids = grantRuletaTickets($deviceId, $name, 'aviso',
+      isset($item['wheelSpinCount']) ? (int) $item['wheelSpinCount'] : 1,
+      isset($item['prizeExpiryHours']) ? (float) $item['prizeExpiryHours'] : 24);
+    return count($ids) > 0;
+  }
+  if ($tipo === 'direct') {
+    $rec = issuePrizeCode($deviceId, $name, 'aviso',
+      isset($item['prizeName']) ? $item['prizeName'] : 'Premio especial',
+      isset($item['prizeIcon']) ? $item['prizeIcon'] : '🎁',
+      isset($item['prizeExpiryHours']) ? (float) $item['prizeExpiryHours'] : 24);
+    return !!$rec;
+  }
+  return false;
+}
+
 /** ¿Este aviso le toca a este dispositivo y todavía no lo leyó? */
 function nPendiente($item, $deviceId) {
   $paraTodos = isset($item['deviceId']) && $item['deviceId'] === '*';
@@ -99,8 +149,33 @@ switch ($action) {
   /* ---------------- el cliente pregunta si tiene avisos ---------------- */
   case 'mine': {
     $deviceId = isset($_GET['deviceId']) ? trim((string) $_GET['deviceId']) : '';
+    $name = isset($_GET['name']) ? trim((string) $_GET['name']) : '';
     if ($deviceId === '') jsonOut(array('ok' => true, 'items' => array()));
-    $state = nRead();
+
+    /* Un aviso PARA TODOS que lleva premio no se puede entregar al enviarlo:
+       en ese momento no se sabe a quién. Se entrega acá, la primera vez que
+       cada dispositivo lo recibe, y queda anotado en grantedTo para no
+       repetirlo. Es una escritura dentro de una consulta, como ya hace
+       expireCodes() — solo ocurre una vez por persona y por aviso. */
+    $state = nWithLock(function ($st) use ($deviceId, $name) {
+      $cambio = false;
+      foreach ($st['items'] as &$it) {
+        if (!isset($it['deviceId']) || $it['deviceId'] !== '*') continue;
+        $tipo = isset($it['prizeType']) ? $it['prizeType'] : 'none';
+        if ($tipo !== 'direct' && $tipo !== 'wheelSpins') continue;
+        if (!nPendiente($it, $deviceId)) continue;
+        if (!isset($it['grantedTo']) || !is_array($it['grantedTo'])) $it['grantedTo'] = array();
+        if (in_array($deviceId, $it['grantedTo'], true)) continue;
+        if (nEntregarPremio($it, $deviceId, $name)) {
+          $it['grantedTo'][] = $deviceId;
+          $cambio = true;
+        }
+      }
+      unset($it);
+      return $cambio ? $st : null;
+    });
+    if (!is_array($state)) $state = nRead();
+
     $out = array();
     foreach ($state['items'] as $it) {
       if (!nPendiente($it, $deviceId)) continue;
@@ -109,6 +184,11 @@ switch ($action) {
         'title' => isset($it['title']) ? $it['title'] : '',
         'message' => isset($it['message']) ? $it['message'] : '',
         'createdAt' => isset($it['createdAt']) ? $it['createdAt'] : null,
+        'prizeType' => isset($it['prizeType']) ? $it['prizeType'] : 'none',
+        // solo lo que el botón necesita; el resto no le sirve al cliente
+        'redeemCode' => isset($it['redeemCode']) ? $it['redeemCode'] : null,
+        'prizeName' => isset($it['prizeName']) ? $it['prizeName'] : null,
+        'wheelSpinCount' => isset($it['wheelSpinCount']) ? (int) $it['wheelSpinCount'] : 0,
       );
     }
     usort($out, function ($a, $b) { return (int) $a['createdAt'] - (int) $b['createdAt']; });
@@ -149,17 +229,31 @@ switch ($action) {
       $message = mb_substr($message, 0, $MAX_MSG);
     }
 
+    $premio = nNormalizePrize($body);
+    $entregado = false;
+
     $creado = null;
-    nWithLock(function ($state) use ($deviceId, $title, $message, &$creado) {
+    nWithLock(function ($state) use ($deviceId, $title, $message, $premio, &$creado, &$entregado) {
       global $MAX_ITEMS;
-      $creado = array(
+      $creado = array_merge(array(
         'id' => uniqid('ntf_', true),
         'deviceId' => $deviceId,           // "*" = para todos
         'title' => $title !== '' ? $title : '📣 TOPPINGS',
         'message' => $message,
         'createdAt' => nNowMs(),
         'readBy' => array(),
-      );
+        'grantedTo' => array(),
+      ), $premio);
+
+      /* A una sola persona el premio se entrega ya. Al enviarlo a todos no se
+         puede: se entrega cuando cada uno lo recibe (ver la acción "mine"). */
+      if ($deviceId !== '*' && ($premio['prizeType'] === 'direct' || $premio['prizeType'] === 'wheelSpins')) {
+        if (nEntregarPremio($creado, $deviceId, '')) {
+          $creado['grantedTo'][] = $deviceId;
+          $entregado = true;
+        }
+      }
+
       $state['items'][] = $creado;
       if (count($state['items']) > $MAX_ITEMS) {
         usort($state['items'], function ($a, $b) { return (int) $b['createdAt'] - (int) $a['createdAt']; });
@@ -167,7 +261,12 @@ switch ($action) {
       }
       return $state;
     });
-    jsonOut(array('ok' => true, 'id' => $creado ? $creado['id'] : null));
+    jsonOut(array(
+      'ok' => true,
+      'id' => $creado ? $creado['id'] : null,
+      'prizeType' => $premio['prizeType'],
+      'granted' => $entregado,
+    ));
   }
 
   /* ---------------- panel: ver los enviados ---------------- */
@@ -186,6 +285,11 @@ switch ($action) {
         'message' => isset($it['message']) ? $it['message'] : '',
         'createdAt' => $it['createdAt'],
         'readCount' => isset($it['readBy']) && is_array($it['readBy']) ? count($it['readBy']) : 0,
+        'prizeType' => isset($it['prizeType']) ? $it['prizeType'] : 'none',
+        'prizeName' => isset($it['prizeName']) ? $it['prizeName'] : null,
+        'redeemCode' => isset($it['redeemCode']) ? $it['redeemCode'] : null,
+        'wheelSpinCount' => isset($it['wheelSpinCount']) ? (int) $it['wheelSpinCount'] : 0,
+        'grantedCount' => isset($it['grantedTo']) && is_array($it['grantedTo']) ? count($it['grantedTo']) : 0,
       );
     }
     jsonOut(array('ok' => true, 'items' => $out, 'serverNow' => nNowMs()));

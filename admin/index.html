@@ -8,8 +8,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap">
-<link rel="stylesheet" href="admin.css?v=20260803a">
-<link rel="stylesheet" href="../lib/cat-carousel.css?v=20260803a">
+<link rel="stylesheet" href="admin.css?v=20260803b">
+<link rel="stylesheet" href="../lib/cat-carousel.css?v=20260803b">
 </head>
 <body>
 
@@ -672,9 +672,24 @@
     </div>
 
     <h3>📣 Mensaje para todos</h3>
-    <div class="field-grid">
-      <label>Título <input type="text" data-notif-all-title placeholder="📣 TOPPINGS"></label>
-      <label class="full">Mensaje <textarea rows="3" data-notif-all-message placeholder="Ej: Hoy 2x1 en salchipapas hasta las 8 pm 🍟"></textarea></label>
+    <p class="hint">Si es solo un mensaje ("gracias por visitarnos"), al cliente le baja una notificación y ya — <strong>no le sale ninguna ventana de premio ni botón de reclamar</strong>. Si le pones un premio, le sale la misma notificación más un botón para verlo.</p>
+    <div class="field-grid" data-notif-form="all">
+      <label>Título <input type="text" data-notif-title placeholder="📣 TOPPINGS"></label>
+      <label class="full">Mensaje <textarea rows="3" data-notif-message placeholder="Ej: Hoy 2x1 en salchipapas hasta las 8 pm 🍟"></textarea></label>
+      <label class="full">¿Lleva premio?
+        <select data-notif-prize-type>
+          <option value="none">No, es solo un mensaje</option>
+          <option value="direct">Sí — premio que entrega un mesero</option>
+          <option value="wheelSpins">Sí — tiro(s) en la Ruleta</option>
+          <option value="code">Sí — un código para que lo escriba</option>
+        </select>
+      </label>
+      <label data-notif-prize-field="direct">Nombre del premio <input type="text" data-notif-prize-name placeholder="Ej: Bebida gratis"></label>
+      <label data-notif-prize-field="direct">Ícono <input type="text" data-notif-prize-icon maxlength="4" placeholder="🎁"></label>
+      <label data-notif-prize-field="wheelSpins">Cuántos tiros <input type="number" min="1" data-notif-spin-count value="1"></label>
+      <label data-notif-prize-field="direct wheelSpins">Vigencia (horas) <input type="number" min="1" data-notif-prize-hours value="24"></label>
+      <label class="full" data-notif-prize-field="code">Código (uno de los de 🎟️ Códigos de Premio) <input type="text" data-notif-code placeholder="Ej: AMIGO"></label>
+      <p class="hint full" data-notif-prize-note></p>
     </div>
     <button type="button" class="btn btn-primary" data-notif-send-all>Enviar a todos</button>
     <p class="hint" data-notif-all-status></p>
@@ -854,7 +869,7 @@
 
 <script src="lib/qrcode.min.js"></script>
 <!-- mismo carrusel que ve el cliente, para que la vista previa sea idéntica -->
-<script src="../lib/cat-carousel.js?v=20260803a"></script>
-<script defer src="admin.js?v=20260803a"></script>
+<script src="../lib/cat-carousel.js?v=20260803b"></script>
+<script defer src="admin.js?v=20260803b"></script>
 </body>
 </html>

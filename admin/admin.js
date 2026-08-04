@@ -2390,10 +2390,11 @@
           "</strong> · sin reclamar: <strong>" + c.pending + "</strong></p>" +
         '<p class="hint">Última vez en la página: ' + escHTML(fmtFecha(c.lastSeen)) +
           " · nombre puesto el " + escHTML(fmtFecha(c.updatedAt)) + "</p>" +
-        '<div class="field-grid">' +
+        '<div class="field-grid" data-notif-form="one">' +
           "<label>Título <input type='text' data-c-title placeholder='📣 TOPPINGS'></label>" +
           "<label class='full'>Mensaje para " + escHTML(c.name) +
-            " <textarea rows='3' data-c-message placeholder='Ej: Tu código de premio es AMIGO 🎁'></textarea></label>" +
+            " <textarea rows='3' data-c-message placeholder='Ej: Gracias por venir hoy 🍟'></textarea></label>" +
+          prizeFieldsHtml() +
         "</div>" +
         '<button type="button" class="btn btn-primary" data-c-send>Enviar mensaje</button>' +
         '<p class="hint" data-c-status></p>' +
@@ -2407,13 +2408,20 @@
       row.classList.toggle("is-open", !body.hidden);
     };
 
+    var forma = row.querySelector('[data-notif-form="one"]');
+    var selTipo = forma.querySelector("[data-notif-prize-type]");
+    selTipo.addEventListener("change", function () { renderPrizeFields(forma, false); });
+    renderPrizeFields(forma, false);
+
     row.querySelector("[data-c-send]").onclick = function () {
       var titulo = row.querySelector("[data-c-title]").value;
       var msg = row.querySelector("[data-c-message]").value;
       var st = row.querySelector("[data-c-status]");
       if (!msg.trim()) { st.textContent = "Escribí el mensaje."; return; }
+      var premio = readPrizeFields(forma);
+      if (premio.prizeType === "code" && !String(premio.redeemCode).trim()) { st.textContent = "Escribí el código."; return; }
       st.textContent = "Enviando…";
-      enviarAviso(c.deviceId, titulo, msg, function (ok, err) {
+      enviarAviso(c.deviceId, titulo, msg, premio, function (ok, err) {
         st.textContent = ok ? "Enviado ✓" : (err || "No se pudo enviar.");
         if (ok) { row.querySelector("[data-c-message]").value = ""; fetchNotifSent(); }
       });
@@ -2421,10 +2429,73 @@
     return row;
   }
 
-  function enviarAviso(deviceId, title, message, cb) {
+  /* Los mismos campos de premio en los dos sitios (mensaje para todos y ficha
+     de cada cliente), para no escribirlos dos veces ni que se desincronicen. */
+  function prizeFieldsHtml() {
+    return '<label class="full">¿Lleva premio?' +
+        '<select data-notif-prize-type>' +
+          '<option value="none">No, es solo un mensaje</option>' +
+          '<option value="direct">Sí — premio que entrega un mesero</option>' +
+          '<option value="wheelSpins">Sí — tiro(s) en la Ruleta</option>' +
+          '<option value="code">Sí — un código para que lo escriba</option>' +
+        "</select>" +
+      "</label>" +
+      '<label data-notif-prize-field="direct">Nombre del premio <input type="text" data-notif-prize-name placeholder="Ej: Bebida gratis"></label>' +
+      '<label data-notif-prize-field="direct">Ícono <input type="text" data-notif-prize-icon maxlength="4" placeholder="🎁"></label>' +
+      '<label data-notif-prize-field="wheelSpins">Cuántos tiros <input type="number" min="1" data-notif-spin-count value="1"></label>' +
+      '<label data-notif-prize-field="direct wheelSpins">Vigencia (horas) <input type="number" min="1" data-notif-prize-hours value="24"></label>' +
+      '<label class="full" data-notif-prize-field="code">Código (uno de los de 🎟️ Códigos de Premio) <input type="text" data-notif-code placeholder="Ej: AMIGO"></label>' +
+      '<p class="hint full" data-notif-prize-note></p>';
+  }
+
+  /** Muestra solo los campos del tipo elegido, y explica qué va a pasar. */
+  function renderPrizeFields(scope, paraTodos) {
+    var sel = scope.querySelector("[data-notif-prize-type]");
+    if (!sel) return;
+    var tipo = sel.value;
+    $$("[data-notif-prize-field]", scope).forEach(function (el) {
+      var para = el.getAttribute("data-notif-prize-field").split(" ");
+      el.hidden = para.indexOf(tipo) === -1;
+    });
+    var nota = scope.querySelector("[data-notif-prize-note]");
+    if (!nota) return;
+    var textos = {
+      none: "Le baja una notificación con el mensaje y nada más. Sin botón de reclamar.",
+      direct: paraTodos
+        ? "El premio se le entrega a cada cliente la primera vez que reciba el aviso, y le queda en 🎁 Mis Premios."
+        : "El premio se le entrega AL ENVIAR y le queda en 🎁 Mis Premios.",
+      wheelSpins: paraTodos
+        ? "Los tiros se le dan a cada cliente la primera vez que reciba el aviso."
+        : "Los tiros se le dan AL ENVIAR.",
+      code: "No se entrega nada acá: el cliente toca el botón y le queda el código escrito para canjearlo. El código tiene que existir en 🎟️ Códigos de Premio."
+    };
+    nota.textContent = textos[tipo] || "";
+  }
+
+  /** Lee los campos de premio de un bloque y arma lo que espera el servidor. */
+  function readPrizeFields(scope) {
+    var sel = scope.querySelector("[data-notif-prize-type]");
+    var tipo = sel ? sel.value : "none";
+    var out = { prizeType: tipo };
+    if (tipo === "direct") {
+      out.prizeName = (scope.querySelector("[data-notif-prize-name]") || {}).value || "";
+      out.prizeIcon = (scope.querySelector("[data-notif-prize-icon]") || {}).value || "";
+      out.prizeExpiryHours = Number((scope.querySelector("[data-notif-prize-hours]") || {}).value) || 24;
+    } else if (tipo === "wheelSpins") {
+      out.wheelSpinCount = Number((scope.querySelector("[data-notif-spin-count]") || {}).value) || 1;
+      out.prizeExpiryHours = Number((scope.querySelector("[data-notif-prize-hours]") || {}).value) || 24;
+    } else if (tipo === "code") {
+      out.redeemCode = (scope.querySelector("[data-notif-code]") || {}).value || "";
+    }
+    return out;
+  }
+
+  function enviarAviso(deviceId, title, message, premio, cb) {
+    var cuerpo = { action: "admin-send", deviceId: deviceId, title: title, message: message };
+    for (var k in premio) if (premio.hasOwnProperty(k)) cuerpo[k] = premio[k];
     fetch(NOTIF_API + "?action=admin-send", {
       method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "admin-send", deviceId: deviceId, title: title, message: message })
+      body: JSON.stringify(cuerpo)
     }).then(function (r) { return r.json(); })
       .then(function (res) { cb(!!(res && res.ok), res && res.error); })
       .catch(function () { cb(false, "No se pudo conectar con el servidor."); });
@@ -2438,12 +2509,21 @@
       .then(function (res) {
         if (!res || !res.ok) { cont.innerHTML = '<p class="hint">No se pudo consultar.</p>'; return; }
         if (!res.items.length) { cont.innerHTML = '<p class="hint">Todavía no has enviado ningún mensaje.</p>'; return; }
+        var etiquetaPremio = {
+          direct: function (n) { return "🎁 " + (n.prizeName || "premio"); },
+          wheelSpins: function (n) { return "🎡 " + (n.wheelSpinCount || 1) + " tiro(s)"; },
+          code: function (n) { return "🎟️ código " + (n.redeemCode || ""); }
+        };
         cont.innerHTML = res.items.map(function (n) {
+          var pt = n.prizeType || "none";
+          var premio = etiquetaPremio[pt] ? '<span class="rp-tag">' + escHTML(etiquetaPremio[pt](n)) + "</span>" : "";
+          var entregado = (pt === "direct" || pt === "wheelSpins")
+            ? " · entregado a " + (n.grantedCount || 0) : "";
           return '<div class="ruleta-search-row-result">' +
             "<strong>" + escHTML(n.title) + "</strong> " +
-            (n.toAll ? '<span class="rp-tag">a todos</span>' : "") +
+            (n.toAll ? '<span class="rp-tag">a todos</span> ' : "") + premio +
             "<br>" + escHTML(n.message) +
-            '<br><span class="hint">' + escHTML(fmtFecha(n.createdAt)) + " · leído por " + n.readCount + "</span>" +
+            '<br><span class="hint">' + escHTML(fmtFecha(n.createdAt)) + " · leído por " + n.readCount + entregado + "</span>" +
             '<button type="button" class="btn btn-ghost" data-notif-del="' + escHTML(n.id) + '">Borrar</button>' +
           "</div>";
         }).join("");
@@ -2505,18 +2585,32 @@
     var refrescar = $("[data-customers-refresh]");
     if (refrescar) refrescar.addEventListener("click", function () { fetchCustomers(); fetchNotifSent(); });
 
+    var formaTodos = $('[data-notif-form="all"]');
+    if (formaTodos) {
+      var selTodos = formaTodos.querySelector("[data-notif-prize-type]");
+      if (selTodos) selTodos.addEventListener("change", function () { renderPrizeFields(formaTodos, true); });
+      renderPrizeFields(formaTodos, true);
+    }
+
     var enviarTodos = $("[data-notif-send-all]");
-    if (enviarTodos) {
+    if (enviarTodos && formaTodos) {
       enviarTodos.addEventListener("click", function () {
-        var titulo = ($("[data-notif-all-title]") || {}).value || "";
-        var msg = ($("[data-notif-all-message]") || {}).value || "";
+        var titulo = (formaTodos.querySelector("[data-notif-title]") || {}).value || "";
+        var msg = (formaTodos.querySelector("[data-notif-message]") || {}).value || "";
         var st = $("[data-notif-all-status]");
         if (!msg.trim()) { if (st) st.textContent = "Escribí el mensaje."; return; }
-        if (!confirm("¿Enviar este mensaje a TODOS los clientes?")) return;
+        var premio = readPrizeFields(formaTodos);
+        if (premio.prizeType === "code" && !String(premio.redeemCode).trim()) {
+          if (st) st.textContent = "Escribí el código."; return;
+        }
+        var aviso = premio.prizeType === "none"
+          ? "¿Enviar este mensaje a TODOS los clientes?"
+          : "¿Enviar a TODOS los clientes con premio? Cada uno lo recibirá una sola vez.";
+        if (!confirm(aviso)) return;
         if (st) st.textContent = "Enviando…";
-        enviarAviso("*", titulo, msg, function (ok, err) {
+        enviarAviso("*", titulo, msg, premio, function (ok, err) {
           if (st) st.textContent = ok ? "Enviado a todos ✓" : (err || "No se pudo enviar.");
-          if (ok) { $("[data-notif-all-message]").value = ""; fetchNotifSent(); }
+          if (ok) { formaTodos.querySelector("[data-notif-message]").value = ""; fetchNotifSent(); }
         });
       });
     }

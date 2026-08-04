@@ -710,6 +710,45 @@ body.no-animations .claim-waiting-spinner { animation: none; }
   flex: none; padding: .45rem .8rem; border-radius: var(--radius-sm); border: 1px solid var(--accent);
   background: var(--accent); color: var(--accent-ink); font-weight: 700; cursor: pointer; font-size: .82rem;
 }
+/* ---- Notificación del negocio ----
+   NO es la ventana del regalo: un "gracias por visitarnos" no puede verse
+   igual que ganarse un premio. Baja desde arriba, no bloquea la página, y
+   solo trae botón si de verdad hay premio detrás. */
+.notif-toast {
+  position: fixed; z-index: 620;
+  top: calc(var(--header-h, 64px) + .6rem);
+  left: 50%; width: min(420px, calc(100vw - 1.5rem));
+  transform: translate(-50%, -140%);
+  opacity: 0;
+  transition: transform .3s var(--ease-out), opacity .3s var(--ease-out);
+  background: var(--card, #141414);
+  border: 2px solid var(--accent);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md), 0 0 0 1px rgba(0,0,0,.6);
+  padding: .95rem 2.4rem .95rem 1.1rem;
+  text-align: left;
+}
+.notif-toast.is-in { transform: translate(-50%, 0); opacity: 1; }
+.notif-toast-title {
+  margin: 0 0 .3rem; font-weight: 800; font-size: .95rem; color: var(--accent);
+  line-height: 1.25;
+}
+.notif-toast-msg {
+  margin: 0; font-size: .88rem; line-height: 1.45; color: var(--ink);
+  white-space: pre-wrap;
+}
+.notif-toast-btn { margin-top: .8rem; width: 100%; font-size: .88rem; }
+.notif-toast-close {
+  position: absolute; top: .45rem; right: .55rem;
+  width: 30px; height: 30px; line-height: 1;
+  background: none; border: 0; color: var(--ink-mute);
+  font-size: 1.5rem; cursor: pointer;
+}
+.notif-toast-close:hover { color: var(--accent); }
+@media (prefers-reduced-motion: reduce) {
+  .notif-toast { transition: none; }
+}
+
 /* Aviso del negocio: se distingue de los premios para que no se confunda con
    uno, y va siempre arriba de la lista. */
 .gift-code-row.is-notif { border-color: var(--accent); background: rgba(255,212,0,.07); }
