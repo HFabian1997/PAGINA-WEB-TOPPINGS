@@ -681,3 +681,23 @@ body.is-sorting-active { user-select: none; }
 .autosave-chip.is-guardado { border-color: #3ddc84; color: #3ddc84; }
 .autosave-chip.is-error,
 .autosave-chip.is-espera { border-color: #ffb020; color: #ffb020; }
+
+/* ---- icono de la app ----
+   Se muestran las dos versiones porque no se ven igual: Android recorta el
+   icono en círculo, así que hay una con más margen. Ver las dos evita la
+   sorpresa de instalarla y encontrar el logo cortado. */
+.appicon-hint { margin: 0 0 .75rem; }
+.appicon-previews { display: flex; gap: 1rem; justify-content: center; margin-bottom: .85rem; }
+.appicon-fig { margin: 0; text-align: center; }
+.appicon-fig img {
+  width: 72px; height: 72px; display: block; object-fit: cover;
+  border-radius: 16px; border: 1px solid var(--line); background: #000;
+}
+.appicon-fig img.is-round { border-radius: 50%; }
+/* Sin icono todavía: se deja el hueco marcado en vez de esconder la imagen,
+   para que no queden dos rótulos sueltos flotando sin nada encima. */
+.appicon-fig img[hidden] {
+  display: block; border-style: dashed; border-color: rgba(255,255,255,.2); background: transparent;
+}
+.appicon-fig figcaption { margin-top: .35rem; font-size: .72rem; color: var(--ink-mute); }
+.appicon-transp { font-size: .82rem; }

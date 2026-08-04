@@ -21,6 +21,7 @@ header('Content-Type: application/json; charset=utf-8');
 
 $CONTENT_FILE = __DIR__ . '/../admin/content.json';
 $MANIFEST_FILE = __DIR__ . '/../lib/manifest.js';
+$WEBMANIFEST_FILE = __DIR__ . '/../manifest.webmanifest';
 $ASSETS_DIR = __DIR__ . '/../assets/img';
 $MAX_UPLOAD_BYTES = 15 * 1024 * 1024;
 $MAX_IMAGE_DIM = 2000;
@@ -82,6 +83,65 @@ function withContentLock($write, $callback) {
 
 function requireAuth() {
   if (empty($_SESSION['authed'])) jsonOut(array('ok' => false, 'error' => 'No has iniciado sesión.'), 401);
+}
+
+/**
+ * El manifest de la aplicación: lo que lee el celular cuando alguien agrega
+ * TOPPINGS a su pantalla de inicio (nombre, colores y, sobre todo, el icono).
+ *
+ * Se genera desde content.json en cada guardado, igual que lib/manifest.js,
+ * para que Fabián pueda cambiar el icono desde el panel sin tocar archivos.
+ *
+ * Ojo con los iconos: el celular los quiere CUADRADOS y del tamaño exacto que
+ * se declara. Si se le pasa una foto rectangular diciendo que mide 512x512,
+ * Android la estira o la recorta y queda horrible — que es justo lo que
+ * pasaba antes. Por eso upload-app-icon los genera cuadrados de verdad.
+ *
+ * "maskable" es una segunda versión con más aire alrededor: Android recorta
+ * el icono en círculo o en cuadrado redondeado según el celular, y sin ese
+ * margen se come los bordes del logo.
+ */
+function buildWebManifest($content) {
+  $b = isset($content['business']) && is_array($content['business']) ? $content['business'] : array();
+  $nombre = isset($b['name']) && $b['name'] !== '' ? (string) $b['name'] : 'TOPPINGS';
+  $lema = isset($b['tagline']) ? (string) $b['tagline'] : '';
+
+  $c = isset($content['customization']) && is_array($content['customization']) ? $content['customization'] : array();
+  $fondo = isset($c['backgroundColor']) && $c['backgroundColor'] !== '' ? (string) $c['backgroundColor'] : '#111111';
+
+  $icono = isset($b['appIcon']) && is_array($b['appIcon']) ? $b['appIcon'] : array();
+  $sello = isset($icono['updatedAt']) ? (int) $icono['updatedAt'] : 0;
+  // el sello al final obliga al celular a volver a bajarlo cuando lo cambia;
+  // si no, se queda con el de antes guardado quién sabe cuánto tiempo
+  $v = $sello ? ('?v=' . $sello) : '';
+
+  $iconos = array();
+  if (!empty($icono['any192']))      $iconos[] = array('src' => $icono['any192'] . $v,      'sizes' => '192x192', 'type' => 'image/png', 'purpose' => 'any');
+  if (!empty($icono['any512']))      $iconos[] = array('src' => $icono['any512'] . $v,      'sizes' => '512x512', 'type' => 'image/png', 'purpose' => 'any');
+  if (!empty($icono['maskable192'])) $iconos[] = array('src' => $icono['maskable192'] . $v, 'sizes' => '192x192', 'type' => 'image/png', 'purpose' => 'maskable');
+  if (!empty($icono['maskable512'])) $iconos[] = array('src' => $icono['maskable512'] . $v, 'sizes' => '512x512', 'type' => 'image/png', 'purpose' => 'maskable');
+
+  /* Mientras no haya subido un icono propio se usa el logo, pero declarando
+     "any" en vez de inventarle un tamaño. Decir que un logo de 700x467 mide
+     512x512 es lo que hacía que Android lo estirara y quedara feo. */
+  if (!count($iconos) && !empty($b['logo'])) {
+    $iconos[] = array('src' => (string) $b['logo'], 'sizes' => 'any', 'purpose' => 'any');
+  }
+
+  $m = array(
+    'name' => $nombre,
+    'short_name' => function_exists('mb_substr') ? mb_substr($nombre, 0, 12) : substr($nombre, 0, 12),
+    'description' => $lema,
+    'start_url' => '/?fuente=inicio',
+    'scope' => '/',
+    'display' => 'standalone',
+    'orientation' => 'portrait',
+    'background_color' => $fondo,
+    'theme_color' => $fondo,
+    'lang' => 'es-CO',
+    'icons' => $iconos,
+  );
+  return json_encode($m, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n";
 }
 
 function buildManifestJs($content) {
@@ -168,6 +228,15 @@ switch ($action) {
       @unlink($manifestTmp);
       jsonOut(array('ok' => false, 'error' => 'No se pudo actualizar la página pública.'), 500);
     }
+
+    /* El manifest de la app se rearma también. Si esto falla no se corta el
+       guardado: el contenido ya quedó bien y lo único que pasa es que el
+       icono de la app sigue como estaba hasta el próximo guardado. */
+    $wm = buildWebManifest($incoming);
+    $wmFile = $GLOBALS['WEBMANIFEST_FILE'];
+    $wmTmp = $wmFile . '.tmp-' . getmypid() . '-' . mt_rand(1000, 9999);
+    if (@file_put_contents($wmTmp, $wm) === false || !@rename($wmTmp, $wmFile)) @unlink($wmTmp);
+
     jsonOut(array('ok' => true));
   }
 
@@ -233,6 +302,116 @@ switch ($action) {
     if (!$ok) jsonOut(array('ok' => false, 'error' => 'No se pudo guardar la imagen.'), 500);
 
     jsonOut(array('ok' => true, 'path' => 'assets/img/' . $filename));
+  }
+
+  /**
+   * El icono que se instala en el celular.
+   *
+   * A diferencia de upload-image, acá NO vale guardar la imagen tal cual: el
+   * celular necesita cuadrados exactos de 192 y 512 píxeles. Se generan cuatro
+   * PNG a partir de lo que suba Fabián:
+   *
+   *   any192 / any512            el logo con un poco de aire
+   *   maskable192 / maskable512  el logo más chico, para que Android pueda
+   *                              recortarlo en círculo sin comerse los bordes
+   *
+   * Se rellena el fondo con un color en vez de dejarlo transparente porque en
+   * la pantalla de inicio un icono transparente queda con un cuadro blanco o
+   * gris feo, según el celular.
+   *
+   * En PNG y no en WebP: el iPhone no toma WebP para el icono de inicio.
+   */
+  case 'upload-app-icon': {
+    requireAuth();
+    if ($method !== 'POST') jsonOut(array('ok' => false, 'error' => 'Método no permitido.'), 405);
+    if (empty($_FILES['image']) || $_FILES['image']['error'] !== UPLOAD_ERR_OK) {
+      jsonOut(array('ok' => false, 'error' => 'No se recibió ninguna imagen.'), 400);
+    }
+    $tmp = $_FILES['image']['tmp_name'];
+    $size = filesize($tmp);
+    if ($size === false || $size > $MAX_UPLOAD_BYTES) {
+      jsonOut(array('ok' => false, 'error' => 'La imagen pesa demasiado (máximo 15MB).'), 400);
+    }
+    $info = @getimagesize($tmp);
+    if (!$info) jsonOut(array('ok' => false, 'error' => 'El archivo no es una imagen válida.'), 400);
+    list($width, $height, $type) = $info;
+
+    switch ($type) {
+      case IMAGETYPE_JPEG: $src = @imagecreatefromjpeg($tmp); break;
+      case IMAGETYPE_PNG:  $src = @imagecreatefrompng($tmp); break;
+      case IMAGETYPE_WEBP: $src = @imagecreatefromwebp($tmp); break;
+      case IMAGETYPE_GIF:  $src = @imagecreatefromgif($tmp); break;
+      default: $src = false;
+    }
+    if (!$src) jsonOut(array('ok' => false, 'error' => 'Formato de imagen no soportado.'), 400);
+    imagepalettetotruecolor($src);
+    imagealphablending($src, true);
+    imagesavealpha($src, true);
+
+    // color de fondo que mandó el panel (#rrggbb), o el negro del sitio
+    $hex = isset($_POST['bg']) ? trim((string) $_POST['bg']) : '';
+    if (!preg_match('/^#?[0-9a-fA-F]{6}$/', $hex)) $hex = '111111';
+    $hex = ltrim($hex, '#');
+    $bgR = hexdec(substr($hex, 0, 2));
+    $bgG = hexdec(substr($hex, 2, 2));
+    $bgB = hexdec(substr($hex, 4, 2));
+    $transparente = isset($_POST['transparente']) && $_POST['transparente'] === '1';
+
+    if (!is_dir($ASSETS_DIR)) @mkdir($ASSETS_DIR, 0755, true);
+    $sello = time();
+    $base = 'app-icon-' . $sello;
+
+    /**
+     * Dibuja el logo centrado dentro de un cuadrado de $lado, ocupando
+     * $ocupa de ancho (0.82 = con un poco de aire; 0.62 = con el margen que
+     * necesita Android para recortarlo en círculo).
+     */
+    $hacer = function ($lado, $ocupa, $archivo) use ($src, $width, $height, $bgR, $bgG, $bgB, $transparente) {
+      $lienzo = imagecreatetruecolor($lado, $lado);
+      imagealphablending($lienzo, false);
+      imagesavealpha($lienzo, true);
+      if ($transparente) {
+        imagefill($lienzo, 0, 0, imagecolorallocatealpha($lienzo, 0, 0, 0, 127));
+      } else {
+        imagefill($lienzo, 0, 0, imagecolorallocate($lienzo, $bgR, $bgG, $bgB));
+      }
+      imagealphablending($lienzo, true);
+
+      // se encoge manteniendo la proporción: nunca se estira ni se recorta
+      $cabe = $lado * $ocupa;
+      $escala = min($cabe / $width, $cabe / $height);
+      $w = max(1, (int) round($width * $escala));
+      $h = max(1, (int) round($height * $escala));
+      $x = (int) round(($lado - $w) / 2);
+      $y = (int) round(($lado - $h) / 2);
+      imagecopyresampled($lienzo, $src, $x, $y, 0, 0, $w, $h, $width, $height);
+
+      imagesavealpha($lienzo, true);
+      $ok = imagepng($lienzo, $archivo, 6);
+      imagedestroy($lienzo);
+      return $ok;
+    };
+
+    $salidas = array(
+      'any192'      => array(192, 0.82),
+      'any512'      => array(512, 0.82),
+      'maskable192' => array(192, 0.62),
+      'maskable512' => array(512, 0.62),
+    );
+    $rutas = array();
+    foreach ($salidas as $clave => $cfg) {
+      $nombre = $base . '-' . $clave . '.png';
+      if (!$hacer($cfg[0], $cfg[1], $ASSETS_DIR . '/' . $nombre)) {
+        imagedestroy($src);
+        jsonOut(array('ok' => false, 'error' => 'No se pudo generar el icono.'), 500);
+      }
+      $rutas[$clave] = 'assets/img/' . $nombre;
+    }
+    imagedestroy($src);
+
+    $rutas['bg'] = $transparente ? 'transparente' : ('#' . $hex);
+    $rutas['updatedAt'] = $sello;
+    jsonOut(array('ok' => true, 'appIcon' => $rutas));
   }
 
   case 'upload-audio': {

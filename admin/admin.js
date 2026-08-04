@@ -1905,6 +1905,7 @@
     renderRepeatLists();
     renderAiDocStatus();
     renderLooks();
+    renderAppIcon();
     renderHomeBlocks();
     renderPrizeMethodOrder();
     renderCronoModeVisibility();
@@ -2017,6 +2018,94 @@
         box.style.background = "#0a0a0a url('" + adminAssetUrl("assets/img/bg-texture.jpg") + "') center / cover no-repeat";
       }
     }
+  }
+
+  /* ---- icono de la app ----
+     El que queda en la pantalla del celular. No se puede guardar la imagen
+     tal cual como el resto: el celular la quiere CUADRADA y del tamaño
+     exacto. El servidor genera cuatro PNG (192 y 512, normal y recortado) a
+     partir de lo que suba Fabián; acá solo se manda y se muestra el
+     resultado. */
+
+  function appIcon() {
+    var b = state.content.business || (state.content.business = {});
+    return b.appIcon || (b.appIcon = {});
+  }
+
+  function renderAppIcon() {
+    var ic = appIcon();
+    ["any512", "maskable512"].forEach(function (k) {
+      var img = $('[data-appicon-preview="' + k + '"]');
+      if (!img) return;
+      if (ic[k]) {
+        // el sello evita que el panel siga mostrando el icono viejo guardado
+        img.src = adminAssetUrl(ic[k]) + "?v=" + (ic.updatedAt || 0);
+        img.hidden = false;
+      } else {
+        img.removeAttribute("src");
+        img.hidden = true;
+      }
+    });
+    var color = $("[data-appicon-bg]");
+    var transp = $("[data-appicon-transparent]");
+    if (color && ic.bg && ic.bg !== "transparente") color.value = ic.bg;
+    if (transp) transp.checked = ic.bg === "transparente";
+  }
+
+  function initAppIcon() {
+    var btn = $("[data-appicon-pick]");
+    var input = $("[data-appicon-input]");
+    var estado = $("[data-appicon-status]");
+    if (!btn || !input) return;
+
+    btn.addEventListener("click", function () { input.click(); });
+
+    input.addEventListener("change", function () {
+      var file = input.files && input.files[0];
+      if (!file) return;
+      var color = $("[data-appicon-bg]");
+      var transp = $("[data-appicon-transparent]");
+
+      var form = new FormData();
+      form.append("image", file);
+      form.append("bg", (color && color.value) || "#111111");
+      form.append("transparente", transp && transp.checked ? "1" : "0");
+
+      if (estado) estado.textContent = "Preparando el icono…";
+      btn.disabled = true;
+      fetch(API + "?action=upload-app-icon", { method: "POST", credentials: "same-origin", body: form })
+        .then(function (r) { return r.json(); })
+        .then(function (res) {
+          btn.disabled = false;
+          input.value = "";
+          if (!res || !res.ok) {
+            if (estado) estado.textContent = (res && res.error) || "No se pudo preparar el icono.";
+            return;
+          }
+          var b = state.content.business || (state.content.business = {});
+          b.appIcon = res.appIcon;
+          renderAppIcon();
+          markDirty();     // el guardado automático se encarga del resto
+          if (estado) estado.textContent = "Listo ✓ — quien ya tenga la app instalada verá el icono nuevo la próxima vez.";
+        })
+        .catch(function () {
+          btn.disabled = false;
+          if (estado) estado.textContent = "No se pudo conectar con el servidor.";
+        });
+    });
+
+    /* Cambiar el color no rehace los iconos por sí solo: hay que volver a
+       subir la imagen, porque el fondo se pinta al generarlos. Se avisa para
+       que no parezca que el color no funcionó. */
+    var color = $("[data-appicon-bg]");
+    var transp = $("[data-appicon-transparent]");
+    function avisarRehacer() {
+      if (estado && appIcon().any512) {
+        estado.textContent = "Para aplicar el fondo nuevo, vuelve a subir la imagen del icono.";
+      }
+    }
+    if (color) color.addEventListener("change", avisarRehacer);
+    if (transp) transp.addEventListener("change", avisarRehacer);
   }
 
   function initLooks() {
@@ -3280,6 +3369,7 @@
     initAiDoc();
     initBgTypeToggle();
     initLooks();
+    initAppIcon();
     initAddHomeImage();
     initPrizeMethodOrder();
     initStopTimeRound();
