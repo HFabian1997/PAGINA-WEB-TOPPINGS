@@ -270,7 +270,13 @@
      Todo punto donde el cliente escribe su nombre (saludo, juego, cronómetro,
      tarjeta, reto, asistente) pasa por aquí — así el aviso de "ese nombre ya
      está en uso" funciona para todos, no solo para quienes juegan. */
-  var REGISTERED_NAME_KEY = "toppings_registered_name";
+  /* La "v2" del nombre de la marca NO es decorativa: los despliegues borraron
+     el registro de clientes del servidor varias veces, pero cada celular seguía
+     con su anotación de "ya me registré" y por eso no volvía a avisar hasta
+     una semana después. Los clientes de siempre no aparecían en el panel.
+     Cambiar la marca hace que todos vuelvan a registrarse UNA vez, y de ahí en
+     adelante sigue el ritmo semanal de siempre. */
+  var REGISTERED_NAME_KEY = "toppings_registered_name_v2";
   function setCustomerName(name) {
     name = (name || "").trim();
     if (!name) return;
@@ -2540,7 +2546,7 @@
         onClick: function () {
           var modal = $("[data-prize-modal]");
           if (modal) modal.hidden = true;
-          if (window.__openRuletaModal) window.__openRuletaModal();
+          abrirRuleta();
         }
       });
     } else if (res && res.codeGranted) {
@@ -2959,7 +2965,7 @@
       btn.addEventListener("click", function () {
         var giftModal = $("[data-gift-codes-modal]");
         if (giftModal) giftModal.hidden = true;
-        if (window.__openRuletaModal) window.__openRuletaModal();
+        abrirRuleta();
       });
     });
     $$("[data-notif-read]", list).forEach(function (btn) {
@@ -3022,13 +3028,49 @@
     lastNotifs = lastNotifs.filter(function (n) { return n.id !== id; });
   }
 
+  /* La ruleta (su marcado y game/ruleta.js) vive SOLO en la portada. Desde
+     comidas, helados, bebidas o la página secreta, window.__openRuletaModal
+     no existe y el botón de girar no hacía absolutamente nada — el cliente
+     tenía el tiro y no podía usarlo.
+
+     Acá se resuelve: si la ruleta no está en esta página, se deja una marca y
+     se manda a la portada, que la abre sola al llegar. */
+  var ABRIR_RULETA_KEY = "toppings_abrir_ruleta";
+
+  function abrirRuleta() {
+    if (window.__openRuletaModal) { window.__openRuletaModal(); return; }
+    try { sessionStorage.setItem(ABRIR_RULETA_KEY, "1"); } catch (e) {}
+    location.href = "index.html";
+  }
+
+  /* Al llegar a la portada: si veníamos a girar, se abre. game/ruleta.js
+     publica __openRuletaModal en su propio arranque, que puede terminar
+     después que este, así que se reintenta un momento. */
+  function abrirRuletaSiVeniamosAEso() {
+    var pendiente = null;
+    try { pendiente = sessionStorage.getItem(ABRIR_RULETA_KEY); } catch (e) {}
+    if (!pendiente) return;
+    try { sessionStorage.removeItem(ABRIR_RULETA_KEY); } catch (e) {}
+
+    var intentos = 0;
+    var id = setInterval(function () {
+      intentos++;
+      if (window.__openRuletaModal) {
+        clearInterval(id);
+        safe(function () { window.__openRuletaModal(); }, "abrirRuleta");
+      } else if (intentos > 40) {          // ~4 s y nos rendimos
+        clearInterval(id);
+        safe(function () { window.__openGiftPanel(); }, "abrirRuletaRespaldo");
+      }
+    }, 100);
+  }
+
   /* Qué dice y adónde lleva el botón del aviso, según lo que el negocio le
      haya puesto. Sin premio no hay botón: es solo un mensaje. */
   function notifPrizeAction(n) {
     if (n.prizeType === "wheelSpins") {
       return { label: "🎡 Girar la ruleta", run: function () {
-        if (window.__openRuletaModal) window.__openRuletaModal();
-        else if (window.__openGiftPanel) window.__openGiftPanel();
+        abrirRuleta();
       } };
     }
     if (n.prizeType === "direct") {
@@ -3428,6 +3470,7 @@
     safe(initGiftFab, "initGiftFab");
     safe(initRedeemCode, "initRedeemCode");
     safe(initPresencePing, "initPresencePing");
+    safe(abrirRuletaSiVeniamosAEso, "abrirRuletaSiVeniamosAEso");
     safe(limpiarPushViejo, "limpiarPushViejo");
     safe(refreshGiftFab, "refreshGiftFab");
     setInterval(function () { safe(refreshGiftFab, "refreshGiftFab"); }, 30000);
