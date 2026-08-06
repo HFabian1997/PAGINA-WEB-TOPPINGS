@@ -16,12 +16,12 @@
   width: 100%; max-width: 640px; min-height: 100%;
   justify-content: flex-start; padding-top: 1.5rem;
 }
-/* `vh` cambia en el celular cada vez que el navegador esconde o muestra su
-   barra de direcciones, y eso hacía que el lienzo se estirara y encogiera
-   mientras se jugaba. `svh` es la altura CON la barra visible: no se mueve.
-   La línea de `vh` queda arriba como respaldo para navegadores viejos. */
+/* Se deja en `vh` a propósito, para que el juego se vea del mismo tamaño de
+   siempre. Que `vh` cambie cuando el navegador esconde su barra ya no importa:
+   resizeCanvas() ignora esos cambios chicos mientras hay partida, así que el
+   lienzo no se estira ni se encoge jugando. Probar con `svh` lo dejaba más
+   bajito que antes, y eso se notaba. */
 .run-card.is-fullscreen .run-canvas-wrap { height: min(72vh, 640px); }
-.run-card.is-fullscreen .run-canvas-wrap { height: min(72svh, 640px); }
 
 .run-exit-btn {
   display: none; position: absolute; top: .5rem; right: .5rem; z-index: 5;

@@ -328,30 +328,6 @@
       return g;
     }
 
-    /* ---- modo ligero ----
-       En celulares sin potencia el juego se traba. En vez de dejarlo así o
-       bajarle la calidad a todo el mundo, se mide cómo va de verdad: si varios
-       cuadros seguidos tardan demasiado, se apagan los adornos caros y se baja
-       la resolución del lienzo. Si el celular responde bien, no se toca nada.
-
-       Bajar DPR de 2 a 1 es la palanca más grande que hay: son cuatro veces
-       menos píxeles que pintar. */
-    var modoLigero = false;
-    var cuadrosLentos = 0;
-    var MS_CUADRO_MALO = 34;      // por debajo de ~30 cuadros por segundo
-    var CUADROS_PARA_BAJAR = 45;  // ~1,5 s seguidos yendo mal, no un tirón suelto
-
-    function vigilarRendimiento(dtSegundos) {
-      if (modoLigero) return;
-      if (dtSegundos * 1000 > MS_CUADRO_MALO) cuadrosLentos++;
-      else cuadrosLentos = Math.max(0, cuadrosLentos - 2);   // se perdona un bache
-      if (cuadrosLentos < CUADROS_PARA_BAJAR) return;
-
-      modoLigero = true;
-      if (DPR > 1) { DPR = 1; resizeCanvas(true); }
-      else olvidarDegradados();
-    }
-
     /* ---- constantes del juego ---- */
     var GROUND_H = 26;
     var CHAR_X_RATIO = 0.16; // el personaje siempre queda fijo en esta posición horizontal
@@ -1048,20 +1024,17 @@
       var moonY = groundY() * 0.16;
       var moonR = 15;
       /* El halo se arma centrado en (0,0) y se mueve con translate: así no
-         depende de dónde caiga la luna y se puede guardar. En modo ligero se
-         salta — es de los adornos más caros de pintar. */
-      if (!modoLigero) {
-        ctx.save();
-        ctx.translate(moonX, moonY);
-        ctx.fillStyle = degradado("halo", function () {
-          var g = ctx.createRadialGradient(0, 0, moonR * 0.6, 0, 0, moonR * 3.2);
-          g.addColorStop(0, "rgba(255,244,214,.25)");
-          g.addColorStop(1, "rgba(255,244,214,0)");
-          return g;
-        });
-        ctx.beginPath(); ctx.arc(0, 0, moonR * 3.2, 0, Math.PI * 2); ctx.fill();
-        ctx.restore();
-      }
+         depende de dónde caiga la luna y alcanza con guardarlo una vez. */
+      ctx.save();
+      ctx.translate(moonX, moonY);
+      ctx.fillStyle = degradado("halo", function () {
+        var g = ctx.createRadialGradient(0, 0, moonR * 0.6, 0, 0, moonR * 3.2);
+        g.addColorStop(0, "rgba(255,244,214,.25)");
+        g.addColorStop(1, "rgba(255,244,214,0)");
+        return g;
+      });
+      ctx.beginPath(); ctx.arc(0, 0, moonR * 3.2, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
       ctx.fillStyle = "#fff4d6";
       ctx.beginPath(); ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = "rgba(138,63,44,.35)";
@@ -1223,15 +1196,13 @@
         ctx.font = "bold 8px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
         ctx.fillText("T", 0, 0.5);
       } else {
-        if (!modoLigero) {
-          ctx.fillStyle = degradado("brillo", function () {
-            var g = ctx.createRadialGradient(0, 0, 1, 0, 0, 14);
-            g.addColorStop(0, "rgba(255,212,0,.4)");
-            g.addColorStop(1, "rgba(255,212,0,0)");
-            return g;
-          });
-          ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.fill();
-        }
+        ctx.fillStyle = degradado("brillo", function () {
+          var g = ctx.createRadialGradient(0, 0, 1, 0, 0, 14);
+          g.addColorStop(0, "rgba(255,212,0,.4)");
+          g.addColorStop(1, "rgba(255,212,0,0)");
+          return g;
+        });
+        ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.fill();
         ctx.font = "15px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
         ctx.fillText(POWERUP_ICON[p.type] === "2×" ? "✨" : POWERUP_ICON[p.type], 0, 0);
       }
@@ -1757,11 +1728,8 @@
 
     function loop(ts) {
       if (lastTs == null) lastTs = ts;
-      var dtReal = (ts - lastTs) / 1000;
-      var dt = Math.min(0.05, dtReal);
+      var dt = Math.min(0.05, (ts - lastTs) / 1000);
       lastTs = ts;
-      // se mide con el tiempo REAL, no con el recortado, o nunca se notaría
-      vigilarRendimiento(dtReal);
       update(dt);
       draw();
       if (state && !state.over) rafId = requestAnimationFrame(loop);
