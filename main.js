@@ -3090,6 +3090,10 @@
       } else {
         html += '<p class="locked-title">🔓 ' + escHTML(t("tituloAbierto", "¡PREMIO DESBLOQUEADO!")) + "</p>";
         html += '<p class="locked-prize">' + escHTML(estado.prizeIcon || "🎁") + " " + escHTML(estado.prizeName || "") + "</p>";
+        if (estado.tipo === "ruleta") {
+          var g = Number(estado.giros || 1);
+          html += '<p class="locked-text">🎡 ' + g + (g === 1 ? " giro" : " giros") + " en la ruleta</p>";
+        }
         html += '<p class="locked-text">⚡ ' + escHTML(t("sePrimero", "¡Sé el primero!")) + "</p>";
         html += '<p class="locked-winners">🏆 ' + escHTML(t("ganadores", "1 GANADOR")) + "</p>";
         html += '<button type="button" class="locked-claim" data-locked-claim>' +
@@ -3191,12 +3195,27 @@
       input.addEventListener("keydown", function (e) { if (e.key === "Enter") enviar(); });
     }
 
+    /* Dos clases de premio: uno escrito, que sale como código para mostrar en
+       el local, y giros de ruleta, que se usan ahí mismo. El servidor ya
+       entregó lo que corresponda; acá solo se cuenta bien. */
     function festejar(res) {
+      var giros = Number(res.girosEntregados || res.giros || 0);
+      var esRuleta = res.tipo === "ruleta" && giros > 0;
+
       mostrarMensaje(
         '<p class="locked-title">🎉 ¡GANASTE!</p>' +
         '<p class="locked-prize">' + escHTML(res.prizeIcon || "🎁") + " " + escHTML(res.prizeName || "") + "</p>" +
-        '<p class="locked-text">Te quedó guardado en el botón 🎁 de arriba. Mostralo en el local para reclamarlo.</p>'
+        (esRuleta
+          ? '<p class="locked-text">Ganaste ' + giros + (giros === 1 ? " giro" : " giros") +
+            " en la ruleta. Girá y mirá qué te toca.</p>" +
+            '<button type="button" class="locked-claim" data-locked-ruleta>🎡 GIRAR LA RULETA</button>'
+          : '<p class="locked-text">Te quedó guardado en el botón 🎁 de arriba. Mostralo en el local para reclamarlo.</p>')
       );
+
+      if (esRuleta) {
+        var ir = $("[data-locked-ruleta]", cuerpo);
+        if (ir) ir.addEventListener("click", function () { cerrar(); abrirRuleta(); });
+      }
       safe(refreshGiftFab, "refreshGiftFab");   // que aparezca ya en el 🎁
       refrescar();
     }

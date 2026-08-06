@@ -3238,15 +3238,17 @@
      confirmación. */
 
   var LOCKED_API = "../api/locked.php";
-  var lockedState = { prizes: [] };
+  var lockedState = { prizes: [], history: [] };
   var lockedLoaded = false;        // ¿el servidor llegó a darnos la lista?
   var lockedServerCount = 0;       // cuántos había, para avisar antes de vaciar
 
   function lockedEditables() {
     return lockedState.prizes.filter(function (p) { return p.status !== "reclamado"; });
   }
+  /* El servidor ya devuelve el historial completo: los premios de una sola vez
+     se quedan en su fila y los que se repiten se archivan al rearmarse. */
   function lockedGanados() {
-    return lockedState.prizes.filter(function (p) { return p.status === "reclamado"; });
+    return (lockedState.history || []).slice();
   }
 
   function fetchLockedAdmin() {
@@ -3255,6 +3257,7 @@
       .then(function (res) {
         if (!res || !res.ok) return;
         lockedState.prizes = res.prizes || [];
+        lockedState.history = res.history || [];
         lockedLoaded = true;
         lockedServerCount = lockedEditables().length;
         renderLockedList();
@@ -3286,6 +3289,15 @@
     reservado: "reservado", cancelado: "cancelado", reclamado: "reclamado"
   };
 
+  /** Una línea corta para ver de un vistazo cada cuánto se repite un premio. */
+  function lockedResumen(p) {
+    var modo = p.repite || "una";
+    if (modo === "cadaHoras") return "cada " + (p.cadaHoras || 0) + " h";
+    if (modo === "horasDelDia") return (p.horas || []).join(" · ");
+    if (modo === "trasReclamo") return "+" + (p.cadaHoras || 0) + " h tras reclamo";
+    return "";
+  }
+
   function buildLockedRow(p, idx) {
     var row = document.createElement("div");
     row.className = "ruleta-prize-row" + (p.status === "cancelado" ? " is-off" : "");
@@ -3294,7 +3306,7 @@
         '<button type="button" class="rp-toggle" data-rp-toggle>' +
           '<span class="rp-icon">' + escHTML(p.prizeIcon || "🎁") + "</span>" +
           '<span class="rp-name">' + escHTML(p.prizeName || "(sin nombre)") + "</span>" +
-          '<span class="rp-prob">' + escHTML(LOCKED_ESTADO_TXT[p.status] || p.status) + "</span>" +
+          '<span class="rp-prob" data-lk-estado>' + escHTML(LOCKED_ESTADO_TXT[p.status] || p.status) + "</span>" +
           '<span class="rp-caret">▸</span>' +
         "</button>" +
         '<button type="button" class="rp-remove" data-rp-remove title="Quitar este premio" aria-label="Quitar este premio">✕</button>' +
@@ -3303,11 +3315,26 @@
         '<div class="field-grid">' +
           "<label class='full'>Nombre del premio <input type='text' data-lk='prizeName'></label>" +
           "<label>Ícono <input type='text' data-lk='prizeIcon' maxlength='4' placeholder='🎁'></label>" +
-          "<label>Se desbloquea el <input type='datetime-local' data-lk='unlockAt'></label>" +
+          "<label>Qué se gana <select data-lk='tipo'>" +
+            "<option value='escrito'>Un premio escrito (código)</option>" +
+            "<option value='ruleta'>Giros en la ruleta</option>" +
+          "</select></label>" +
+          "<label data-lk-si='ruleta'>Cuántos giros <input type='number' data-lk='giros' min='1' max='20' step='1'></label>" +
+          "<label class='full'>Cada cuánto se puede reclamar <select data-lk='repite'>" +
+            "<option value='una'>Una sola vez</option>" +
+            "<option value='cadaHoras'>Cada tantas horas</option>" +
+            "<option value='horasDelDia'>A unas horas fijas, todos los días</option>" +
+            "<option value='trasReclamo'>Se restablece tras cada reclamo</option>" +
+          "</select></label>" +
+          "<label data-lk-si='fecha'><span data-lk-fecha-titulo>Se desbloquea el</span> <input type='datetime-local' data-lk='unlockAt'></label>" +
+          "<label data-lk-si='cadaHoras'>Cada cuántas horas <input type='number' data-lk='cadaHoras' min='0.5' max='8760' step='0.5'></label>" +
+          "<label class='full' data-lk-si='horasDelDia'>A qué horas <input type='text' data-lk='horas' placeholder='15:00, 18:00, 20:00'>" +
+            "<span class='hint'>Separadas por comas. También vale «3 pm, 6 pm».</span></label>" +
           "<label class='full'>Estado <select data-lk='status'>" +
             "<option value='programado'>Programado</option>" +
             "<option value='cancelado'>Cancelado</option>" +
           "</select></label>" +
+          "<p class='hint full' data-lk-nota></p>" +
         "</div>" +
       "</div>";
 
@@ -3319,13 +3346,49 @@
       row.classList.toggle("is-open", !body.hidden);
     };
 
-    $("[data-lk]", row).forEach(function (input) {
+    /* Cada forma de repetir pide datos distintos: se muestran solo los que
+       hacen falta, para que la fila no sea un muro de campos vacíos. */
+    var NOTAS = {
+      una: "Se entrega una sola vez. Cuando alguien lo gane, pasa al siguiente premio de la lista.",
+      cadaHoras: "Después de que alguien lo gane, vuelve a abrirse cada tantas horas contadas desde la fecha de arriba, así que cae siempre a la misma hora.",
+      horasDelDia: "Después de que alguien lo gane, vuelve a abrirse en la siguiente de esas horas.",
+      trasReclamo: "Después de que alguien lo gane, vuelve a abrirse esas horas más tarde."
+    };
+    function pintarModo() {
+      var modo = p.repite || "una";
+      var esRuleta = (p.tipo || "escrito") === "ruleta";
+      $$("[data-lk-si]", row).forEach(function (el) {
+        var q = el.getAttribute("data-lk-si");
+        if (q === "ruleta") el.hidden = !esRuleta;
+        else if (q === "fecha") el.hidden = (modo === "horasDelDia");
+        else el.hidden = (q !== modo);
+      });
+      var t = row.querySelector("[data-lk-fecha-titulo]");
+      if (t) t.textContent = modo === "una" ? "Se desbloquea el" : "Se desbloquea por primera vez el";
+      var nota = row.querySelector("[data-lk-nota]");
+      if (nota) nota.textContent = NOTAS[modo] || "";
+      var est = row.querySelector("[data-lk-estado]");
+      if (est) {
+        var resumen = lockedResumen(p);
+        est.textContent = (LOCKED_ESTADO_TXT[p.status] || p.status) + (resumen ? " · " + resumen : "");
+      }
+    }
+
+    $$("[data-lk]", row).forEach(function (input) {
       var key = input.getAttribute("data-lk");
       if (key === "unlockAt") input.value = msALocal(p.unlockAt);
+      else if (key === "horas") input.value = (p.horas || []).join(", ");
+      else if (key === "tipo") input.value = p.tipo || "escrito";
+      else if (key === "repite") input.value = p.repite || "una";
+      else if (key === "giros") input.value = p.giros || 1;
+      else if (key === "cadaHoras") input.value = p.cadaHoras || "";
       else input.value = p[key] == null ? "" : p[key];
       input.oninput = function () {
         if (key === "unlockAt") p.unlockAt = localAMs(input.value);
+        else if (key === "horas") p.horas = input.value.split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+        else if (key === "giros" || key === "cadaHoras") p[key] = Number(input.value) || 0;
         else p[key] = input.value;
+        pintarModo();
         if (key === "prizeName") {
           var n = row.querySelector(".rp-name");
           if (n) n.textContent = p.prizeName || "(sin nombre)";
@@ -3338,6 +3401,7 @@
       };
       input.onchange = input.oninput;
     });
+    pintarModo();
 
     row.querySelector("[data-rp-remove]").addEventListener("click", function () {
       if (!confirm('¿Quitar el premio "' + (p.prizeName || "") + '"?')) return;
@@ -3405,7 +3469,9 @@
       var enUnaHora = Date.now() + 60 * 60 * 1000;
       lockedState.prizes.push({
         id: "", prizeName: "", prizeIcon: "🎁",
-        unlockAt: enUnaHora, status: "programado",
+        tipo: "escrito", giros: 1,
+        unlockAt: enUnaHora, repite: "una", cadaHoras: 24, horas: [],
+        status: "programado",
         winnerName: null, winnerDeviceId: null, claimedAt: null, reservedUntil: null
       });
       renderLockedList();
@@ -3447,19 +3513,41 @@
         if (!confirm("Vas a dejar la lista sin ningún premio programado. Se van a borrar los " +
             lockedServerCount + " que hay. ¿Seguro?")) { listo("omitido"); return; }
       }
-      var sinDatos = editables.some(function (p) {
-        return !String(p.prizeName || "").trim() || !p.unlockAt;
+      /* Cada forma de repetir necesita un dato distinto, así que se avisa qué
+         falta en vez de mandar algo que el servidor va a descartar en silencio. */
+      var falta = null;
+      editables.some(function (p) {
+        var modo = p.repite || "una";
+        if (!String(p.prizeName || "").trim()) { falta = "Hay un premio sin nombre."; return true; }
+        if (modo === "horasDelDia") {
+          if (!(p.horas || []).length) { falta = 'A "' + p.prizeName + '" le faltan las horas del día.'; return true; }
+        } else if (!p.unlockAt) {
+          falta = 'A "' + p.prizeName + '" le falta la fecha.'; return true;
+        }
+        if ((modo === "cadaHoras" || modo === "trasReclamo") && !(Number(p.cadaHoras) > 0)) {
+          falta = 'A "' + p.prizeName + '" le faltan las horas de repetición.'; return true;
+        }
+        return false;
       });
-      if (sinDatos) {
-        if (statusEl) { statusEl.textContent = "Hay un premio sin nombre o sin fecha."; statusEl.className = "save-status is-error"; }
-        listo("omitido", "⏸️ Falta el nombre o la fecha de un premio");
+      if (falta) {
+        if (statusEl) { statusEl.textContent = falta; statusEl.className = "save-status is-error"; }
+        listo("omitido", "⏸️ " + falta);
         return;
       }
+
+      /* En "a estas horas del día" la fecha la pone el servidor: es él quien
+         sabe qué hora es de verdad, y así no depende del reloj del celular. */
+      var aMandar = editables.map(function (p) {
+        if ((p.repite || "una") !== "horasDelDia") return p;
+        var copia = {}; for (var k in p) if (p.hasOwnProperty(k)) copia[k] = p[k];
+        copia.unlockAt = 0;
+        return copia;
+      });
 
       if (statusEl) { statusEl.textContent = "Guardando…"; statusEl.className = "save-status"; }
       fetch(LOCKED_API + "?action=admin-save", {
         method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prizes: editables }),
+        body: JSON.stringify({ prizes: aMandar }),
         keepalive: motivo === "salida"
       }).then(function (r) { return r.json(); })
         .then(function (res) {
@@ -3524,7 +3612,7 @@
     html += "</tbody></table>";
     cont.innerHTML = html;
 
-    $("[data-flot]", cont).forEach(function (chk) {
+    $$("[data-flot]", cont).forEach(function (chk) {
       chk.addEventListener("change", function () {
         var partes = chk.getAttribute("data-flot").split(":");
         var cfg2 = flotantes();

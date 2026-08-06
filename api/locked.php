@@ -11,6 +11,7 @@ date_default_timezone_set('America/Bogota');
 require_once __DIR__ . '/data-path.php';
 require_once __DIR__ . '/locked-lib.php';
 require_once __DIR__ . '/codes-lib.php';
+require_once __DIR__ . '/ruleta-lib.php';
 require_once __DIR__ . '/customers-lib.php';
 
 session_name('toppings_admin_sess');
@@ -30,6 +31,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
 $MAX_NAME = 60;
 
 function lkOut($arr, $code = 200) { http_response_code($code); echo json_encode($arr, JSON_UNESCAPED_UNICODE); exit; }
+
+function lkTipo($p) {
+  $t = isset($p['tipo']) ? (string) $p['tipo'] : 'escrito';
+  return $t === 'ruleta' ? 'ruleta' : 'escrito';
+}
+function lkGiros($p) {
+  $n = isset($p['giros']) ? (int) $p['giros'] : 1;
+  return max(1, min(20, $n));
+}
+
+/**
+ * Le entrega al ganador lo que corresponda. Un premio escrito sale como
+ * código, igual que la ruleta y el cronómetro; uno de tipo ruleta sale como
+ * giros. En los dos casos se usan las librerías que ya existen, sin tocarlas.
+ *
+ * Va FUERA del candado: a esta altura el ganador ya está decidido y no hace
+ * falta tener el archivo tomado mientras se escribe en otro.
+ */
+function lkEntregar($deviceId, $name, &$resultado) {
+  if (empty($resultado['tipo']) || $resultado['tipo'] !== 'ruleta') {
+    $rec = issuePrizeCode($deviceId, $name, 'premio-bloqueado',
+                          $resultado['prizeName'], $resultado['prizeIcon'], 24);
+    if ($rec) $resultado['codigo'] = array('code' => $rec['code'], 'expiresAt' => $rec['expiresAt']);
+    return;
+  }
+  $giros = isset($resultado['giros']) ? (int) $resultado['giros'] : 1;
+  $tickets = grantRuletaTickets($deviceId, $name, 'premio-bloqueado', $giros, 24);
+  $resultado['girosEntregados'] = count($tickets);
+}
 
 /**
  * Entra la sesión del panel o la clave de servicio (api/push-config.php, que
@@ -128,25 +158,25 @@ switch ($action) {
         $p['claimedAt'] = $ahora;
         $p['reservedUntil'] = null;
         $resultado = array('ok' => true, 'estado' => 'reclamado',
-                           'prizeName' => $p['prizeName'], 'prizeIcon' => $p['prizeIcon'], 'id' => $p['id']);
+                           'prizeName' => $p['prizeName'], 'prizeIcon' => $p['prizeIcon'], 'id' => $p['id'],
+                           'tipo' => lkTipo($p), 'giros' => lkGiros($p));
       } else {
         $p['status'] = 'reservado';
         $p['reservedUntil'] = $ahora + lockedReservaMs();
         $resultado = array('ok' => true, 'estado' => 'falta-nombre',
                            'prizeName' => $p['prizeName'], 'prizeIcon' => $p['prizeIcon'], 'id' => $p['id'],
+                           'tipo' => lkTipo($p), 'giros' => lkGiros($p),
                            'reservadoHasta' => $p['reservedUntil']);
       }
       $state['prizes'][$i] = $p;
+      // si este premio se repite, ya queda programado para la próxima vuelta
+      if ($p['status'] === 'reclamado') lockedRearmar($state, $i);
       return $state;
     });
 
-    // el código del premio se emite FUERA del candado, para no tenerlo tomado
-    // más de lo necesario; a esta altura el ganador ya está decidido
     if (!empty($resultado['ok']) && $resultado['estado'] === 'reclamado') {
       rememberCustomer($deviceId, $name);
-      $rec = issuePrizeCode($deviceId, $name, 'premio-bloqueado',
-                            $resultado['prizeName'], $resultado['prizeIcon'], 24);
-      if ($rec) $resultado['codigo'] = array('code' => $rec['code'], 'expiresAt' => $rec['expiresAt']);
+      lkEntregar($deviceId, $name, $resultado);
     }
     lkOut($resultado, !empty($resultado['ok']) ? 200 : 409);
   }
@@ -172,7 +202,9 @@ switch ($action) {
         $p['reservedUntil'] = null;
         $state['prizes'][$i] = $p;
         $resultado = array('ok' => true, 'prizeName' => $p['prizeName'],
-                           'prizeIcon' => $p['prizeIcon'], 'id' => $p['id']);
+                           'prizeIcon' => $p['prizeIcon'], 'id' => $p['id'],
+                           'tipo' => lkTipo($p), 'giros' => lkGiros($p));
+        lockedRearmar($state, $i);
         return $state;
       }
       // si venció la reserva mientras escribía, se le dice con claridad
@@ -182,9 +214,7 @@ switch ($action) {
 
     if (!empty($resultado['ok'])) {
       rememberCustomer($deviceId, $name);
-      $rec = issuePrizeCode($deviceId, $name, 'premio-bloqueado',
-                            $resultado['prizeName'], $resultado['prizeIcon'], 24);
-      if ($rec) $resultado['codigo'] = array('code' => $rec['code'], 'expiresAt' => $rec['expiresAt']);
+      lkEntregar($deviceId, $name, $resultado);
     }
     lkOut($resultado, !empty($resultado['ok']) ? 200 : 409);
   }
@@ -195,7 +225,8 @@ switch ($action) {
     $state = lockedRead();
     $prizes = $state['prizes'];
     usort($prizes, function ($a, $b) { return ((int) $a['unlockAt']) - ((int) $b['unlockAt']); });
-    lkOut(array('ok' => true, 'prizes' => $prizes, 'serverNow' => lockedNowMs()));
+    lkOut(array('ok' => true, 'prizes' => $prizes,
+                'history' => lockedHistorial($state), 'serverNow' => lockedNowMs()));
   }
 
   case 'admin-save': {
@@ -213,22 +244,73 @@ switch ($action) {
       }
 
       $nuevos = array();
+      $ahora = lockedNowMs();
       foreach ($entran as $e) {
         if (!is_array($e)) continue;
         $nombre = isset($e['prizeName']) ? trim((string) $e['prizeName']) : '';
+        if ($nombre === '') continue;
+
+        /* Cada cuánto vuelve a abrirse. Las horas del día llegan como texto
+           libre ("15:00, 6:00 pm, 20") porque es lo que se escribe rápido en
+           el celular; acá se dejan todas en HH:MM y se descarta lo que no sea
+           una hora de verdad. */
+        $repite = isset($e['repite']) ? (string) $e['repite'] : 'una';
+        if (!in_array($repite, array('una', 'cadaHoras', 'horasDelDia', 'trasReclamo'), true)) {
+          $repite = 'una';
+        }
+        $cadaHoras = isset($e['cadaHoras']) ? (float) $e['cadaHoras'] : 0;
+        if ($cadaHoras < 0) $cadaHoras = 0;
+        if ($cadaHoras > 24 * 365) $cadaHoras = 24 * 365;
+
+        $horas = array();
+        $crudas = isset($e['horas']) ? $e['horas'] : array();
+        if (is_string($crudas)) $crudas = preg_split('/[,;\n]+/', $crudas);
+        if (is_array($crudas)) {
+          foreach ($crudas as $h) {
+            $h = trim((string) $h);
+            if ($h === '') continue;
+            if (!preg_match('/^(\d{1,2})(?::(\d{2}))?\s*(am|pm|AM|PM)?$/', $h, $m)) continue;
+            $hh = (int) $m[1];
+            $mm = isset($m[2]) && $m[2] !== '' ? (int) $m[2] : 0;
+            $suf = isset($m[3]) ? strtolower($m[3]) : '';
+            if ($suf === 'pm' && $hh < 12) $hh += 12;
+            if ($suf === 'am' && $hh === 12) $hh = 0;
+            if ($hh > 23 || $mm > 59) continue;
+            $horas[] = sprintf('%02d:%02d', $hh, $mm);
+          }
+          $horas = array_values(array_unique($horas));
+          sort($horas);
+        }
+
+        // si se repite y no pusieron fecha, la primera la calcula el servidor
         $cuando = isset($e['unlockAt']) ? (int) $e['unlockAt'] : 0;
-        if ($nombre === '' || $cuando <= 0) continue;
+        if ($cuando <= 0) {
+          $cuando = lockedProximaFecha(
+            array('repite' => $repite, 'cadaHoras' => $cadaHoras, 'horas' => $horas, 'unlockAt' => $ahora),
+            $ahora
+          );
+        }
+        if ($cuando <= 0) continue;
 
         $id = isset($e['id']) && $e['id'] !== '' ? (string) $e['id'] : uniqid('lkp_', true);
         $estado = isset($e['status']) ? (string) $e['status'] : 'programado';
         if (!in_array($estado, array('programado', 'desbloqueado', 'reservado', 'cancelado'), true)) {
           $estado = 'programado';
         }
+        $tipo = isset($e['tipo']) && $e['tipo'] === 'ruleta' ? 'ruleta' : 'escrito';
+        $giros = isset($e['giros']) ? (int) $e['giros'] : 1;
+        $giros = max(1, min(20, $giros));
+
         $nuevos[] = array(
           'id' => $id,
           'prizeName' => $nombre,
           'prizeIcon' => isset($e['prizeIcon']) && $e['prizeIcon'] !== '' ? (string) $e['prizeIcon'] : '🎁',
+          'tipo' => $tipo,
+          'giros' => $giros,
           'unlockAt' => $cuando,
+          'repite' => $repite,
+          'cadaHoras' => $cadaHoras,
+          'horas' => $horas,
           'status' => $estado,
           'winnerName' => null,
           'winnerDeviceId' => null,
@@ -257,11 +339,13 @@ switch ($action) {
 
     $quitados = 0;
     lockedWithWriteLock(function ($state) use ($id, &$quitados) {
-      $antes = count($state['prizes']);
-      $state['prizes'] = array_values(array_filter($state['prizes'], function ($p) use ($id) {
+      $fuera = function ($p) use ($id) {
         return !(is_array($p) && isset($p['id']) && $p['id'] === $id);
-      }));
-      $quitados = $antes - count($state['prizes']);
+      };
+      $antes = count($state['prizes']) + count($state['history']);
+      $state['prizes'] = array_values(array_filter($state['prizes'], $fuera));
+      $state['history'] = array_values(array_filter($state['history'], $fuera));
+      $quitados = $antes - count($state['prizes']) - count($state['history']);
       return $state;
     });
     lkOut(array('ok' => true, 'quitados' => $quitados));

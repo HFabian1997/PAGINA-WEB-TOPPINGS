@@ -25,13 +25,18 @@ if (!function_exists('lockedRead')) {
 
   function lockedNowMs() { return (int) round(microtime(true) * 1000); }
 
-  function lockedDefaultState() { return array('prizes' => array()); }
+  function lockedDefaultState() { return array('prizes' => array(), 'history' => array()); }
 
   function lockedNormalize($state) {
     if (!is_array($state) || !isset($state['prizes']) || !is_array($state['prizes'])) {
       return lockedDefaultState();
     }
     $state['prizes'] = array_values($state['prizes']);
+    /* Los premios que se repiten vuelven a estar programados después de que
+       alguien los gana, así que el ganador no puede quedarse en la fila: se
+       guarda aparte. Los de una sola vez siguen igual que siempre. */
+    if (!isset($state['history']) || !is_array($state['history'])) $state['history'] = array();
+    $state['history'] = array_values($state['history']);
     return $state;
   }
 
@@ -110,6 +115,99 @@ if (!function_exists('lockedRead')) {
     return $cambio;
   }
 
+  /**
+   * ¿Cuándo vuelve a abrirse este premio, contando desde `$desde`?
+   *
+   * Cuatro formas, que son las cuatro que se pueden elegir en el panel:
+   *   una          → nunca; se gana una vez y se acabó
+   *   cadaHoras    → cada N horas contadas desde la fecha original, de modo
+   *                  que "cada 24 horas" cae siempre a la misma hora del día
+   *                  por más que la gente reclame tarde
+   *   horasDelDia  → a unas horas fijas ("15:00, 18:00, 20:00"), todos los días
+   *   trasReclamo  → N horas después del reclamo, corriéndose con cada uno
+   *
+   * Devuelve 0 si no hay próxima (o si la configuración no da para calcularla).
+   */
+  function lockedProximaFecha($p, $desde) {
+    $repite = isset($p['repite']) ? (string) $p['repite'] : 'una';
+    $hora = 3600 * 1000;
+
+    if ($repite === 'trasReclamo') {
+      $n = isset($p['cadaHoras']) ? (float) $p['cadaHoras'] : 0;
+      return $n > 0 ? (int) round($desde + $n * $hora) : 0;
+    }
+
+    if ($repite === 'cadaHoras') {
+      $n = isset($p['cadaHoras']) ? (float) $p['cadaHoras'] : 0;
+      $paso = (int) round($n * $hora);
+      if ($paso <= 0) return 0;
+      $sig = isset($p['unlockAt']) ? (int) $p['unlockAt'] : (int) $desde;
+      // se avanza en pasos exactos desde la fecha original, no desde el reclamo
+      if ($sig <= $desde) {
+        $saltos = (int) ceil((($desde - $sig) + 1) / $paso);
+        $sig += $saltos * $paso;
+      }
+      return $sig;
+    }
+
+    if ($repite === 'horasDelDia') {
+      $horas = isset($p['horas']) && is_array($p['horas']) ? $p['horas'] : array();
+      if (!count($horas)) return 0;
+      $seg = (int) floor($desde / 1000);
+      for ($d = 0; $d < 8; $d++) {
+        $dia = date('Y-m-d', $seg + $d * 86400);
+        $delDia = array();
+        foreach ($horas as $h) {
+          $t = strtotime($dia . ' ' . trim((string) $h) . ':00');
+          if ($t !== false) $delDia[] = $t * 1000;
+        }
+        sort($delDia);
+        foreach ($delDia as $ms) if ($ms > $desde) return (int) $ms;
+      }
+      return 0;
+    }
+
+    return 0;
+  }
+
+  /**
+   * Después de que alguien gana: si el premio se repite, el ganador se archiva
+   * y la fila vuelve a quedar programada para la próxima vez. Si es de una sola
+   * vez, no se toca nada y el ganador se queda en la fila como hasta ahora.
+   *
+   * Se llama SIEMPRE dentro del candado de escritura, junto con el reclamo.
+   */
+  function lockedRearmar(&$state, $i) {
+    if (!isset($state['prizes'][$i]) || !is_array($state['prizes'][$i])) return;
+    $p = $state['prizes'][$i];
+    $repite = isset($p['repite']) ? (string) $p['repite'] : 'una';
+    if ($repite === 'una' || $repite === '') return;
+
+    $desde = isset($p['claimedAt']) ? (int) $p['claimedAt'] : lockedNowMs();
+    $proxima = lockedProximaFecha($p, $desde);
+
+    $state['history'][] = array(
+      'id' => (isset($p['id']) ? $p['id'] : '') . '_' . $desde,
+      'prizeId' => isset($p['id']) ? $p['id'] : '',
+      'prizeName' => isset($p['prizeName']) ? $p['prizeName'] : '',
+      'prizeIcon' => isset($p['prizeIcon']) ? $p['prizeIcon'] : '🎁',
+      'tipo' => isset($p['tipo']) ? $p['tipo'] : 'escrito',
+      'status' => 'reclamado',
+      'winnerName' => isset($p['winnerName']) ? $p['winnerName'] : null,
+      'winnerDeviceId' => isset($p['winnerDeviceId']) ? $p['winnerDeviceId'] : null,
+      'claimedAt' => $desde,
+    );
+
+    // sin próxima fecha calculable el premio se apaga en vez de quedar suelto
+    $p['status'] = $proxima > 0 ? 'programado' : 'cancelado';
+    if ($proxima > 0) $p['unlockAt'] = $proxima;
+    $p['winnerName'] = null;
+    $p['winnerDeviceId'] = null;
+    $p['claimedAt'] = null;
+    $p['reservedUntil'] = null;
+    $state['prizes'][$i] = $p;
+  }
+
   /** Lee dejando los estados al día (y guardando solo si hizo falta). */
   function lockedRead() {
     $state = lockedReadRaw();
@@ -143,20 +241,32 @@ if (!function_exists('lockedRead')) {
     return $vivos[0];
   }
 
-  /** El último que alguien se llevó, para la línea del ganador anterior. */
-  function lockedUltimoGanador($state) {
+  /**
+   * Todos los premios que alguien ya se llevó, del más reciente al más viejo.
+   * Están en dos sitios: los de una sola vez se quedan en su propia fila, y los
+   * que se repiten se archivan aparte al rearmarse.
+   */
+  function lockedHistorial($state) {
     $ganados = array();
-    foreach ($state['prizes'] as $p) {
-      if (!is_array($p)) continue;
-      if (!isset($p['status']) || $p['status'] !== 'reclamado') continue;
-      if (empty($p['winnerName'])) continue;
-      $ganados[] = $p;
+    $fuentes = array($state['prizes'], isset($state['history']) ? $state['history'] : array());
+    foreach ($fuentes as $lista) {
+      foreach ($lista as $p) {
+        if (!is_array($p)) continue;
+        if (!isset($p['status']) || $p['status'] !== 'reclamado') continue;
+        if (empty($p['winnerName'])) continue;
+        $ganados[] = $p;
+      }
     }
-    if (!count($ganados)) return null;
     usort($ganados, function ($a, $b) {
       return ((int) $b['claimedAt']) - ((int) $a['claimedAt']);
     });
-    return $ganados[0];
+    return $ganados;
+  }
+
+  /** El último que alguien se llevó, para la línea del ganador anterior. */
+  function lockedUltimoGanador($state) {
+    $ganados = lockedHistorial($state);
+    return count($ganados) ? $ganados[0] : null;
   }
 
   function lockedBuscarIndice($state, $id) {
@@ -197,6 +307,8 @@ if (!function_exists('lockedRead')) {
     if ($desbloqueado) {
       $out['prizeName'] = $actual['prizeName'];
       $out['prizeIcon'] = isset($actual['prizeIcon']) ? $actual['prizeIcon'] : '🎁';
+      $out['tipo'] = isset($actual['tipo']) ? $actual['tipo'] : 'escrito';
+      if ($out['tipo'] === 'ruleta') $out['giros'] = isset($actual['giros']) ? (int) $actual['giros'] : 1;
     }
 
     // si está reservado por otro, este cliente ya no puede reclamarlo
