@@ -248,6 +248,14 @@ switch ($action) {
       foreach ($entran as $e) {
         if (!is_array($e)) continue;
         $nombre = isset($e['prizeName']) ? trim((string) $e['prizeName']) : '';
+        $tipoEntra = isset($e['tipo']) && $e['tipo'] === 'ruleta' ? 'ruleta' : 'escrito';
+        /* Con la ruleta el nombre no hace falta: el premio de verdad lo decide
+           el giro, no lo que se escriba acá. Si lo dejan vacío se arma solo,
+           para que el cliente igual vea algo con sentido al desbloquearse. */
+        if ($nombre === '' && $tipoEntra === 'ruleta') {
+          $g = isset($e['giros']) ? max(1, min(20, (int) $e['giros'])) : 1;
+          $nombre = $g . ($g === 1 ? ' giro en la ruleta' : ' giros en la ruleta');
+        }
         if ($nombre === '') continue;
 
         /* Cada cuánto vuelve a abrirse. Las horas del día llegan como texto
@@ -297,7 +305,7 @@ switch ($action) {
         if (!in_array($estado, array('programado', 'desbloqueado', 'reservado', 'cancelado'), true)) {
           $estado = 'programado';
         }
-        $tipo = isset($e['tipo']) && $e['tipo'] === 'ruleta' ? 'ruleta' : 'escrito';
+        $tipo = $tipoEntra;
         $giros = isset($e['giros']) ? (int) $e['giros'] : 1;
         $giros = max(1, min(20, $giros));
 

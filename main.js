@@ -3039,6 +3039,12 @@
     var pidiendo = false;   // hay un reclamo en curso (evita el doble toque)
     var tickTimer = null;
     var pollTimer = null;
+    /* Acaba de ganar y está viendo el "¡GANASTE!". Mientras dure, el panel se
+       queda quieto: ni se repinta con el premio siguiente ni se esconde.
+       Sin esto, el sondeo llegaba a los pocos milisegundos, veía que el premio
+       ya tenía dueño y borraba la pantalla de la felicitación antes de que la
+       persona alcanzara a leerla o a tocar nada. */
+    var festejando = false;
 
     function t(clave, porDefecto) {
       var v = textos[clave];
@@ -3064,8 +3070,10 @@
       var abierto = !!(estado && estado.hayPremio && faltan() <= 0);
       if (iconoEl) iconoEl.textContent = abierto ? "🔓" : (cfg.icono || "🔒");
       wrap.classList.toggle("is-open-prize", abierto);
-      // "ocultar el botón cuando no haya ningún premio programado"
-      var ocultar = cfg.ocultarSinPremio && (!estado || !estado.hayPremio);
+      /* "ocultar el botón cuando no haya ningún premio programado" — pero
+         nunca mientras está leyendo que ganó: si el suyo era el último, el
+         botón se desvanecía con la felicitación adentro. */
+      var ocultar = cfg.ocultarSinPremio && (!estado || !estado.hayPremio) && !festejando;
       wrap.hidden = !!ocultar;
     }
 
@@ -3202,6 +3210,10 @@
       var giros = Number(res.girosEntregados || res.giros || 0);
       var esRuleta = res.tipo === "ruleta" && giros > 0;
 
+      /* Desde acá el panel es suyo: nada lo repinta ni lo esconde hasta que
+         lo cierre. Antes el sondeo se lo borraba a los pocos milisegundos. */
+      festejando = true;
+
       mostrarMensaje(
         '<p class="locked-title">🎉 ¡GANASTE!</p>' +
         '<p class="locked-prize">' + escHTML(res.prizeIcon || "🎁") + " " + escHTML(res.prizeName || "") + "</p>" +
@@ -3209,13 +3221,19 @@
           ? '<p class="locked-text">Ganaste ' + giros + (giros === 1 ? " giro" : " giros") +
             " en la ruleta. Girá y mirá qué te toca.</p>" +
             '<button type="button" class="locked-claim" data-locked-ruleta>🎡 GIRAR LA RULETA</button>'
-          : '<p class="locked-text">Te quedó guardado en el botón 🎁 de arriba. Mostralo en el local para reclamarlo.</p>')
+          : '<p class="locked-text">Ya te lo guardamos. Mostralo en el local para reclamarlo.</p>' +
+            '<button type="button" class="locked-claim" data-locked-vermis>🎁 VER MIS PREMIOS</button>')
       );
 
-      if (esRuleta) {
-        var ir = $("[data-locked-ruleta]", cuerpo);
-        if (ir) ir.addEventListener("click", function () { cerrar(); abrirRuleta(); });
-      }
+      var ir = $("[data-locked-ruleta]", cuerpo);
+      if (ir) ir.addEventListener("click", function () { cerrar(); abrirRuleta(); });
+
+      var ver = $("[data-locked-vermis]", cuerpo);
+      if (ver) ver.addEventListener("click", function () {
+        cerrar();
+        if (window.__openGiftPanel) window.__openGiftPanel();
+      });
+
       safe(refreshGiftFab, "refreshGiftFab");   // que aparezca ya en el 🎁
       refrescar();
     }
@@ -3232,8 +3250,9 @@
           estado = res;
           pintarBoton();
           /* Si el panel está cerrado NO se abre: solo se repinta lo que ya
-             estuviera abierto, para que no quede con datos viejos. */
-          if (!panel.hidden) {
+             estuviera abierto, para que no quede con datos viejos. Y si está
+             festejando, tampoco: esa pantalla es suya hasta que la cierre. */
+          if (!panel.hidden && !festejando) {
             var cambioDeFase = !antes || antes.estado !== res.estado || antes.id !== res.id;
             if (cambioDeFase) pintarPanel();
           }
@@ -3271,11 +3290,17 @@
     function abrir() {
       panel.hidden = false;
       btn.setAttribute("aria-expanded", "true");
+      festejando = false;   // vuelve a mandar el estado real
       pintarPanel();
     }
     function cerrar() {
       panel.hidden = true;
       btn.setAttribute("aria-expanded", "false");
+      // se acabó la felicitación: el botón vuelve a obedecer al servidor
+      if (festejando) {
+        festejando = false;
+        pintarBoton();
+      }
     }
     btn.addEventListener("click", function () {
       if (panel.hidden) abrir(); else cerrar();

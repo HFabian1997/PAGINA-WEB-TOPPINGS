@@ -3380,7 +3380,8 @@
       "</div>" +
       '<div class="rp-body" hidden>' +
         '<div class="field-grid">' +
-          "<label class='full'>Nombre del premio <input type='text' data-lk='prizeName'></label>" +
+          "<label class='full'>Nombre del premio <input type='text' data-lk='prizeName' placeholder='Salchipapa sencilla'>" +
+            "<span class='hint' data-lk-nombre-nota></span></label>" +
           "<label>Ícono <input type='text' data-lk='prizeIcon' maxlength='4' placeholder='🎁'></label>" +
           "<label>Qué se gana <select data-lk='tipo'>" +
             "<option value='escrito'>Un premio escrito (código)</option>" +
@@ -3434,6 +3435,12 @@
       if (t) t.textContent = modo === "una" ? "Se desbloquea el" : "Se desbloquea por primera vez el";
       var nota = row.querySelector("[data-lk-nota]");
       if (nota) nota.textContent = NOTAS[modo] || "";
+      var notaNombre = row.querySelector("[data-lk-nombre-nota]");
+      if (notaNombre) {
+        notaNombre.textContent = esRuleta
+          ? "Opcional: lo que se gana lo decide el giro. Si lo dejás vacío se llama solo."
+          : "";
+      }
       var est = row.querySelector("[data-lk-estado]");
       if (est) {
         var resumen = lockedResumen(p);
@@ -3585,7 +3592,11 @@
       var falta = null;
       editables.some(function (p) {
         var modo = p.repite || "una";
-        if (!String(p.prizeName || "").trim()) { falta = "Hay un premio sin nombre."; return true; }
+        /* Con la ruleta el nombre es opcional: lo que se gana lo decide el
+           giro. El servidor le arma uno ("2 giros en la ruleta") si va vacío. */
+        if ((p.tipo || "escrito") !== "ruleta" && !String(p.prizeName || "").trim()) {
+          falta = "Hay un premio sin nombre."; return true;
+        }
         if (modo === "horasDelDia") {
           if (!(p.horas || []).length) { falta = 'A "' + p.prizeName + '" le faltan las horas del día.'; return true; }
         } else if (!p.unlockAt) {
