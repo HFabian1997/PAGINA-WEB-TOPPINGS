@@ -280,13 +280,76 @@
     /* ---- tamaño del canvas: 100% del ancho de su tarjeta, nunca más — así
        nunca causa desplazamiento horizontal de la página. ---- */
     var W = 0, H = 0, DPR = Math.min(window.devicePixelRatio || 1, 2);
-    function resizeCanvas() {
+    function resizeCanvas(forzar) {
       var rect = canvasWrap.getBoundingClientRect();
-      W = Math.max(240, Math.round(rect.width));
-      H = Math.max(140, Math.round(rect.height));
+      var nuevoW = Math.max(240, Math.round(rect.width));
+      var nuevoH = Math.max(140, Math.round(rect.height));
+
+      /* En el celular, esconder o mostrar la barra de direcciones cambia el
+         alto de la ventana y dispara un `resize`. Si redimensionáramos ahí,
+         el lienzo se estiraría y encogería en plena partida — que es justo
+         lo que se veía. Un cambio CHICO de alto sin cambio de ancho es la
+         barra; una rotación cambia el ancho o mueve el alto muchísimo. */
+      if (!forzar && W && state && !state.over) {
+        var mismoAncho = nuevoW === W;
+        var cambioDeAlto = H ? Math.abs(nuevoH - H) / H : 1;
+        if (mismoAncho && cambioDeAlto < 0.15) return;
+      }
+
+      W = nuevoW;
+      H = nuevoH;
       canvas.width = Math.round(W * DPR);
       canvas.height = Math.round(H * DPR);
       ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      olvidarDegradados();   // los que dependen del tamaño hay que rehacerlos
+    }
+
+    /* ---- degradados guardados ----
+       Armar un degradado no es gratis: el navegador tiene que construir la
+       rampa de colores. Hacerlo en CADA cuadro son cientos de objetos por
+       segundo que después hay que recoger; un celular potente lo absorbe sin
+       enterarse, uno viejo se traba. Acá se arman una vez y se reusan.
+
+       Los que dependen del tamaño del lienzo se olvidan al redimensionar
+       (resizeCanvas los borra). Los de las monedas y el brillo se dibujan en
+       coordenadas locales —adentro de un translate— así que valen siempre. */
+    var degradados = {};
+    function olvidarDegradados() { degradados = {}; }
+    var TOPE_DEGRADADOS = 120;
+    function degradado(clave, armar) {
+      var g = degradados[clave];
+      if (!g) {
+        // si alguna clave variara más de lo previsto, se vacía y se empieza de
+        // nuevo: nunca crece sin control
+        if (Object.keys(degradados).length > TOPE_DEGRADADOS) degradados = {};
+        g = armar();
+        degradados[clave] = g;
+      }
+      return g;
+    }
+
+    /* ---- modo ligero ----
+       En celulares sin potencia el juego se traba. En vez de dejarlo así o
+       bajarle la calidad a todo el mundo, se mide cómo va de verdad: si varios
+       cuadros seguidos tardan demasiado, se apagan los adornos caros y se baja
+       la resolución del lienzo. Si el celular responde bien, no se toca nada.
+
+       Bajar DPR de 2 a 1 es la palanca más grande que hay: son cuatro veces
+       menos píxeles que pintar. */
+    var modoLigero = false;
+    var cuadrosLentos = 0;
+    var MS_CUADRO_MALO = 34;      // por debajo de ~30 cuadros por segundo
+    var CUADROS_PARA_BAJAR = 45;  // ~1,5 s seguidos yendo mal, no un tirón suelto
+
+    function vigilarRendimiento(dtSegundos) {
+      if (modoLigero) return;
+      if (dtSegundos * 1000 > MS_CUADRO_MALO) cuadrosLentos++;
+      else cuadrosLentos = Math.max(0, cuadrosLentos - 2);   // se perdona un bache
+      if (cuadrosLentos < CUADROS_PARA_BAJAR) return;
+
+      modoLigero = true;
+      if (DPR > 1) { DPR = 1; resizeCanvas(true); }
+      else olvidarDegradados();
     }
 
     /* ---- constantes del juego ---- */
@@ -971,22 +1034,34 @@
     }
 
     function drawBackground() {
-      var grad = ctx.createLinearGradient(0, 0, 0, groundY());
-      grad.addColorStop(0, "#241631");
-      grad.addColorStop(0.55, "#8a3f2c");
-      grad.addColorStop(1, "#3a2418");
-      ctx.fillStyle = grad;
+      ctx.fillStyle = degradado("cielo", function () {
+        var g = ctx.createLinearGradient(0, 0, 0, groundY());
+        g.addColorStop(0, "#241631");
+        g.addColorStop(0.55, "#8a3f2c");
+        g.addColorStop(1, "#3a2418");
+        return g;
+      });
       ctx.fillRect(0, 0, W, groundY());
 
       // luna, con un halo suave
       var moonX = W * (0.72 + state.moonSeed * 0.15);
       var moonY = groundY() * 0.16;
       var moonR = 15;
-      var halo = ctx.createRadialGradient(moonX, moonY, moonR * 0.6, moonX, moonY, moonR * 3.2);
-      halo.addColorStop(0, "rgba(255,244,214,.25)");
-      halo.addColorStop(1, "rgba(255,244,214,0)");
-      ctx.fillStyle = halo;
-      ctx.beginPath(); ctx.arc(moonX, moonY, moonR * 3.2, 0, Math.PI * 2); ctx.fill();
+      /* El halo se arma centrado en (0,0) y se mueve con translate: así no
+         depende de dónde caiga la luna y se puede guardar. En modo ligero se
+         salta — es de los adornos más caros de pintar. */
+      if (!modoLigero) {
+        ctx.save();
+        ctx.translate(moonX, moonY);
+        ctx.fillStyle = degradado("halo", function () {
+          var g = ctx.createRadialGradient(0, 0, moonR * 0.6, 0, 0, moonR * 3.2);
+          g.addColorStop(0, "rgba(255,244,214,.25)");
+          g.addColorStop(1, "rgba(255,244,214,0)");
+          return g;
+        });
+        ctx.beginPath(); ctx.arc(0, 0, moonR * 3.2, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
       ctx.fillStyle = "#fff4d6";
       ctx.beginPath(); ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = "rgba(138,63,44,.35)";
@@ -1132,11 +1207,13 @@
       if (p.type === "coin") {
         var pulse = 1 + Math.sin(state.elapsed * 6 + p.x * 0.05) * 0.08;
         ctx.scale(pulse, pulse);
-        var coinGrad = ctx.createRadialGradient(-p.r * 0.3, -p.r * 0.3, 1, 0, 0, p.r);
-        coinGrad.addColorStop(0, "#fff6c8");
-        coinGrad.addColorStop(0.5, "#FFD400");
-        coinGrad.addColorStop(1, "#c98f00");
-        ctx.fillStyle = coinGrad;
+        ctx.fillStyle = degradado("moneda:" + p.r, function () {
+          var g = ctx.createRadialGradient(-p.r * 0.3, -p.r * 0.3, 1, 0, 0, p.r);
+          g.addColorStop(0, "#fff6c8");
+          g.addColorStop(0.5, "#FFD400");
+          g.addColorStop(1, "#c98f00");
+          return g;
+        });
         ctx.beginPath(); ctx.arc(0, 0, p.r, 0, Math.PI * 2); ctx.fill();
         ctx.strokeStyle = "rgba(122,90,0,.5)"; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.arc(0, 0, p.r - 0.5, 0, Math.PI * 2); ctx.stroke();
@@ -1146,11 +1223,15 @@
         ctx.font = "bold 8px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
         ctx.fillText("T", 0, 0.5);
       } else {
-        var glow = ctx.createRadialGradient(0, 0, 1, 0, 0, 14);
-        glow.addColorStop(0, "rgba(255,212,0,.4)");
-        glow.addColorStop(1, "rgba(255,212,0,0)");
-        ctx.fillStyle = glow;
-        ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.fill();
+        if (!modoLigero) {
+          ctx.fillStyle = degradado("brillo", function () {
+            var g = ctx.createRadialGradient(0, 0, 1, 0, 0, 14);
+            g.addColorStop(0, "rgba(255,212,0,.4)");
+            g.addColorStop(1, "rgba(255,212,0,0)");
+            return g;
+          });
+          ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.fill();
+        }
         ctx.font = "15px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
         ctx.fillText(POWERUP_ICON[p.type] === "2×" ? "✨" : POWERUP_ICON[p.type], 0, 0);
       }
@@ -1174,10 +1255,12 @@
       // parte real del camino, no un adorno encima.
       state.terrain.forEach(function (t) {
         if (t.isPit) {
-          var pitGrad = ctx.createLinearGradient(0, groundY(), 0, groundY() + GROUND_H);
-          pitGrad.addColorStop(0, "#000");
-          pitGrad.addColorStop(1, "#1a0f08");
-          ctx.fillStyle = pitGrad;
+          ctx.fillStyle = degradado("hueco", function () {
+            var g = ctx.createLinearGradient(0, groundY(), 0, groundY() + GROUND_H);
+            g.addColorStop(0, "#000");
+            g.addColorStop(1, "#1a0f08");
+            return g;
+          });
           ctx.fillRect(t.x, groundY(), t.w, GROUND_H);
           ctx.strokeStyle = "rgba(255,90,60,.55)"; ctx.lineWidth = 1.5;
           ctx.beginPath(); ctx.moveTo(t.x, groundY()); ctx.lineTo(t.x, groundY() + GROUND_H); ctx.stroke();
@@ -1185,10 +1268,18 @@
           return;
         }
         var ty0 = groundY() - t.h0, ty1 = groundY() - t.h1;
-        var tGrad = ctx.createLinearGradient(0, Math.min(ty0, ty1), 0, Math.max(ty0, ty1) + GROUND_H);
-        tGrad.addColorStop(0, "rgba(255,255,255,.14)");
-        tGrad.addColorStop(1, "rgba(255,255,255,.03)");
-        ctx.fillStyle = tGrad;
+        /* Este va por tramo de suelo, y su rampa depende solo del alto del
+           tramo (la x ya es 0). Se guarda por ese alto redondeado: las alturas
+           del terreno salen de un puñado de escalones, así que casi siempre
+           acierta. El tope evita que crezca sin control si aparecieran muchas. */
+        var tArriba = Math.round(Math.min(ty0, ty1));
+        var tAbajo = Math.round(Math.max(ty0, ty1) + GROUND_H);
+        ctx.fillStyle = degradado("suelo:" + tArriba + ":" + tAbajo, function () {
+          var g = ctx.createLinearGradient(0, tArriba, 0, tAbajo);
+          g.addColorStop(0, "rgba(255,255,255,.14)");
+          g.addColorStop(1, "rgba(255,255,255,.03)");
+          return g;
+        });
         if (t.stepped && t.h0 !== t.h1) {
           // escalera: mismo perfil de altura por debajo (la física no
           // cambia), pero se dibuja en bloques en vez de una rampa lisa
@@ -1666,15 +1757,18 @@
 
     function loop(ts) {
       if (lastTs == null) lastTs = ts;
-      var dt = Math.min(0.05, (ts - lastTs) / 1000);
+      var dtReal = (ts - lastTs) / 1000;
+      var dt = Math.min(0.05, dtReal);
       lastTs = ts;
+      // se mide con el tiempo REAL, no con el recortado, o nunca se notaría
+      vigilarRendimiento(dtReal);
       update(dt);
       draw();
       if (state && !state.over) rafId = requestAnimationFrame(loop);
     }
 
     function startGame() {
-      resizeCanvas();
+      resizeCanvas(true);   // al empezar sí se mide de cero
       resetGame();
       lastTs = null;
       if (rafId) cancelAnimationFrame(rafId);
