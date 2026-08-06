@@ -310,8 +310,11 @@
           var v = input.type === "checkbox" ? input.checked : input.value;
           if (input.type === "number") v = Number(v) || 0;
           setPath(state.content, path, v);
+          // el campo de horas solo aparece con el ranking personalizado
+          if (input.getAttribute("data-field") === "rankingType") renderRankingHoursVisibility();
           markDirty();
         };
+        if (input.getAttribute("data-field") === "rankingType") input.onchange = input.oninput;
       });
     });
 
@@ -560,7 +563,18 @@
   }
 
   function rankingTypeLabel(t) {
-    return t === "daily" ? "Diario" : t === "hourly" ? "Por horas" : "Semanal";
+    if (t === "daily") return "Diario";
+    if (t === "hourly") return "Por horas";
+    if (t === "custom") return "Personalizado";
+    return "Semanal";
+  }
+
+  /* El campo de horas solo tiene sentido con el tipo personalizado. */
+  function renderRankingHoursVisibility() {
+    var sel = $('[data-field="rankingType"]');
+    var campo = $("[data-ranking-hours]");
+    if (!sel || !campo) return;
+    campo.hidden = sel.value !== "custom";
   }
 
   function renderRankingStatus() {
@@ -1919,6 +1933,7 @@
     renderModalStyleVisibility();
     renderNameChangeModeVisibility();
     renderRankingStatus();
+    renderRankingHoursVisibility();
     renderAllRewardTypeVisibility();
     fetchCodesStats();
     renderChallengeStatus();

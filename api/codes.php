@@ -176,6 +176,63 @@ switch ($action) {
     jsonOut(array('ok' => true, 'codes' => $mine));
   }
 
+  /**
+   * ¿Este celular tiene premios que se guardaron solos y de los que todavía
+   * no se le avisó? Solo cuentan los que siguen pendientes de entrega: si ya
+   * se lo entregaron, avisarle "ganaste" a destiempo no tiene sentido.
+   *
+   * Igual que 'mine', se filtra por deviceId con hash_equals, así que nadie
+   * puede pedir las novedades de otra persona.
+   */
+  case 'news': {
+    $deviceId = isset($_GET['deviceId']) ? trim((string) $_GET['deviceId']) : '';
+    if ($deviceId === '') jsonOut(array('ok' => true, 'nuevos' => 0, 'premios' => array()));
+
+    $nuevos = array();
+    codesWithWriteLock(function ($state) use ($deviceId, &$nuevos) {
+      expireCodes($state);
+      foreach ($state['codes'] as $c) {
+        if (!hash_equals((string) $c['deviceId'], (string) $deviceId)) continue;
+        if ($c['status'] !== 'available' && $c['status'] !== 'waiting') continue;
+        // los registros viejos no traen 'notified' y cuentan como ya avisados
+        if (!array_key_exists('notified', $c) || !empty($c['notified'])) continue;
+        $nuevos[] = array(
+          'code' => $c['code'], 'prizeName' => $c['prizeName'],
+          'prizeIcon' => $c['prizeIcon'], 'source' => $c['source'],
+        );
+      }
+      return $state;
+    });
+    jsonOut(array('ok' => true, 'nuevos' => count($nuevos), 'premios' => $nuevos));
+  }
+
+  /**
+   * Marca como avisados los premios nuevos de este celular. El cliente lo
+   * llama DESPUÉS de mostrar la tarjeta: si se llamara antes y se cortara la
+   * conexión, la persona nunca se enteraría de que ganó.
+   */
+  case 'mark-notified': {
+    if ($method !== 'POST') jsonOut(array('ok' => false, 'error' => 'Método no permitido.'), 405);
+    $body = json_decode(file_get_contents('php://input'), true);
+    if (!is_array($body)) $body = array();
+    $deviceId = isset($body['deviceId']) ? trim((string) $body['deviceId']) : '';
+    if ($deviceId === '') jsonOut(array('ok' => false, 'error' => 'Falta identificar el dispositivo.'), 400);
+
+    $marcados = 0;
+    codesWithWriteLock(function ($state) use ($deviceId, &$marcados) {
+      foreach ($state['codes'] as &$c) {
+        if (!hash_equals((string) $c['deviceId'], (string) $deviceId)) continue;
+        if (array_key_exists('notified', $c) && empty($c['notified'])) {
+          $c['notified'] = true;
+          $marcados++;
+        }
+      }
+      unset($c);
+      return $state;
+    });
+    jsonOut(array('ok' => true, 'marcados' => $marcados));
+  }
+
   case 'employee-pending': {
     if ($method !== 'POST') jsonOut(array('ok' => false, 'error' => 'Método no permitido.'), 405);
     $body = json_decode(file_get_contents('php://input'), true);

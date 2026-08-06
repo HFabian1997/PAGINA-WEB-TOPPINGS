@@ -3441,6 +3441,86 @@
     setTimeout(function () { card.classList.add("is-in"); }, 30);
   }
 
+  /* ---- Premios que se guardaron solos mientras no estaba ----
+     Toppings Run entrega el premio sin pedir que nadie toque nada, así que
+     hace falta contárselo cuando vuelva. Se muestra UNA tarjeta aunque haya
+     varios premios: cinco ventanas seguidas serían insoportables. */
+  var ORIGEN_PREMIO = {
+    toppingsRun: "Toppings Run", loyalty: "tu tarjeta de fidelidad",
+    cronometro: "el cronómetro", challenge: "el reto", ruleta: "la ruleta",
+    stoptime: "Detén el tiempo", redeem: "un código", aviso: "un aviso",
+    "premio-bloqueado": "el Premio Bloqueado"
+  };
+
+  function mostrarPremiosNuevos() {
+    var deviceId = getDeviceId();
+    if (!deviceId) return;
+
+    fetch(CODES_API + "?action=news&deviceId=" + encodeURIComponent(deviceId) + "&_=" + Date.now(),
+      { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .catch(function () { return null; })
+      .then(function (res) {
+        if (!res || !res.ok || !res.nuevos) return;
+
+        var nombre = "";
+        try { nombre = localStorage.getItem(LOYALTY_NAME_KEY) || ""; } catch (e) {}
+        var titulo = nombre ? "🎉 ¡Hola, " + nombre + "!" : "🎉 ¡Tenés premio!";
+
+        var texto;
+        if (res.nuevos === 1) {
+          var p = res.premios[0] || {};
+          var origen = ORIGEN_PREMIO[p.source] || "TOPPINGS";
+          texto = "Ganaste " + (p.prizeIcon || "🎁") + " " + (p.prizeName || "un premio") +
+                  " en " + origen + ".\nYa lo guardamos en 🎁 Mis premios.";
+        } else {
+          texto = "Tienes " + res.nuevos + " nuevos premios guardados en 🎁 Mis premios.";
+        }
+
+        var vieja = $("[data-notif-toast]");
+        if (vieja && vieja.parentNode) vieja.parentNode.removeChild(vieja);
+
+        var card = document.createElement("div");
+        card.className = "notif-toast";
+        card.setAttribute("data-notif-toast", "");
+        card.innerHTML =
+          '<button type="button" class="notif-toast-close" aria-label="Cerrar">&times;</button>' +
+          '<p class="notif-toast-title">' + escHTML(titulo) + "</p>" +
+          '<p class="notif-toast-msg">' + escHTML(texto) + "</p>";
+
+        var ver = document.createElement("button");
+        ver.type = "button";
+        ver.className = "btn btn-primary notif-toast-btn";
+        ver.textContent = "🎁 VER MIS PREMIOS";
+        ver.addEventListener("click", function () {
+          cerrar();
+          if (window.__openGiftPanel) window.__openGiftPanel();
+        });
+        card.appendChild(ver);
+
+        function cerrar() {
+          card.classList.remove("is-in");
+          setTimeout(function () {
+            if (card.parentNode) card.parentNode.removeChild(card);
+          }, 260);
+        }
+        card.querySelector(".notif-toast-close").addEventListener("click", cerrar);
+
+        document.body.appendChild(card);
+        setTimeout(function () { card.classList.add("is-in"); }, 30);
+
+        /* Recién ahora se marcan, con la tarjeta ya puesta. Si se marcaran
+           antes y se cortara la conexión, la persona no se enteraría nunca de
+           que ganó. El premio sigue en Mis premios pase lo que pase. */
+        fetch(CODES_API + "?action=mark-notified", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ deviceId: deviceId })
+        }).catch(function () {});
+
+        safe(refreshGiftFab, "refreshGiftFab");
+      });
+  }
+
   function refreshGiftFab() {
     var btn = $("[data-fab-gift]");
     if (!btn) return;
@@ -3824,6 +3904,9 @@
     safe(initPresencePing, "initPresencePing");
     safe(limpiarPushViejo, "limpiarPushViejo");
     safe(refreshGiftFab, "refreshGiftFab");
+    // una sola vez al entrar, no en el repaso de cada 30 s: es un aviso de
+    // "ganaste", no un dato que haya que refrescar
+    safe(mostrarPremiosNuevos, "mostrarPremiosNuevos");
     setInterval(function () { safe(refreshGiftFab, "refreshGiftFab"); }, 30000);
 
     document.documentElement.classList.add("is-ready");

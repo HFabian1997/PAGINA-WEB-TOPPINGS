@@ -574,7 +574,12 @@
             <option value="daily">🟢 Ranking Diario</option>
             <option value="weekly">🟢 Ranking Semanal</option>
             <option value="hourly">🟡 Ranking por horas (para pruebas)</option>
+            <option value="custom">⏱️ Cada tantas horas (lo defines vos)</option>
           </select>
+        </label>
+        <label data-ranking-hours>Cierra cada cuántas horas
+          <input type="number" data-field="periodHours" min="0.01" step="0.25" placeholder="2">
+          <span class="hint">Acepta decimales: 0.5 es media hora y 0.05 son 3 minutos, útil para probar sin esperar.</span>
         </label>
       </div>
 

@@ -65,7 +65,7 @@ function configuredRankingType() {
   $content = $raw ? json_decode($raw, true) : null;
   $type = is_array($content) && isset($content['dailyPrize']['toppingsRun']['rankingType'])
     ? $content['dailyPrize']['toppingsRun']['rankingType'] : 'weekly';
-  return in_array($type, array('daily', 'hourly'), true) ? $type : 'weekly';
+  return in_array($type, array('daily', 'hourly', 'custom'), true) ? $type : 'weekly';
 }
 
 /** Lee, para el ranking, si el admin lo configuró como premio directo o
@@ -124,12 +124,39 @@ function currentWeekStartDate() {
   return date('Y-m-d', strtotime('today -' . ($dow - 1) . ' days'));
 }
 
+/**
+ * Cada cuántas horas cierra el ranking cuando el tipo es "personalizado".
+ * Acepta fracciones (0.05 = 3 minutos), que es lo que lo hace útil para
+ * probar sin esperar a la hora en punto.
+ */
+function configuredRankingHours() {
+  global $CONTENT_FILE;
+  if (!file_exists($CONTENT_FILE)) return 2;
+  $raw = @file_get_contents($CONTENT_FILE);
+  $content = $raw ? json_decode($raw, true) : null;
+  $cfg = is_array($content) && isset($content['dailyPrize']['toppingsRun']) ? $content['dailyPrize']['toppingsRun'] : array();
+  $h = isset($cfg['periodHours']) ? (float) $cfg['periodHours'] : 2;
+  if ($h < 0.01) $h = 0.01;        // ~36 segundos, el mínimo con sentido
+  if ($h > 24 * 30) $h = 24 * 30;
+  return $h;
+}
+
 function newPeriodStart($type) {
+  /* El personalizado arranca EN ESTE INSTANTE, no al filo de la hora: si
+     cerrara al filo, poner "cada 2 horas" a las 14:50 daría un primer periodo
+     de 10 minutos. Por eso guarda la hora exacta y no solo el día. */
+  if ($type === 'custom') return date('Y-m-d H:i:s');
   if ($type === 'hourly') return date('Y-m-d H:00');
   return $type === 'daily' ? date('Y-m-d') : currentWeekStartDate();
 }
 
-function periodEndForType($type, $startDateStr) {
+function periodEndForType($type, $startDateStr, $horas = null) {
+  if ($type === 'custom') {
+    $h = $horas !== null ? (float) $horas : configuredRankingHours();
+    $inicio = strtotime($startDateStr);
+    if ($inicio === false) $inicio = time();
+    return (int) round(($inicio + $h * 3600) * 1000);
+  }
   if ($type === 'hourly') return (strtotime($startDateStr . ':00') + 3600) * 1000;
   $days = $type === 'daily' ? 1 : 7;
   return (strtotime($startDateStr . ' 00:00:00') + $days * 86400) * 1000;
@@ -141,6 +168,7 @@ function defaultState() {
   return array(
     'rankingType' => $type,
     'periodStart' => $start,
+    'periodHours' => $type === 'custom' ? configuredRankingHours() : null,
     'periodEndAtMs' => periodEndForType($type, $start),
     'scores' => array(),
     // Registro permanente de nombres: deviceId => {name, updatedAt}. Vive
@@ -340,9 +368,13 @@ function computeWinner($scores) {
 
 function resetPeriod(&$state, $type) {
   $start = newPeriodStart($type);
+  $horas = configuredRankingHours();
   $state['rankingType'] = $type;
   $state['periodStart'] = $start;
-  $state['periodEndAtMs'] = periodEndForType($type, $start);
+  // se guarda con el periodo: si mañana cambia la configuración, el periodo
+  // que ya está corriendo termina cuando prometió y no antes
+  $state['periodHours'] = $type === 'custom' ? $horas : null;
+  $state['periodEndAtMs'] = periodEndForType($type, $start, $horas);
   $state['scores'] = array();
   $state['winner'] = null;
   $state['claim'] = array('status' => 'waiting', 'windowEndsAtMs' => null, 'claimedAt' => null, 'claimedName' => null, 'claimedDevice' => null);
@@ -412,7 +444,15 @@ function entregarPremioRanking(&$state, $winner) {
  */
 function ensureRankingState(&$state) {
   $configured = configuredRankingType();
-  if ($state['claim']['status'] === 'waiting' && $configured !== $state['rankingType']) {
+  $cambio = $configured !== $state['rankingType'];
+  /* En el personalizado el tipo no cambia al mover las horas, así que hay que
+     mirarlas aparte: si no, poner "cada 1 hora" en vez de "cada 6" no tendría
+     efecto hasta que cerrara el periodo viejo. */
+  if (!$cambio && $configured === 'custom') {
+    $actuales = isset($state['periodHours']) ? (float) $state['periodHours'] : 0;
+    $cambio = abs(configuredRankingHours() - $actuales) > 0.0001;
+  }
+  if ($state['claim']['status'] === 'waiting' && $cambio) {
     resetPeriod($state, $configured);
   }
 
