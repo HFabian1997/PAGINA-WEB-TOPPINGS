@@ -88,16 +88,38 @@ if (!function_exists('redeemDataFile')) {
     return null;
   }
 
-  /** Cuántas veces se usó un cupón en total, y cuántas esta persona. */
-  function redeemCountUses($state, $codeId, $deviceId) {
+  /**
+   * Cuántas veces se usó un cupón en total, y cuántas esta persona.
+   *
+   * `$desdeMs` es la ventana para reutilizar: si el cupón se puede volver a
+   * usar cada tantas horas, solo cuentan los canjes de esta persona dentro de
+   * ese plazo. Los de antes ya no estorban, y por eso el mismo código le sirve
+   * de nuevo. Con 0 se cuentan todos, que es como funcionó siempre.
+   *
+   * `total` NO se filtra nunca: el tope total del cupón es de por vida.
+   *
+   * Devuelve además `mias`, las horas exactas de esos canjes ordenadas de más
+   * viejo a más nuevo, para poder decirle a la persona cuándo se le libera.
+   */
+  function redeemCountUses($state, $codeId, $deviceId, $desdeMs = 0) {
     $total = 0;
-    $mine = 0;
+    $mias = array();
     foreach ($state['redemptions'] as $r) {
       if (!isset($r['codeId']) || $r['codeId'] !== $codeId) continue;
       $total++;
-      if ($deviceId !== '' && isset($r['deviceId']) && $r['deviceId'] === $deviceId) $mine++;
+      if ($deviceId === '' || !isset($r['deviceId']) || $r['deviceId'] !== $deviceId) continue;
+      $cuando = isset($r['redeemedAt']) ? (int) $r['redeemedAt'] : 0;
+      if ($desdeMs > 0 && $cuando < $desdeMs) continue;   // fuera de la ventana
+      $mias[] = $cuando;
     }
-    return array('total' => $total, 'mine' => $mine);
+    sort($mias);
+    return array('total' => $total, 'mine' => count($mias), 'mias' => $mias);
+  }
+
+  /** Cada cuántos milisegundos se le libera el cupón a la misma persona. */
+  function redeemCooldownMs($c) {
+    $h = isset($c['cooldownHours']) ? (float) $c['cooldownHours'] : 0;
+    return $h > 0 ? (int) round($h * 3600 * 1000) : 0;
   }
 
   /** Normaliza un cupón que llega del panel, con valores por defecto seguros. */
@@ -120,6 +142,9 @@ if (!function_exists('redeemDataFile')) {
       // -1 = sin tope
       'maxUses' => isset($c['maxUses']) ? (int) $c['maxUses'] : -1,
       'usesPerPerson' => isset($c['usesPerPerson']) && (int) $c['usesPerPerson'] > 0 ? (int) $c['usesPerPerson'] : 1,
+      // 0 = una sola vez y listo. Con más de 0, a la misma persona se le
+      // vuelve a habilitar el cupón pasadas esas horas.
+      'cooldownHours' => isset($c['cooldownHours']) && (float) $c['cooldownHours'] > 0 ? (float) $c['cooldownHours'] : 0,
       // null = no vence
       'expiresAt' => isset($c['expiresAt']) && $c['expiresAt'] !== null && $c['expiresAt'] !== '' ? (int) $c['expiresAt'] : null,
       'active' => !empty($c['active']),

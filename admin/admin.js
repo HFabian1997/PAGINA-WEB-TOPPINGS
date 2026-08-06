@@ -2899,6 +2899,15 @@
         '<div class="ruleta-prize-grid">' +
           '<label>Máximo de usos en total (-1 = sin tope) <input type="number" data-c="maxUses"></label>' +
           '<label>Usos por persona <input type="number" min="1" data-c="usesPerPerson"></label>' +
+          '<label class="full">Se puede volver a usar <select data-rc-cooldown>' +
+            "<option value='0'>Nunca — una sola vez por persona</option>" +
+            "<option value='24'>Cada día</option>" +
+            "<option value='168'>Cada semana</option>" +
+            "<option value='720'>Cada mes</option>" +
+            "<option value='custom'>Cada tantas horas…</option>" +
+          "</select></label>" +
+          '<label data-rc-cooldown-custom>Cada cuántas horas <input type="number" min="0.5" step="0.5" data-c="cooldownHours"></label>' +
+          "<p class='hint full' data-rc-cooldown-nota></p>" +
           '<label class="full">Vence el (vacío = no vence) <input type="datetime-local" data-rc-expires></label>' +
         "</div>" +
 
@@ -2952,11 +2961,54 @@
           if (u) u.textContent = redeemUsesLabel(c);
         }
         if (key === "rewardType") paintType();
+        // las dos cosas cambian la frase de "se puede volver a usar"
+        if (key === "cooldownHours" || key === "usesPerPerson") {
+          cdNota.textContent = cdTexto(Number(c.cooldownHours) || 0);
+        }
         programarGuardado("codigos");
       };
     });
     typeSelect.addEventListener("change", paintType);
     paintType();
+
+    /* Cada cuánto se le libera el cupón a la MISMA persona. Los plazos comunes
+       están en la lista; el campo de horas solo aparece si elige otro. */
+    var cdSelect = row.querySelector("[data-rc-cooldown]");
+    var cdCustom = row.querySelector("[data-rc-cooldown-custom]");
+    var cdNota = row.querySelector("[data-rc-cooldown-nota]");
+    var CD_LISTA = ["0", "24", "168", "720"];
+
+    function cdTexto(h) {
+      if (!(h > 0)) return "Cada persona lo puede usar una sola vez y después le queda bloqueado.";
+      var cuanto = h < 24 ? (h + (h === 1 ? " hora" : " horas"))
+                 : (h % 24 === 0 ? ((h / 24) + ((h / 24) === 1 ? " día" : " días")) : (h + " horas"));
+      var veces = (c.usesPerPerson || 1) > 1 ? (c.usesPerPerson + " veces") : "una vez";
+      return "Cada persona lo puede usar " + veces + " y después se le vuelve a habilitar pasadas " + cuanto + ".";
+    }
+    function pintarCooldown() {
+      var h = Number(c.cooldownHours) || 0;
+      var esDeLista = CD_LISTA.indexOf(String(h)) >= 0;
+      cdSelect.value = esDeLista ? String(h) : "custom";
+      cdCustom.hidden = esDeLista;
+      cdNota.textContent = cdTexto(h);
+    }
+    cdSelect.addEventListener("change", function () {
+      if (cdSelect.value === "custom") {
+        // al pasar a personalizado se arranca en algo razonable, no en 0
+        if (!(Number(c.cooldownHours) > 0)) c.cooldownHours = 12;
+        cdCustom.hidden = false;
+        var campo = cdCustom.querySelector("input");
+        if (campo) { campo.value = c.cooldownHours; campo.focus(); }
+      } else {
+        c.cooldownHours = Number(cdSelect.value) || 0;
+        var c2 = cdCustom.querySelector("input");
+        if (c2) c2.value = c.cooldownHours;
+        cdCustom.hidden = true;
+      }
+      cdNota.textContent = cdTexto(Number(c.cooldownHours) || 0);
+      programarGuardado("codigos");
+    });
+    pintarCooldown();
 
     // La fecha se guarda en milisegundos, pero el campo del navegador habla en
     // hora local — se convierte en los dos sentidos.
@@ -3049,7 +3101,7 @@
         id: nuevoId("rdm_"), code: "", internalName: "", description: "",
         rewardType: "prize", prizeName: "", prizeIcon: "🎁", prizeExpiryHours: 24,
         wheelSpinCount: 1, wheelTicketExpiryHours: 24,
-        maxUses: -1, usesPerPerson: 1, expiresAt: null, active: true,
+        maxUses: -1, usesPerPerson: 1, cooldownHours: 0, expiresAt: null, active: true,
         usedCount: 0, redemptions: []
       });
       renderRedeemCodes();

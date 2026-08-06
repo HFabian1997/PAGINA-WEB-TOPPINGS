@@ -3548,6 +3548,19 @@
     max_uses: "Este código ya fue utilizado."
   };
 
+  /* Cuando el cupón se puede volver a usar cada tantas horas, el servidor
+     manda cuánto falta. Decirle "ya lo usaste" a secas suena a que nunca más
+     va a poder, y no es cierto: solo tiene que volver más tarde. */
+  function redeemEspera(ms) {
+    var min = Math.ceil(Number(ms) / 60000);
+    if (!(min > 0)) return "";
+    if (min < 60) return "Ya lo usaste. Podés volver a usarlo en " + min + (min === 1 ? " minuto." : " minutos.");
+    var horas = Math.ceil(min / 60);
+    if (horas < 24) return "Ya lo usaste. Podés volver a usarlo en " + horas + (horas === 1 ? " hora." : " horas.");
+    var dias = Math.ceil(horas / 24);
+    return "Ya lo usaste. Podés volver a usarlo en " + dias + (dias === 1 ? " día." : " días.");
+  }
+
   function initRedeemCode() {
     var input = $("[data-redeem-input]");
     var btn = $("[data-redeem-btn]");
@@ -3591,7 +3604,8 @@
 
           if (!res) { setMsg("No se pudo conectar. Revisa tu internet e intenta de nuevo.", "error"); return; }
           if (!res.ok) {
-            setMsg(REDEEM_REASONS[res.reason] || res.error || "No se pudo canjear el código.", "error");
+            var espera = res.disponibleEn ? redeemEspera(res.disponibleEn) : "";
+            setMsg(espera || REDEEM_REASONS[res.reason] || res.error || "No se pudo canjear el código.", "error");
             return;
           }
 

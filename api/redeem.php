@@ -105,9 +105,24 @@ switch ($action) {
         return null;
       }
 
-      $uses = redeemCountUses($state, $c['id'], $deviceId);
+      /* Si el cupón se puede volver a usar cada tantas horas, los canjes viejos
+         de esta persona ya no cuentan: solo miramos los de la ventana. Así el
+         mismo código le vuelve a servir sin que el negocio tenga que crear uno
+         nuevo cada día. */
+      $cooldown = redeemCooldownMs($c);
+      $desde = $cooldown > 0 ? $now - $cooldown : 0;
+      $uses = redeemCountUses($state, $c['id'], $deviceId, $desde);
       $perPerson = isset($c['usesPerPerson']) && (int) $c['usesPerPerson'] > 0 ? (int) $c['usesPerPerson'] : 1;
-      if ($uses['mine'] >= $perPerson) { $outcome = array('ok' => false, 'reason' => 'already_used'); return null; }
+      if ($uses['mine'] >= $perPerson) {
+        $outcome = array('ok' => false, 'reason' => 'already_used');
+        // con ventana se le puede decir cuánto falta, en vez de un "ya lo usaste"
+        // que suena a que nunca más va a poder
+        if ($cooldown > 0 && count($uses['mias'])) {
+          $falta = ($uses['mias'][0] + $cooldown) - $now;
+          if ($falta > 0) $outcome['disponibleEn'] = $falta;
+        }
+        return null;
+      }
 
       $maxUses = isset($c['maxUses']) ? (int) $c['maxUses'] : -1;
       if ($maxUses >= 0 && $uses['total'] >= $maxUses) { $outcome = array('ok' => false, 'reason' => 'max_uses'); return null; }
