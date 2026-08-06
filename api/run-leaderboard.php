@@ -99,6 +99,23 @@ function toppingsRunPrizeConfig() {
   );
 }
 
+/**
+ * ¿El premio del ranking se guarda solo o hay que tocar "Reclamar"?
+ *
+ * Toppings Run es el único que puede ser automático de verdad, porque los
+ * puntajes están en el servidor y acá sí se puede verificar quién ganó. Por
+ * eso viene automático de fábrica.
+ */
+function toppingsRunFormaEntrega() {
+  global $CONTENT_FILE;
+  if (!file_exists($CONTENT_FILE)) return 'automatico';
+  $raw = @file_get_contents($CONTENT_FILE);
+  $content = $raw ? json_decode($raw, true) : null;
+  $cfg = is_array($content) && isset($content['dailyPrize']['toppingsRun']) ? $content['dailyPrize']['toppingsRun'] : array();
+  $v = isset($cfg['formaEntrega']) ? (string) $cfg['formaEntrega'] : 'automatico';
+  return $v === 'reclamar' ? 'reclamar' : 'automatico';
+}
+
 function nowMs() { return (int) round(microtime(true) * 1000); }
 
 /** Lunes de esta semana (America/Bogota), como fecha Y-m-d. */
@@ -337,12 +354,54 @@ function appendHistory(&$state, $outcome) {
     'score' => $state['winner'] ? $state['winner']['score'] : null,
     'rankingType' => $state['rankingType'],
     'periodStart' => $state['periodStart'],
-    'outcome' => $outcome, // 'claimed' | 'expired' | 'admin-reset'
+    'outcome' => $outcome, // 'claimed' | 'auto' | 'expired' | 'admin-reset'
     'endedAt' => $state['periodEndAtMs'],
-    'claimedAt' => $outcome === 'claimed' ? nowMs() : null,
+    'claimedAt' => ($outcome === 'claimed' || $outcome === 'auto') ? nowMs() : null,
   );
   array_unshift($state['history'], $entry);
   $state['history'] = array_slice($state['history'], 0, 30);
+}
+
+/**
+ * Le entrega el premio al ganador del periodo SIN pedirle que toque nada.
+ *
+ * Ojo con dos cosas:
+ *
+ * 1. Esto solo se puede llamar desde dentro de withWriteLock() y guardando el
+ *    resultado. Si se llamara desde una lectura que no persiste, cada consulta
+ *    volvería a emitir un premio. Por eso `status` también toma el candado.
+ *    Al terminar se reinicia el periodo, así que la próxima vez ya no entra.
+ *
+ * 2. issuePrizeCode() y grantRuletaTickets() toman el candado de SUS archivos
+ *    mientras este tiene tomado el del ranking. Siempre en ese orden —ranking,
+ *    después premios— y nunca al revés, así que no hay bloqueo mutuo. Se hace
+ *    dentro del candado a propósito: garantiza que el premio salga UNA sola
+ *    vez aunque lleguen dos peticiones en el mismo instante.
+ *
+ * El premio queda en prize-codes.json, que resetPeriod() no toca: por eso
+ * sobrevive al reinicio del ranking y a que pasen los días.
+ */
+function entregarPremioRanking(&$state, $winner) {
+  $deviceId = isset($winner['deviceId']) ? trim((string) $winner['deviceId']) : '';
+  $nombre = isset($winner['name']) ? trim((string) $winner['name']) : '';
+
+  if ($deviceId !== '') {
+    $rewardCfg = toppingsRunRewardConfig();
+    if ($rewardCfg['rewardType'] === 'wheelSpins') {
+      grantRuletaTickets($deviceId, $nombre, 'toppingsRun',
+                         $rewardCfg['wheelSpinCount'], $rewardCfg['wheelTicketExpiryHours']);
+    } else {
+      $prizeCfg = toppingsRunPrizeConfig();
+      // el último false: nace SIN avisar, para que al volver a entrar le salga
+      // la tarjeta contándole que ganó
+      issuePrizeCode($deviceId, $nombre, 'toppingsRun',
+                     $prizeCfg['prizeName'], $prizeCfg['prizeIcon'],
+                     $prizeCfg['codeExpiryHours'], false);
+    }
+  }
+
+  appendHistory($state, 'auto');
+  resetPeriod($state, $state['rankingType']);
 }
 
 /**
@@ -363,8 +422,16 @@ function ensureRankingState(&$state) {
     $winner = computeWinner($state['scores']);
     if ($winner && $winner['score'] > 0) {
       $state['winner'] = $winner;
-      $state['claim']['status'] = 'available';
-      $state['claim']['windowEndsAtMs'] = $state['periodEndAtMs'] + $GLOBALS['CLAIM_WINDOW_MS'];
+      if (toppingsRunFormaEntrega() === 'automatico') {
+        /* Se guarda solo: no hay ventana para reclamar y por lo tanto el
+           premio no se puede perder por no entrar a tiempo. No hace falta que
+           el ganador esté conectado — esto corre la primera vez que CUALQUIERA
+           toque el ranking, y el premio sale a nombre de su deviceId. */
+        entregarPremioRanking($state, $winner);
+      } else {
+        $state['claim']['status'] = 'available';
+        $state['claim']['windowEndsAtMs'] = $state['periodEndAtMs'] + $GLOBALS['CLAIM_WINDOW_MS'];
+      }
     } else {
       resetPeriod($state, $state['rankingType']);
     }
@@ -452,8 +519,22 @@ switch ($action) {
     $name = isset($_GET['name']) ? trim((string) $_GET['name']) : '';
     if (function_exists('mb_substr')) $name = mb_substr($name, 0, $MAX_NAME_CHARS);
     $deviceId = isset($_GET['deviceId']) ? trim((string) $_GET['deviceId']) : '';
-    $state = readState();
-    ensureRankingState($state);
+    /* Antes esto leía sin candado y sin guardar, así que la máquina de estados
+       se recalculaba en memoria y se tiraba. Era inofensivo mientras todo lo
+       que hacía era mover un estado, pero ahora puede ENTREGAR un premio, y
+       sin guardar lo volvería a entregar en cada consulta. Con el candado, la
+       primera petición entrega y reinicia el periodo, y las siguientes ya
+       encuentran el periodo nuevo. */
+    $state = withWriteLock(function ($s) {
+      $antes = json_encode(array($s['periodStart'], $s['periodEndAtMs'], $s['claim'], $s['winner']));
+      ensureRankingState($s);
+      $despues = json_encode(array($s['periodStart'], $s['periodEndAtMs'], $s['claim'], $s['winner']));
+      // Devolver null hace que withWriteLock NO escriba y entregue el estado tal
+      // como venía. Como acá nada cambió, es el mismo. Esto importa: `status` se
+      // consulta cada pocos segundos y sería un disparate reescribir el archivo
+      // en cada una solo para dejarlo igual.
+      return $antes === $despues ? null : $s;
+    });
     jsonOut(buildPublicPayload($state, $name, $deviceId));
   }
 

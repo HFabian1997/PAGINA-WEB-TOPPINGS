@@ -792,6 +792,10 @@ body.no-animations .claim-waiting-spinner { animation: none; }
    explícita para no depender del estilo por defecto del navegador. */
 .gift-redeem-msg[hidden] { display: none; }
 
+/* Botón que aparece solo cuando el cupón dio giros de ruleta: sin él, la
+   persona lee que ganó pero no tiene cómo usarlo desde donde está. */
+.gift-redeem-spin { width: 100%; margin: 0 0 .7rem; }
+
 .name-taken-card { max-width: 380px; }
 .name-taken-actions { display: flex; flex-direction: column; gap: .6rem; margin-top: 1rem; }
 .name-taken-actions .btn { width: 100%; }

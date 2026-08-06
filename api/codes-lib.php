@@ -103,13 +103,14 @@ if (!function_exists('codesDataFile')) {
    * directo) y desde ruleta.php (al girar y ganar un premio reclamable).
    * Devuelve el registro completo del código recién creado.
    */
-  function issuePrizeCode($deviceId, $name, $source, $prizeName, $prizeIcon, $expiryHours) {
+  function issuePrizeCode($deviceId, $name, $source, $prizeName, $prizeIcon, $expiryHours, $yaAvisado = true) {
     $deviceId = trim((string) $deviceId);
     $name = trim((string) $name);
     $expiryHours = $expiryHours > 0 ? (float) $expiryHours : 24;
+    $yaAvisado = (bool) $yaAvisado;
     $issuedRecord = null;
 
-    codesWithWriteLock(function ($state) use ($deviceId, $name, $source, $prizeName, $prizeIcon, $expiryHours, &$issuedRecord) {
+    codesWithWriteLock(function ($state) use ($deviceId, $name, $source, $prizeName, $prizeIcon, $expiryHours, $yaAvisado, &$issuedRecord) {
       expireCodes($state);
       $now = codesNowMs();
       $code = null;
@@ -136,6 +137,12 @@ if (!function_exists('codesDataFile')) {
         'requestedAt' => null,
         'deliveredAt' => null,
         'deliveredBy' => null,
+        /* Los premios que la persona reclamó a mano nacen avisados: acaba de
+           ver la pantalla de "¡Felicidades!". Los que se entregan solos nacen
+           SIN avisar, y por eso al volver a entrar le sale la tarjeta.
+           Los registros viejos no traen este campo y se tratan como avisados,
+           para no soltarle de golpe un aviso por cada premio del pasado. */
+        'notified' => $yaAvisado,
       );
       $state['codes'][] = $record;
       $issuedRecord = $record;

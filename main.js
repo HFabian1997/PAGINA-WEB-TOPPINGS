@@ -3568,12 +3568,37 @@
     if (!input || !btn) return;
     var busy = false;
 
+    var botonRuleta = null;   // solo aparece si el cupón dio giros
+
+    function quitarBotonRuleta() {
+      if (botonRuleta && botonRuleta.parentNode) botonRuleta.parentNode.removeChild(botonRuleta);
+      botonRuleta = null;
+    }
+
     function setMsg(text, kind) {
+      quitarBotonRuleta();
       if (!msg) return;
       msg.textContent = text || "";
       msg.hidden = !text;
       msg.classList.toggle("is-ok", kind === "ok");
       msg.classList.toggle("is-error", kind === "error");
+    }
+
+    /** El botón para ir a girar, justo debajo del mensaje de que ganó. */
+    function mostrarBotonRuleta() {
+      if (!msg || !msg.parentNode) return;
+      quitarBotonRuleta();
+      botonRuleta = document.createElement("button");
+      botonRuleta.type = "button";
+      botonRuleta.className = "btn btn-primary gift-redeem-spin";
+      botonRuleta.textContent = "🎡 GIRAR LA RULETA";
+      botonRuleta.addEventListener("click", function () {
+        // se cierra el panel de premios para que la ruleta quede a la vista
+        var gm = $("[data-gift-codes-modal]");
+        if (gm) gm.hidden = true;
+        abrirRuleta();
+      });
+      msg.parentNode.insertBefore(botonRuleta, msg.nextSibling);
     }
 
     function submit() {
@@ -3611,8 +3636,20 @@
 
           input.value = "";
           var icon = res.prizeIcon || "🎁";
-          setMsg("🎉 ¡Felicidades! Has reclamado tu premio: " + icon + " " +
-            (res.prizeName || "Premio desbloqueado") + ". Ya está en tus premios.", "ok");
+
+          /* Si el cupón daba giros, avisarle que "ya está en tus premios" es
+             mentira: los giros no se muestran ahí, se usan en la ruleta. Se le
+             pone el botón para girar en el mismo lugar donde acaba de ganar,
+             como en todos los demás premios. */
+          if (res.rewardType === "wheelSpins") {
+            var giros = Number(res.spins) || 1;
+            setMsg("🎉 ¡Felicidades! Ganaste " + giros + (giros === 1 ? " giro" : " giros") +
+              " en la Ruleta TOPPINGS.", "ok");
+            mostrarBotonRuleta();
+          } else {
+            setMsg("🎉 ¡Felicidades! Has reclamado tu premio: " + icon + " " +
+              (res.prizeName || "Premio desbloqueado") + ". Ya está en tus premios.", "ok");
+          }
           // El premio se creó bajo el deviceId de esta persona, así que aparece
           // en la lista al instante — sin recargar. Esto también sube el
           // numerito del botón 🎁.
