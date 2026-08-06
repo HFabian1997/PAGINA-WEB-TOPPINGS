@@ -41,6 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
 
 $CONTENT_FILE = __DIR__ . '/../admin/content.json';
 $RUN_FILE = toppingsDataFile('run-leaderboard.json');
+$LOCKED_FILE = toppingsDataFile('locked-prize.json');
 $PREMIO_FILE = toppingsDataFile('premio.json');
 $PRESENCE_FILE = toppingsDataFile('presence.json');
 $MAX_ROWS = 200;
@@ -134,6 +135,7 @@ $CATS = array(
   'toppingsRun'=> array('icon' => '🛹', 'label' => 'TOPPINGS RUN'),
   'ruleta'     => array('icon' => '🎡', 'label' => 'Ruleta'),
   'redeem'     => array('icon' => '🎟️', 'label' => 'Códigos de premio'),
+  'premio-bloqueado' => array('icon' => '🔒', 'label' => 'Premio Bloqueado'),
 );
 
 $ESTADOS = array(
@@ -196,8 +198,43 @@ function hFilasParticipacion($cat, $desde) {
         'name' => isset($h['name']) ? $h['name'] : '(sin nombre)',
         'kind' => 'play',
         'text' => '🥇 Top 1 con ' . (isset($h['score']) ? $h['score'] : 0) . ' puntos · ' . (isset($h['periodStart']) ? $h['periodStart'] : ''),
-        'status' => isset($h['outcome']) && $h['outcome'] === 'claimed' ? 'Reclamado' : 'Sin reclamar',
+        // 'auto' es el periodo que se entregó solo, sin que el ganador tuviera
+        // que tocar nada. Decir "Sin reclamar" ahí sería justo al revés.
+        'status' => isset($h['outcome'])
+          ? ($h['outcome'] === 'claimed' ? 'Reclamado'
+            : ($h['outcome'] === 'auto' ? 'Guardado solo' : 'Sin reclamar'))
+          : 'Sin reclamar',
       );
+    }
+  }
+
+  /* Premio Bloqueado. Los de premio escrito ya salen por hFilasPremios (dejan
+     código); acá van los de tipo ruleta, que entregan giros y no dejan código,
+     y por eso no aparecerían en ninguna parte. */
+  if ($cat === 'premio-bloqueado') {
+    global $LOCKED_FILE;
+    $lk = hReadJson($LOCKED_FILE, array());
+    $fuentes = array(
+      isset($lk['prizes']) && is_array($lk['prizes']) ? $lk['prizes'] : array(),
+      isset($lk['history']) && is_array($lk['history']) ? $lk['history'] : array(),
+    );
+    foreach ($fuentes as $lista) {
+      foreach ($lista as $p) {
+        if (!is_array($p)) continue;
+        if (!isset($p['status']) || $p['status'] !== 'reclamado') continue;
+        if (empty($p['winnerName'])) continue;
+        if (!isset($p['tipo']) || $p['tipo'] !== 'ruleta') continue;   // los escritos ya salieron
+        $ts = isset($p['claimedAt']) ? (int) $p['claimedAt'] : 0;
+        if ($desde !== null && $ts < $desde) continue;
+        $giros = isset($p['giros']) ? (int) $p['giros'] : 1;
+        $out[] = array(
+          'ts' => $ts,
+          'name' => $p['winnerName'],
+          'kind' => 'prize',
+          'text' => '🔓 Fue el primero — ganó ' . $giros . ($giros === 1 ? ' giro' : ' giros') . ' en la ruleta',
+          'status' => 'Entregado',
+        );
+      }
     }
   }
 
@@ -295,7 +332,8 @@ switch ($action) {
       'total' => $total,
       'rows' => array_slice($filas, 0, $MAX_ROWS),
       // en estas tres no hay forma de saber quién participó sin ganar
-      'onlyWinners' => in_array($cat, array('cronometro', 'loyalty'), true),
+      // acá no se guarda quién miró sin ganar, así que solo hay ganadores
+      'onlyWinners' => in_array($cat, array('cronometro', 'loyalty', 'premio-bloqueado'), true),
       'serverNow' => hNowMs(),
     ));
   }

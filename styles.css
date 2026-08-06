@@ -285,13 +285,23 @@ body.no-glow [data-hero-cta-primary] { animation-name: heroCtaPulseSoft; }
   overflow: hidden;
 }
 .masthead-actions { order: 2; display: flex; align-items: center; gap: 1rem; }
+/* El 🎁 lleva su nombre debajo, igual que Comidas/Helados/Bebidas en el menú:
+   sin texto, mucha gente no sabía para qué servía. Por eso deja de ser un
+   círculo y pasa a ser una columna de ícono + palabra. */
 .header-gift-btn {
-  position: relative; display: flex; align-items: center; justify-content: center;
-  width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line);
-  background: var(--bg-2); font-size: 1.3rem; line-height: 1; padding: 0; cursor: pointer;
+  position: relative; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 2px; min-width: 44px; padding: .2rem .3rem;
+  border-radius: 12px; border: 1px solid var(--line);
+  background: var(--bg-2); font-size: 1.25rem; line-height: 1; cursor: pointer;
   transition: transform .3s var(--ease-out);
 }
 .header-gift-btn:hover { transform: scale(1.08); }
+.header-gift-label {
+  font-size: .58rem; font-weight: 700; letter-spacing: .02em; line-height: 1;
+  color: var(--ink-soft); text-transform: uppercase; white-space: nowrap;
+}
+/* Sin texto configurado vuelve a ser el círculo de antes, sin hueco raro. */
+.header-gift-label:empty { display: none; }
 .header-gift-badge {
   position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; padding: 0 4px;
   border-radius: 999px; background: #ff6b6b; color: #fff; font-size: .68rem; font-weight: 800;
@@ -729,6 +739,9 @@ body.no-animations .claim-waiting-spinner { animation: none; }
   text-align: left;
 }
 .notif-toast.is-in { transform: translate(-50%, 0); opacity: 1; }
+/* Un premio a punto de vencerse no puede verse igual que un aviso cualquiera. */
+.notif-toast.is-urgente { border-color: #ff6b6b; }
+.notif-toast.is-urgente .notif-toast-title { color: #ff6b6b; }
 .notif-toast-title {
   margin: 0 0 .3rem; font-weight: 800; font-size: .95rem; color: var(--accent);
   line-height: 1.25;

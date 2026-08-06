@@ -384,6 +384,11 @@ function appendHistory(&$state, $outcome) {
   $entry = array(
     'name' => $state['winner'] ? $state['winner']['name'] : null,
     'score' => $state['winner'] ? $state['winner']['score'] : null,
+    /* Se guarda de qué celular fue, para poder avisarle al ganador cuando
+       vuelva —aunque pasen días— antes de mostrarle el evento nuevo. Nunca
+       viaja al cliente tal cual: buildPublicPayload solo dice si el que
+       pregunta es él o no. */
+    'deviceId' => $state['winner'] && isset($state['winner']['deviceId']) ? $state['winner']['deviceId'] : null,
     'rankingType' => $state['rankingType'],
     'periodStart' => $state['periodStart'],
     'outcome' => $outcome, // 'claimed' | 'auto' | 'expired' | 'admin-reset'
@@ -515,6 +520,24 @@ function buildPublicPayload($state, $requesterName, $requesterDevice) {
     );
   }, array_slice($state['history'], 0, 10));
 
+  /* ¿El que está preguntando ganó el evento anterior? Se le contesta solo a
+     él, y sin devolver ningún deviceId: el de la lista nunca sale del
+     servidor, así que nadie puede hacerse pasar por otro ganador.
+     Sirve para mostrarle "ganaste el evento pasado" cuando vuelva, aunque
+     hayan pasado días y el ranking ya vaya por otro periodo. */
+  $ganePasado = null;
+  if ($requesterDevice !== '' && count($state['history'])) {
+    $ult = $state['history'][0];
+    if (!empty($ult['deviceId']) && hash_equals((string) $ult['deviceId'], (string) $requesterDevice)) {
+      $ganePasado = array(
+        'periodStart' => isset($ult['periodStart']) ? $ult['periodStart'] : '',
+        'score' => isset($ult['score']) ? $ult['score'] : 0,
+        'name' => isset($ult['name']) ? $ult['name'] : '',
+        'outcome' => isset($ult['outcome']) ? $ult['outcome'] : '',
+      );
+    }
+  }
+
   return array(
     'ok' => true,
     'rankingType' => $state['rankingType'],
@@ -530,6 +553,7 @@ function buildPublicPayload($state, $requesterName, $requesterDevice) {
       'claimedName' => $claim['claimedName'],
     ),
     'canClaim' => $canClaim,
+    'ganePasado' => $ganePasado,
     'history' => $history,
     // compatibilidad con el nombre anterior del campo, por si algo viejo lo espera
     'weekStart' => $state['periodStart'],

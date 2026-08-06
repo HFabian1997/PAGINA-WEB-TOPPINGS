@@ -157,6 +157,37 @@
 .run-prev-winner[hidden] { display: none; }
 .run-prev-winner strong { color: var(--ink-soft); font-weight: 800; }
 
+/* ---- "Ganaste el evento anterior" ----
+   Tapa el evento nuevo hasta que la persona lo cierre: es lo único que
+   necesita ver al volver, y si le mostráramos el ranking nuevo de una nunca
+   se enteraría de que ganó. */
+.run-prev-win {
+  position: relative; width: 100%; max-width: 320px;
+  margin: 0 0 .8rem; padding: 1rem .9rem .9rem;
+  border-radius: 14px; border: 1px solid var(--brand, #ffd400);
+  background: color-mix(in srgb, var(--brand, #ffd400) 12%, var(--bg-2, #151515));
+  text-align: center;
+}
+.run-prev-win-title {
+  margin: 0 0 .5rem; font-size: .95rem; font-weight: 900; letter-spacing: .01em;
+  color: var(--brand, #ffd400);
+}
+.run-prev-win-text {
+  margin: 0 0 .5rem; font-size: .78rem; line-height: 1.45; color: var(--ink-soft);
+}
+.run-prev-win-text strong { font-weight: 800; }
+.run-prev-win-close {
+  position: absolute; top: .3rem; right: .45rem;
+  background: none; border: 0; padding: .2rem .35rem;
+  font-size: 1.15rem; line-height: 1; cursor: pointer; color: var(--ink-mute);
+}
+.run-prev-win-ok {
+  margin-top: .25rem; width: 100%; padding: .6rem .8rem;
+  border: 0; border-radius: 10px; cursor: pointer;
+  background: var(--brand, #ffd400); color: #111;
+  font-size: .78rem; font-weight: 900; letter-spacing: .03em;
+}
+
 /* ---- Reloj del evento ---- */
 .run-event-clock {
   width: 100%; max-width: 260px; margin: 0;

@@ -1526,9 +1526,74 @@
       return "¡Sé el primero en jugar!";
     }
 
+    /* ---- "Ganaste el evento anterior" ----
+       El que quedó primero puede volver un día o dos después, cuando ya hay
+       otro evento corriendo. Si le mostráramos el evento nuevo de una, nunca
+       se enteraría de que ganó el anterior. Así que primero se le cuenta, y
+       el evento nuevo aparece recién cuando cierra el mensaje.
+
+       Lo de "ya lo vio" se guarda por PERIODO, no como un sí/no: si gana otra
+       vez la semana siguiente, se le vuelve a avisar. */
+    var GANE_KEY = "toppings_run_gane_visto";
+    var avisoGane = null;
+
+    function yaVioSuVictoria(periodo) {
+      try { return localStorage.getItem(GANE_KEY) === periodo; } catch (e) { return false; }
+    }
+
+    function mostrarAvisoGane(res) {
+      var g = res.ganePasado;
+      var periodo = (g && g.periodStart) || "";
+      if (avisoGane && avisoGane.parentNode) avisoGane.parentNode.removeChild(avisoGane);
+
+      avisoGane = document.createElement("div");
+      avisoGane.className = "run-prev-win";
+      avisoGane.setAttribute("data-run-prev-win", "");
+      avisoGane.innerHTML =
+        '<button type="button" class="run-prev-win-close" aria-label="Cerrar">&times;</button>' +
+        '<p class="run-prev-win-title">🏆 ¡GANASTE EL EVENTO ANTERIOR!</p>' +
+        '<p class="run-prev-win-text">Quedaste <strong>#1</strong> con ' +
+          escHtml(String(g.score || 0)) + " puntos" +
+          (periodo ? " · " + escHtml(periodo) : "") + ".</p>" +
+        '<p class="run-prev-win-text">Tu premio ya está guardado en <strong>🎁 ' +
+          escHtml(etiquetaRegalo()) + "</strong>, arriba. Mostralo en el local para reclamarlo.</p>" +
+        '<button type="button" class="run-prev-win-ok">VER EL EVENTO NUEVO</button>';
+
+      function cerrar() {
+        try { localStorage.setItem(GANE_KEY, periodo); } catch (e) {}
+        if (avisoGane && avisoGane.parentNode) avisoGane.parentNode.removeChild(avisoGane);
+        avisoGane = null;
+        if (lastStatus) renderEventStatus(lastStatus);   // ahora sí, el evento nuevo
+      }
+      avisoGane.querySelector(".run-prev-win-close").addEventListener("click", cerrar);
+      avisoGane.querySelector(".run-prev-win-ok").addEventListener("click", cerrar);
+      card.insertBefore(avisoGane, card.firstChild);
+    }
+
+    /* El nombre del botón de premios lo pone el negocio desde el panel; acá se
+       lee del mismo sitio para que el mensaje diga exactamente lo que el
+       cliente ve arriba. */
+    function etiquetaRegalo() {
+      var el = document.querySelector("[data-gift-label]");
+      var txt = el ? (el.textContent || "").trim() : "";
+      return txt || "Mis premios";
+    }
+
     function renderEventStatus(res) {
       clearInterval(eventCountdownTimer);
       lastStatus = res;
+
+      /* Si ganó el evento pasado y todavía no lo sabe, el evento nuevo espera:
+         se le tapa hasta que cierre el mensaje. */
+      if (res.ganePasado && !yaVioSuVictoria(res.ganePasado.periodStart || "")) {
+        mostrarAvisoGane(res);
+        if (leaderboardEl) leaderboardEl.hidden = true;
+        if (statusEl) statusEl.hidden = true;
+        if (eventCountdownEl) eventCountdownEl.hidden = true;
+        if (prevWinnerEl) prevWinnerEl.hidden = true;
+        return;
+      }
+
       var frozen = eventIsFrozen(res);
       var clockOffset = Date.now() - res.serverNow;
 

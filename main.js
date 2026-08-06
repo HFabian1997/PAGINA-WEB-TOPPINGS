@@ -1075,6 +1075,11 @@
       });
     }
 
+    /* La palabra debajo del 🎁. Si la dejan vacía en el panel, el botón vuelve
+       a ser solo el ícono (la clase :empty se encarga). */
+    var etiquetaRegalo = biz.giftLabel === undefined ? "Regalos" : String(biz.giftLabel);
+    $$("[data-gift-label]").forEach(function (el) { el.textContent = etiquetaRegalo; });
+
     var hoursList = $("[data-hours]");
     if (hoursList && biz.hours) {
       hoursList.innerHTML = biz.hours.map(function (h) {
@@ -3486,7 +3491,8 @@
       .then(function (r) { return r.json(); })
       .catch(function () { return null; })
       .then(function (res) {
-        if (!res || !res.ok || !res.nuevos) return;
+        // sin premios nuevos, se mira si hay viejos sin reclamar
+        if (!res || !res.ok || !res.nuevos) { recordarPendientes(); return; }
 
         var nombre = "";
         try { nombre = localStorage.getItem(LOYALTY_NAME_KEY) || ""; } catch (e) {}
@@ -3544,6 +3550,95 @@
 
         safe(refreshGiftFab, "refreshGiftFab");
       });
+  }
+
+  /* ---- Recordatorio de premios sin reclamar ----
+     Un premio ganado y olvidado no le sirve a nadie: ni al cliente, que se
+     queda sin él, ni al negocio, que no lo ve volver. Así que al entrar se le
+     recuerda — y con más urgencia si está por vencerse.
+
+     Se muestra UNA vez al día como mucho. Recordárselo en cada recarga sería
+     exactamente el fastidio que no queremos. */
+  var PEND_KEY = "toppings_pendientes_avisado";
+  var PRONTO_MS = 6 * 60 * 60 * 1000;   // "está por vencerse"
+
+  function recordarPendientes() {
+    var hoy = new Date().toDateString();
+    try { if (localStorage.getItem(PEND_KEY) === hoy) return; } catch (e) {}
+
+    fetch(CODES_API + "?action=mine&deviceId=" + encodeURIComponent(getDeviceId()) + "&_=" + Date.now(),
+      { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .catch(function () { return null; })
+      .then(function (res) {
+        if (!res || !res.ok) return;
+        var pendientes = (res.codes || []).filter(function (c) {
+          return c.status === "available" || c.status === "waiting";
+        });
+        if (!pendientes.length) return;
+
+        // el que vence primero manda el tono del mensaje
+        var ahora = Date.now();
+        var proximo = null;
+        pendientes.forEach(function (c) {
+          if (!c.expiresAt) return;
+          if (proximo === null || c.expiresAt < proximo) proximo = c.expiresAt;
+        });
+        var falta = proximo === null ? null : proximo - ahora;
+        var urge = falta !== null && falta > 0 && falta < PRONTO_MS;
+
+        var titulo, texto;
+        if (urge) {
+          titulo = "⏳ ¡Se te vence un premio!";
+          texto = (pendientes.length === 1
+            ? "Tu premio vence en " + formatDuration(falta) + "."
+            : "Uno de tus " + pendientes.length + " premios vence en " + formatDuration(falta) + ".") +
+            "\nPasá por el local antes de que se te pase.";
+        } else {
+          titulo = "🎁 Tenés premios sin reclamar";
+          texto = (pendientes.length === 1
+            ? "Tenés 1 premio esperándote."
+            : "Tenés " + pendientes.length + " premios esperándote.") +
+            "\nMostralos en el local para reclamarlos.";
+        }
+
+        tarjetaRegalos(titulo, texto, urge);
+        try { localStorage.setItem(PEND_KEY, hoy); } catch (e) {}
+      });
+  }
+
+  /** La tarjeta que baja desde arriba, con su botón a Mis premios. */
+  function tarjetaRegalos(titulo, texto, urgente) {
+    var vieja = $("[data-notif-toast]");
+    if (vieja && vieja.parentNode) vieja.parentNode.removeChild(vieja);
+
+    var card = document.createElement("div");
+    card.className = "notif-toast" + (urgente ? " is-urgente" : "");
+    card.setAttribute("data-notif-toast", "");
+    card.innerHTML =
+      '<button type="button" class="notif-toast-close" aria-label="Cerrar">&times;</button>' +
+      '<p class="notif-toast-title">' + escHTML(titulo) + "</p>" +
+      '<p class="notif-toast-msg">' + escHTML(texto) + "</p>";
+
+    var ver = document.createElement("button");
+    ver.type = "button";
+    ver.className = "btn btn-primary notif-toast-btn";
+    ver.textContent = "🎁 VER MIS PREMIOS";
+    ver.addEventListener("click", function () {
+      cerrar();
+      if (window.__openGiftPanel) window.__openGiftPanel();
+    });
+    card.appendChild(ver);
+
+    function cerrar() {
+      card.classList.remove("is-in");
+      setTimeout(function () { if (card.parentNode) card.parentNode.removeChild(card); }, 260);
+    }
+    card.querySelector(".notif-toast-close").addEventListener("click", cerrar);
+
+    document.body.appendChild(card);
+    setTimeout(function () { card.classList.add("is-in"); }, 30);
+    return card;
   }
 
   function refreshGiftFab() {
