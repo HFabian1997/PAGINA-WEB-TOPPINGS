@@ -691,3 +691,13 @@ body.is-sorting-active { user-select: none; }
 .autosave-chip.is-guardado { border-color: #3ddc84; color: #3ddc84; }
 .autosave-chip.is-error,
 .autosave-chip.is-espera { border-color: #ffb020; color: #ffb020; }
+
+/* ---- tabla de botones flotantes por página ---- */
+.flotantes-grid { width: 100%; border-collapse: collapse; font-size: .82rem; }
+.flotantes-grid th, .flotantes-grid td {
+  padding: .55rem .3rem; border-bottom: 1px solid var(--line); text-align: center;
+}
+.flotantes-grid thead th { color: var(--ink-mute); font-weight: 700; font-size: .72rem; }
+.flotantes-grid tbody th { text-align: left; font-weight: 700; color: var(--ink-soft); white-space: nowrap; }
+.flotantes-grid input { width: 18px; height: 18px; }
+.locked-winner-row { margin-bottom: .6rem; }

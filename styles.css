@@ -1253,3 +1253,85 @@ body.no-animations .scroll-hint-text { animation: none; }
   .daily-prize-claim, .gift-box { animation: none; }
   .gift-box.is-open { transition: opacity .2s ease; opacity: 0; }
 }
+
+/* ---- 🔒 Premio Bloqueado ----
+   Va fijo bajo el encabezado a la DERECHA, justo debajo del 🎁, espejando al
+   asistente 💬 que ocupa la misma altura a la izquierda. Ahí no hay nada más,
+   así que no tapa categorías, menú, logo ni los flotantes de abajo. */
+.locked-wrap {
+  position: fixed; top: calc(var(--header-h) + 14px); right: clamp(1rem, 4vw, 1.75rem);
+  z-index: 300; display: flex; flex-direction: column; align-items: flex-end; gap: .5rem;
+}
+.locked-wrap[hidden] { display: none; }
+
+.fab-locked {
+  width: 46px; height: 46px; border-radius: 50%; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-2); color: var(--accent);
+  border: 1px solid var(--line); box-shadow: var(--shadow-md);
+  font-size: 1.25rem; line-height: 1; cursor: pointer; padding: 0;
+  transition: transform .3s var(--ease-out), border-color .3s var(--ease-out);
+}
+.fab-locked:hover { transform: scale(1.08); border-color: var(--accent); }
+
+/* Latido apenas perceptible: tiene que llamar la atención sin cansar. */
+@keyframes lockedPulso {
+  0%, 100% { box-shadow: var(--shadow-md), 0 0 0 0 rgba(255,212,0,.35); }
+  50%      { box-shadow: var(--shadow-md), 0 0 0 7px rgba(255,212,0,0); }
+}
+.locked-wrap.is-animated .fab-locked { animation: lockedPulso 2.8s ease-out infinite; }
+/* ya desbloqueado: se nota más, pero sigue sin abrirse solo */
+.locked-wrap.is-open-prize .fab-locked { border-color: var(--accent); color: #fff; background: var(--accent); }
+.locked-wrap.is-open-prize.is-animated .fab-locked { animation-duration: 1.4s; }
+@media (prefers-reduced-motion: reduce) {
+  .locked-wrap.is-animated .fab-locked { animation: none; }
+}
+
+.locked-panel {
+  position: relative; width: min(260px, calc(100vw - 2rem));
+  background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md); padding: 1rem .95rem .9rem; text-align: center;
+}
+.locked-panel[hidden] { display: none; }
+.locked-close {
+  position: absolute; top: .35rem; right: .45rem; width: 26px; height: 26px;
+  border-radius: 50%; border: 0; background: transparent; color: var(--ink-mute);
+  font-size: 1.1rem; line-height: 1; cursor: pointer;
+}
+.locked-title {
+  font-family: var(--display); font-size: 1rem; color: var(--accent);
+  margin: 0 0 .4rem; letter-spacing: .02em;
+}
+.locked-text { font-size: .82rem; color: var(--ink-soft); margin: 0 0 .5rem; line-height: 1.4; }
+.locked-cd-label {
+  font-size: .68rem; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--ink-mute); margin: .3rem 0 .1rem;
+}
+.locked-cd {
+  font-family: var(--display); font-size: 1.7rem; color: var(--accent);
+  margin: 0 0 .5rem; font-variant-numeric: tabular-nums;
+}
+.locked-prize {
+  font-family: var(--display); font-size: 1.15rem; color: var(--ink);
+  margin: .2rem 0 .5rem;
+}
+.locked-winners { font-size: .78rem; font-weight: 800; color: var(--ink); margin: 0 0 .3rem; }
+.locked-rule { font-size: .72rem; color: var(--ink-mute); margin: 0; line-height: 1.35; }
+.locked-claim {
+  width: 100%; margin-top: .6rem; padding: .7rem 1rem; border: 0; border-radius: 999px;
+  background: var(--accent); color: var(--accent-ink);
+  font-family: var(--sans); font-weight: 800; font-size: .82rem; letter-spacing: .02em;
+  cursor: pointer;
+}
+.locked-claim:disabled { opacity: .6; cursor: default; }
+.locked-input {
+  width: 100%; margin-top: .4rem; padding: .6rem .7rem; border-radius: var(--radius-sm);
+  border: 1px solid var(--line); background: rgba(255,255,255,.05); color: var(--ink);
+  font: inherit; font-size: .85rem;
+}
+.locked-error { color: var(--danger); font-size: .75rem; margin: .35rem 0 0; }
+.locked-error[hidden] { display: none; }
+.locked-prev {
+  margin: .7rem 0 0; padding-top: .55rem; border-top: 1px dashed var(--line);
+  font-size: .72rem; color: var(--ink-mute); line-height: 1.35;
+}

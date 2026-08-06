@@ -3004,6 +3004,313 @@
      no está pintando, y entonces alguien que dejó la página abierta en segundo
      plano dejaría de contarse. */
   var PRESENCE_API = "api/presence.php";
+  /* ================= 🔒 Premio Bloqueado =================
+     Un premio secreto con cuenta regresiva que se lleva la PRIMERA persona
+     que lo reclame.
+
+     Regla que hay que respetar al pie: esto NUNCA se abre solo. Ni al cargar,
+     ni por temporizador, ni cuando el contador llega a cero. El refresco solo
+     cambia el BOTÓN (🔒 → 🔓); el panel se abre únicamente cuando el cliente
+     lo toca. Es la diferencia con la burbuja de Zona Secreta, que sí aparece
+     sola a los 5 segundos.
+
+     Quién gana lo decide el servidor, siempre. Acá no se compara ninguna hora
+     contra el reloj del celular: el contador solo dibuja la diferencia contra
+     el serverNow que llega del servidor, igual que "Detén el tiempo". */
+
+  var LOCKED_API = "api/locked.php";
+
+  function initPremioBloqueado() {
+    var wrap = $("[data-locked-wrap]");
+    if (!wrap) return;
+
+    var cfg = data.premioBloqueado || {};
+    if (!cfg.active) return;                       // apagado desde el panel
+    if (!paginaMuestraFlotante("locked")) return;  // esta página no lo muestra
+
+    var btn = $("[data-locked-toggle]", wrap);
+    var panel = $("[data-locked-panel]", wrap);
+    var cuerpo = $("[data-locked-body]", wrap);
+    var iconoEl = $("[data-locked-icon]", wrap);
+    var textos = cfg.textos || {};
+
+    var estado = null;      // lo último que dijo el servidor
+    var desfase = 0;        // serverNow - Date.now(), para el contador
+    var pidiendo = false;   // hay un reclamo en curso (evita el doble toque)
+    var tickTimer = null;
+    var pollTimer = null;
+
+    function t(clave, porDefecto) {
+      var v = textos[clave];
+      return (typeof v === "string" && v !== "") ? v : porDefecto;
+    }
+
+    function ahoraServidor() { return Date.now() + desfase; }
+
+    function faltan() {
+      if (!estado || !estado.hayPremio) return 0;
+      return Math.max(0, estado.unlockAt - ahoraServidor());
+    }
+
+    function comoReloj(ms) {
+      var s = Math.floor(ms / 1000);
+      var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+      function dd(n) { return (n < 10 ? "0" : "") + n; }
+      return dd(h) + ":" + dd(m) + ":" + dd(r);
+    }
+
+    /* ---- el botón ---- */
+    function pintarBoton() {
+      var abierto = !!(estado && estado.hayPremio && faltan() <= 0);
+      if (iconoEl) iconoEl.textContent = abierto ? "🔓" : (cfg.icono || "🔒");
+      wrap.classList.toggle("is-open-prize", abierto);
+      // "ocultar el botón cuando no haya ningún premio programado"
+      var ocultar = cfg.ocultarSinPremio && (!estado || !estado.hayPremio);
+      wrap.hidden = !!ocultar;
+    }
+
+    /* ---- el panel ---- */
+    function pintarPanel() {
+      if (!cuerpo || panel.hidden) return;   // cerrado: no se dibuja de gusto
+      var html = "";
+
+      if (!estado || !estado.hayPremio) {
+        html += '<p class="locked-title">🔒 ' + escHTML(t("tituloSinPremio", "PRÓXIMO PREMIO")) + "</p>";
+        html += '<p class="locked-text">' + escHTML(t("sinPremio", "Muy pronto tendremos otro Premio Bloqueado 👀")) + "</p>";
+      } else if (faltan() > 0) {
+        html += '<p class="locked-title">🔒 ' + escHTML(t("titulo", "PREMIO BLOQUEADO")) + "</p>";
+        html += '<p class="locked-text">' + escHTML(t("intro", "Hay un premio secreto esperando... 👀")) + "</p>";
+        html += '<p class="locked-cd-label">' + escHTML(t("labelContador", "Se desbloquea en")) + "</p>";
+        html += '<p class="locked-cd" data-locked-cd>' + comoReloj(faltan()) + "</p>";
+        html += '<p class="locked-winners">🏆 ' + escHTML(t("ganadores", "1 GANADOR")) + "</p>";
+        html += '<p class="locked-rule">⚡ ' + escHTML(t("regla", "Solo la primera persona en reclamarlo se lo lleva.")) + "</p>";
+      } else if (estado.reservadoPorOtro) {
+        html += '<p class="locked-title">🔓 ' + escHTML(t("tituloAbierto", "¡PREMIO DESBLOQUEADO!")) + "</p>";
+        html += '<p class="locked-text">' + escHTML(t("tomado", "Alguien lo está reclamando en este momento…")) + "</p>";
+      } else {
+        html += '<p class="locked-title">🔓 ' + escHTML(t("tituloAbierto", "¡PREMIO DESBLOQUEADO!")) + "</p>";
+        html += '<p class="locked-prize">' + escHTML(estado.prizeIcon || "🎁") + " " + escHTML(estado.prizeName || "") + "</p>";
+        html += '<p class="locked-text">⚡ ' + escHTML(t("sePrimero", "¡Sé el primero!")) + "</p>";
+        html += '<p class="locked-winners">🏆 ' + escHTML(t("ganadores", "1 GANADOR")) + "</p>";
+        html += '<button type="button" class="locked-claim" data-locked-claim>' +
+                escHTML(t("botonReclamar", "RECLAMAR PREMIO")) + "</button>";
+      }
+
+      if (estado && estado.ganadorAnterior) {
+        var linea = t("ganadorAnterior", "{nombre} se llevó el premio anterior");
+        html += '<p class="locked-prev">🏆 ' + escHTML(linea.replace("{nombre}", estado.ganadorAnterior)) + "</p>";
+      }
+      cuerpo.innerHTML = html;
+
+      var reclamar = $("[data-locked-claim]", cuerpo);
+      if (reclamar) reclamar.addEventListener("click", onReclamar);
+    }
+
+    function mostrarMensaje(html) { if (cuerpo) cuerpo.innerHTML = html; }
+
+    /* ---- reclamar ---- */
+    function onReclamar() {
+      if (pidiendo) return;
+      pidiendo = true;
+      var boton = $("[data-locked-claim]", cuerpo);
+      if (boton) { boton.disabled = true; boton.textContent = "Reclamando…"; }
+
+      var miNombre = "";
+      try { miNombre = localStorage.getItem(LOYALTY_NAME_KEY) || ""; } catch (e) {}
+
+      fetch(LOCKED_API + "?action=claim", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deviceId: getDeviceId(), name: miNombre, id: estado && estado.id })
+      }).then(function (r) { return r.json(); })
+        .then(function (res) {
+          pidiendo = false;
+          if (!res || !res.ok) {
+            var razon = res && res.razon;
+            if (razon === "ya-reclamado") {
+              mostrarMensaje('<p class="locked-title">😮</p><p class="locked-text">' +
+                escHTML(t("llegoOtro", "¡Alguien fue más rápido! Este premio ya fue reclamado.")) + "</p>");
+            } else if (razon === "todavia-bloqueado") {
+              mostrarMensaje('<p class="locked-text">Todavía no es la hora.</p>');
+            } else {
+              mostrarMensaje('<p class="locked-text">No se pudo reclamar. Intentá de nuevo.</p>');
+            }
+            refrescar();
+            return;
+          }
+          if (res.estado === "falta-nombre") { pedirNombre(res); return; }
+          festejar(res);
+        })
+        .catch(function () {
+          pidiendo = false;
+          mostrarMensaje('<p class="locked-text">No se pudo conectar. Intentá de nuevo.</p>');
+        });
+    }
+
+    /* El servidor ya lo guardó a su nombre por unos minutos: nadie se lo puede
+       quitar mientras escribe. */
+    function pedirNombre(res) {
+      mostrarMensaje(
+        '<p class="locked-title">🎉 ' + escHTML(t("fuistePrimero", "¡Fuiste el primero!")) + "</p>" +
+        '<p class="locked-prize">' + escHTML(res.prizeIcon || "🎁") + " " + escHTML(res.prizeName || "") + "</p>" +
+        '<p class="locked-text">¿Cómo te llamas?</p>' +
+        '<input type="text" class="locked-input" data-locked-name maxlength="60" placeholder="Tu nombre">' +
+        '<p class="locked-error" data-locked-error hidden></p>' +
+        '<button type="button" class="locked-claim" data-locked-continue>CONTINUAR</button>'
+      );
+      var input = $("[data-locked-name]", cuerpo);
+      var error = $("[data-locked-error]", cuerpo);
+      var seguir = $("[data-locked-continue]", cuerpo);
+      if (input) input.focus();
+
+      function enviar() {
+        var nombre = (input.value || "").trim();
+        if (!nombre) { error.hidden = false; error.textContent = "Escribí tu nombre."; return; }
+        if (pidiendo) return;
+        pidiendo = true;
+        seguir.disabled = true;
+        fetch(LOCKED_API + "?action=set-name", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ deviceId: getDeviceId(), name: nombre })
+        }).then(function (r) { return r.json(); })
+          .then(function (r2) {
+            pidiendo = false;
+            if (!r2 || !r2.ok) {
+              mostrarMensaje('<p class="locked-text">' +
+                (r2 && r2.razon === "reserva-vencida"
+                  ? "Pasó demasiado tiempo y el premio volvió a estar libre."
+                  : "No se pudo guardar tu nombre.") + "</p>");
+              refrescar();
+              return;
+            }
+            try { localStorage.setItem(LOYALTY_NAME_KEY, nombre); } catch (e) {}
+            festejar(r2);
+          })
+          .catch(function () { pidiendo = false; seguir.disabled = false; });
+      }
+      seguir.addEventListener("click", enviar);
+      input.addEventListener("keydown", function (e) { if (e.key === "Enter") enviar(); });
+    }
+
+    function festejar(res) {
+      mostrarMensaje(
+        '<p class="locked-title">🎉 ¡GANASTE!</p>' +
+        '<p class="locked-prize">' + escHTML(res.prizeIcon || "🎁") + " " + escHTML(res.prizeName || "") + "</p>" +
+        '<p class="locked-text">Te quedó guardado en el botón 🎁 de arriba. Mostralo en el local para reclamarlo.</p>'
+      );
+      safe(refreshGiftFab, "refreshGiftFab");   // que aparezca ya en el 🎁
+      refrescar();
+    }
+
+    /* ---- estado y contador ---- */
+    function refrescar() {
+      return fetch(LOCKED_API + "?action=state&deviceId=" + encodeURIComponent(getDeviceId()) + "&_=" + Date.now(),
+        { cache: "no-store" })
+        .then(function (r) { return r.json(); })
+        .then(function (res) {
+          if (!res || !res.ok) return;
+          desfase = res.serverNow - Date.now();
+          var antes = estado;
+          estado = res;
+          pintarBoton();
+          /* Si el panel está cerrado NO se abre: solo se repinta lo que ya
+             estuviera abierto, para que no quede con datos viejos. */
+          if (!panel.hidden) {
+            var cambioDeFase = !antes || antes.estado !== res.estado || antes.id !== res.id;
+            if (cambioDeFase) pintarPanel();
+          }
+          ajustarRitmo();
+        })
+        .catch(function () {});
+    }
+
+    /* Se pregunta poco casi siempre, y seguido solo cuando de verdad importa:
+       en el último minuto antes de abrirse, y mientras está abierto sin dueño. */
+    function ajustarRitmo() {
+      var ms = 25000;
+      if (estado && estado.hayPremio) {
+        var resta = faltan();
+        if (resta <= 0 || resta < 60000) ms = 5000;
+      }
+      clearTimeout(pollTimer);
+      pollTimer = setTimeout(function () { refrescar(); }, ms);
+    }
+
+    /* El contador se redibuja con setInterval, no con requestAnimationFrame:
+       en este proyecto rAF se congela en segundo plano. */
+    function arrancarTick() {
+      clearInterval(tickTimer);
+      tickTimer = setInterval(function () {
+        if (!estado || !estado.hayPremio) return;
+        var cd = $("[data-locked-cd]", cuerpo);
+        if (cd && !panel.hidden) cd.textContent = comoReloj(faltan());
+        // al cruzar el cero solo cambia el botón; el panel NO se abre
+        if (faltan() <= 0 && estado.estado === "bloqueado") refrescar();
+      }, 1000);
+    }
+
+    /* ---- abrir y cerrar: solo por toque ---- */
+    function abrir() {
+      panel.hidden = false;
+      btn.setAttribute("aria-expanded", "true");
+      pintarPanel();
+    }
+    function cerrar() {
+      panel.hidden = true;
+      btn.setAttribute("aria-expanded", "false");
+    }
+    btn.addEventListener("click", function () {
+      if (panel.hidden) abrir(); else cerrar();
+    });
+    var cerrarBtn = $("[data-locked-close]", wrap);
+    if (cerrarBtn) cerrarBtn.addEventListener("click", cerrar);
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && !panel.hidden) cerrar();
+    });
+
+    wrap.hidden = false;
+    if (cfg.animacion !== false) wrap.classList.add("is-animated");
+    refrescar().then(arrancarTick);
+  }
+
+  /* ---- qué botones flotantes se ven en esta página ----
+     Antes estaba fijo en el HTML; ahora lo decide el panel, con una casilla
+     por botón y por página. */
+  function paginaActual() {
+    var f = (location.pathname.split("/").pop() || "index.html").toLowerCase();
+    if (f === "" || f === "index.html") return "inicio";
+    if (f === "comidas.html") return "comidas";
+    if (f === "helados.html") return "helados";
+    if (f === "bebidas.html") return "bebidas";
+    if (f === "misterio.html") return "secreta";
+    return "inicio";
+  }
+
+  var FLOTANTES_POR_DEFECTO = {
+    locked:   { inicio: true, comidas: false, helados: false, bebidas: false, secreta: false },
+    zona:     { inicio: true, comidas: true,  helados: true,  bebidas: true,  secreta: false },
+    whatsapp: { inicio: true, comidas: true,  helados: true,  bebidas: true,  secreta: true },
+    musica:   { inicio: true, comidas: true,  helados: true,  bebidas: true,  secreta: true }
+  };
+
+  function paginaMuestraFlotante(cual) {
+    var cfg = (data.flotantes || {})[cual];
+    var pag = paginaActual();
+    if (cfg && typeof cfg[pag] === "boolean") return cfg[pag];
+    return FLOTANTES_POR_DEFECTO[cual] ? FLOTANTES_POR_DEFECTO[cual][pag] : true;
+  }
+
+  /* Solo esconde o muestra. No cambia cómo funciona ninguno: la burbuja de
+     Zona Secreta, por ejemplo, sigue igual donde se muestre. */
+  function aplicarFlotantes() {
+    [["zona", ".fab-mystery-wrap"],
+     ["whatsapp", "[data-whatsapp-link]"],
+     ["musica", "[data-music-toggle]"]].forEach(function (par) {
+      var el = $(par[1]);
+      if (el && !paginaMuestraFlotante(par[0])) el.style.display = "none";
+    });
+  }
+
+
   function initPresencePing() {
     function ping() {
       fetch(PRESENCE_API + "?action=ping", {
@@ -3442,6 +3749,8 @@
     safe(initDeliverPrizeFlow, "initDeliverPrizeFlow");
     safe(initGiftFab, "initGiftFab");
     safe(initRedeemCode, "initRedeemCode");
+    safe(aplicarFlotantes, "aplicarFlotantes");
+    safe(initPremioBloqueado, "initPremioBloqueado");
     safe(initPresencePing, "initPresencePing");
     safe(limpiarPushViejo, "limpiarPushViejo");
     safe(refreshGiftFab, "refreshGiftFab");

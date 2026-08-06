@@ -292,6 +292,20 @@
 <audio data-bg-music loop preload="none"></audio>
 <noscript><style>.fab-bubble{opacity:1!important;transform:none!important;pointer-events:auto!important}.fab-mystery{display:none}</style></noscript>
 
+<!-- 🔒 Premio Bloqueado — botón fijo bajo el encabezado, a la derecha (espejo
+     del asistente 💬 que va a la izquierda). Arranca oculto: lo muestra
+     main.js solo si está activado y si esta página lo tiene marcado. Nunca
+     se abre solo: el panel únicamente aparece al tocar el botón. -->
+<div class="locked-wrap" data-locked-wrap hidden>
+  <button type="button" class="fab-locked" data-locked-toggle aria-expanded="false" aria-label="Premio bloqueado">
+    <span class="fab-locked-icon" data-locked-icon>🔒</span>
+  </button>
+  <div class="locked-panel" data-locked-panel hidden>
+    <button type="button" class="locked-close" data-locked-close aria-label="Cerrar">&times;</button>
+    <div data-locked-body></div>
+  </div>
+</div>
+
 <div class="assistant-fab-wrap" data-assistant-wrap hidden>
   <button type="button" class="fab-assistant" data-assistant-toggle aria-label="Abrir asistente virtual">💬</button>
   <div class="assistant-panel" data-assistant-panel hidden>

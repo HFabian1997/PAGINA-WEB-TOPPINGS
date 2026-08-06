@@ -1905,6 +1905,9 @@
     renderRepeatLists();
     renderAiDocStatus();
     renderLooks();
+    renderFlotantes();
+    renderLockedList();
+    renderLockedWinners();
     renderHomeBlocks();
     renderPrizeMethodOrder();
     renderCronoModeVisibility();
@@ -1924,6 +1927,7 @@
        lista vacía por no haberla mirado todavía, que fue como se borraron. */
     fetchRuletaAdmin();
     fetchRedeemAdmin();
+    fetchLockedAdmin();
   }
 
   /* ---------------- personalización: mostrar solo el campo del tipo de fondo elegido ---------------- */
@@ -3226,6 +3230,312 @@
     if (statusFilter) statusFilter.addEventListener("change", doSearch);
   }
 
+  /* ================= 🔒 Premio Bloqueado (panel) =================
+     La lista vive en su propio archivo del servidor (locked-prize.json), no en
+     content.json, porque el estado lo escribe también el cliente al ganar. Por
+     eso tiene su propio guardado, como la ruleta y los códigos — con los
+     mismos candados: no se guarda lo que no se cargó, y vaciar la lista pide
+     confirmación. */
+
+  var LOCKED_API = "../api/locked.php";
+  var lockedState = { prizes: [] };
+  var lockedLoaded = false;        // ¿el servidor llegó a darnos la lista?
+  var lockedServerCount = 0;       // cuántos había, para avisar antes de vaciar
+
+  function lockedEditables() {
+    return lockedState.prizes.filter(function (p) { return p.status !== "reclamado"; });
+  }
+  function lockedGanados() {
+    return lockedState.prizes.filter(function (p) { return p.status === "reclamado"; });
+  }
+
+  function fetchLockedAdmin() {
+    fetch(LOCKED_API + "?action=admin-list&_=" + Date.now(), { credentials: "same-origin", cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (!res || !res.ok) return;
+        lockedState.prizes = res.prizes || [];
+        lockedLoaded = true;
+        lockedServerCount = lockedEditables().length;
+        renderLockedList();
+        renderLockedWinners();
+      })
+      .catch(function () {
+        var el = $("[data-locked-save-status]");
+        if (el) { el.textContent = "No se pudo cargar la lista."; el.className = "save-status is-error"; }
+      });
+  }
+
+  /* El campo de fecha y hora del navegador habla en hora local; el servidor
+     guarda milisegundos. Se convierte en los dos sentidos. */
+  function msALocal(ms) {
+    if (!ms) return "";
+    var d = new Date(Number(ms));
+    function dd(n) { return (n < 10 ? "0" : "") + n; }
+    return d.getFullYear() + "-" + dd(d.getMonth() + 1) + "-" + dd(d.getDate()) +
+           "T" + dd(d.getHours()) + ":" + dd(d.getMinutes());
+  }
+  function localAMs(v) {
+    if (!v) return 0;
+    var t = new Date(v).getTime();
+    return isNaN(t) ? 0 : t;
+  }
+
+  var LOCKED_ESTADO_TXT = {
+    programado: "programado", desbloqueado: "desbloqueado",
+    reservado: "reservado", cancelado: "cancelado", reclamado: "reclamado"
+  };
+
+  function buildLockedRow(p, idx) {
+    var row = document.createElement("div");
+    row.className = "ruleta-prize-row" + (p.status === "cancelado" ? " is-off" : "");
+    row.innerHTML =
+      '<div class="rp-head">' +
+        '<button type="button" class="rp-toggle" data-rp-toggle>' +
+          '<span class="rp-icon">' + escHTML(p.prizeIcon || "🎁") + "</span>" +
+          '<span class="rp-name">' + escHTML(p.prizeName || "(sin nombre)") + "</span>" +
+          '<span class="rp-prob">' + escHTML(LOCKED_ESTADO_TXT[p.status] || p.status) + "</span>" +
+          '<span class="rp-caret">▸</span>' +
+        "</button>" +
+        '<button type="button" class="rp-remove" data-rp-remove title="Quitar este premio" aria-label="Quitar este premio">✕</button>' +
+      "</div>" +
+      '<div class="rp-body" hidden>' +
+        '<div class="field-grid">' +
+          "<label class='full'>Nombre del premio <input type='text' data-lk='prizeName'></label>" +
+          "<label>Ícono <input type='text' data-lk='prizeIcon' maxlength='4' placeholder='🎁'></label>" +
+          "<label>Se desbloquea el <input type='datetime-local' data-lk='unlockAt'></label>" +
+          "<label class='full'>Estado <select data-lk='status'>" +
+            "<option value='programado'>Programado</option>" +
+            "<option value='cancelado'>Cancelado</option>" +
+          "</select></label>" +
+        "</div>" +
+      "</div>";
+
+    var body = row.querySelector(".rp-body");
+    var caret = row.querySelector(".rp-caret");
+    row.querySelector("[data-rp-toggle]").onclick = function () {
+      body.hidden = !body.hidden;
+      caret.textContent = body.hidden ? "▸" : "▾";
+      row.classList.toggle("is-open", !body.hidden);
+    };
+
+    $("[data-lk]", row).forEach(function (input) {
+      var key = input.getAttribute("data-lk");
+      if (key === "unlockAt") input.value = msALocal(p.unlockAt);
+      else input.value = p[key] == null ? "" : p[key];
+      input.oninput = function () {
+        if (key === "unlockAt") p.unlockAt = localAMs(input.value);
+        else p[key] = input.value;
+        if (key === "prizeName") {
+          var n = row.querySelector(".rp-name");
+          if (n) n.textContent = p.prizeName || "(sin nombre)";
+        }
+        if (key === "prizeIcon") {
+          var ic = row.querySelector(".rp-icon");
+          if (ic) ic.textContent = p.prizeIcon || "🎁";
+        }
+        programarGuardado("bloqueado");
+      };
+      input.onchange = input.oninput;
+    });
+
+    row.querySelector("[data-rp-remove]").addEventListener("click", function () {
+      if (!confirm('¿Quitar el premio "' + (p.prizeName || "") + '"?')) return;
+      var editables = lockedEditables();
+      var real = lockedState.prizes.indexOf(editables[idx]);
+      if (real >= 0) lockedState.prizes.splice(real, 1);
+      renderLockedList();
+      programarGuardado("bloqueado");
+    });
+
+    return row;
+  }
+
+  function renderLockedList() {
+    var list = $("[data-locked-list]");
+    if (!list) return;
+    var editables = lockedEditables();
+    list.innerHTML = "";
+    if (!editables.length) {
+      list.innerHTML = '<p class="hint">No hay ningún premio programado. Dale a "+ Programar premio".</p>';
+      return;
+    }
+    editables.sort(function (a, b) { return (a.unlockAt || 0) - (b.unlockAt || 0); });
+    editables.forEach(function (p, i) { list.appendChild(buildLockedRow(p, i)); });
+  }
+
+  function renderLockedWinners() {
+    var cont = $("[data-locked-winners]");
+    if (!cont) return;
+    var ganados = lockedGanados();
+    if (!ganados.length) {
+      cont.innerHTML = '<p class="hint">Todavía nadie ha ganado un Premio Bloqueado.</p>';
+      return;
+    }
+    ganados.sort(function (a, b) { return (b.claimedAt || 0) - (a.claimedAt || 0); });
+    cont.innerHTML = ganados.map(function (p) {
+      var cuando = p.claimedAt ? new Date(Number(p.claimedAt)).toLocaleString() : "—";
+      return '<p class="hint locked-winner-row">🏆 <strong>' + escHTML(p.winnerName || "(sin nombre)") +
+             "</strong> — " + escHTML(p.prizeIcon || "🎁") + " " + escHTML(p.prizeName || "") +
+             ' <button type="button" class="btn btn-ghost locked-forget" data-locked-forget="' + escHTML(p.id) + '">✕</button>' +
+             "<br><span class='hint'>Reclamado el " + escHTML(cuando) + "</span></p>";
+    }).join("");
+
+    /* Los ganadores no se pueden editar —son el registro de quién ganó qué—
+       pero sí borrar: si queda uno equivocado o de prueba, los clientes lo
+       verían como "ganador anterior" en su panel. */
+    $$("[data-locked-forget]", cont).forEach(function (b) {
+      b.addEventListener("click", function () {
+        if (!confirm("¿Borrar este ganador del historial?")) return;
+        fetch(LOCKED_API + "?action=admin-forget", {
+          method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: b.getAttribute("data-locked-forget") })
+        }).then(function (r) { return r.json(); })
+          .then(function () { fetchLockedAdmin(); })
+          .catch(function () {});
+      });
+    });
+  }
+
+  function initLockedAdd() {
+    var btn = $("[data-locked-add]");
+    if (!btn) return;
+    btn.addEventListener("click", function () {
+      // por defecto, dentro de una hora en punto
+      var enUnaHora = Date.now() + 60 * 60 * 1000;
+      lockedState.prizes.push({
+        id: "", prizeName: "", prizeIcon: "🎁",
+        unlockAt: enUnaHora, status: "programado",
+        winnerName: null, winnerDeviceId: null, claimedAt: null, reservedUntil: null
+      });
+      renderLockedList();
+      var filas = $("[data-locked-list] .ruleta-prize-row");
+      var ultima = filas[filas.length - 1];
+      if (ultima) {
+        ultima.querySelector("[data-rp-toggle]").click();
+        ultima.scrollIntoView({ block: "center" });
+        var campo = ultima.querySelector("[data-lk='prizeName']");
+        if (campo) campo.focus();
+      }
+    });
+  }
+
+  function initLockedSave() {
+    registrarGuardador("bloqueado", function (motivo, listo) {
+      var statusEl = $("[data-locked-save-status]");
+      var forzado = motivo === "boton";
+
+      if (!lockedLoaded) {
+        if (statusEl) {
+          statusEl.textContent = "Todavía no se cargaron los premios. Recargá la página antes de guardar.";
+          statusEl.className = "save-status is-error";
+        }
+        fetchLockedAdmin();
+        listo(false, "⚠️ La lista no cargó — recargá");
+        return;
+      }
+      var editables = lockedEditables();
+      if (!editables.length && lockedServerCount > 0) {
+        if (!forzado) {
+          if (statusEl) {
+            statusEl.textContent = "Quitaste todos los premios. Dale al botón de guardar para confirmarlo.";
+            statusEl.className = "save-status is-error";
+          }
+          listo("omitido", "⏸️ Quitaste todo — confirmá con el botón");
+          return;
+        }
+        if (!confirm("Vas a dejar la lista sin ningún premio programado. Se van a borrar los " +
+            lockedServerCount + " que hay. ¿Seguro?")) { listo("omitido"); return; }
+      }
+      var sinDatos = editables.some(function (p) {
+        return !String(p.prizeName || "").trim() || !p.unlockAt;
+      });
+      if (sinDatos) {
+        if (statusEl) { statusEl.textContent = "Hay un premio sin nombre o sin fecha."; statusEl.className = "save-status is-error"; }
+        listo("omitido", "⏸️ Falta el nombre o la fecha de un premio");
+        return;
+      }
+
+      if (statusEl) { statusEl.textContent = "Guardando…"; statusEl.className = "save-status"; }
+      fetch(LOCKED_API + "?action=admin-save", {
+        method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prizes: editables }),
+        keepalive: motivo === "salida"
+      }).then(function (r) { return r.json(); })
+        .then(function (res) {
+          if (res && res.ok) {
+            if (statusEl) { statusEl.textContent = "Guardado ✓"; statusEl.className = "save-status is-ok"; }
+            lockedServerCount = editables.length;
+            if (forzado) fetchLockedAdmin();   // releer redibuja: solo si lo pidió a mano
+            listo(true);
+          } else {
+            if (statusEl) { statusEl.textContent = (res && res.error) || "No se pudo guardar."; statusEl.className = "save-status is-error"; }
+            listo(false, (res && res.error) ? "⚠️ " + res.error : null);
+          }
+        })
+        .catch(function () {
+          if (statusEl) { statusEl.textContent = "No se pudo conectar con el servidor."; statusEl.className = "save-status is-error"; }
+          listo(false, "⚠️ Sin conexión — no se guardó");
+        });
+    });
+
+    var btn = $("[data-locked-save-btn]");
+    if (btn) btn.addEventListener("click", function () { guardarAhora("bloqueado", "boton"); });
+  }
+
+  /* ---- tabla de botones flotantes por página ---- */
+  var FLOTANTES_BOTONES = [
+    ["locked", "🔒 Premio Bloqueado"],
+    ["zona", "❓ Zona Secreta"],
+    ["whatsapp", "💬 WhatsApp"],
+    ["musica", "🎵 Música"]
+  ];
+  var FLOTANTES_PAGINAS = [
+    ["inicio", "Inicio"], ["comidas", "Comidas"], ["helados", "Helados"],
+    ["bebidas", "Bebidas"], ["secreta", "Secreta"]
+  ];
+  // los mismos valores que usa main.js cuando todavía no hay nada guardado
+  var FLOTANTES_DEF = {
+    locked:   { inicio: true, comidas: false, helados: false, bebidas: false, secreta: false },
+    zona:     { inicio: true, comidas: true,  helados: true,  bebidas: true,  secreta: false },
+    whatsapp: { inicio: true, comidas: true,  helados: true,  bebidas: true,  secreta: true },
+    musica:   { inicio: true, comidas: true,  helados: true,  bebidas: true,  secreta: true }
+  };
+
+  function flotantes() {
+    return state.content.flotantes || (state.content.flotantes = {});
+  }
+
+  function renderFlotantes() {
+    var cont = $("[data-flotantes-tabla]");
+    if (!cont) return;
+    var cfg = flotantes();
+    var html = '<table class="flotantes-grid"><thead><tr><th></th>';
+    FLOTANTES_PAGINAS.forEach(function (p) { html += "<th>" + escHTML(p[1]) + "</th>"; });
+    html += "</tr></thead><tbody>";
+    FLOTANTES_BOTONES.forEach(function (b) {
+      html += "<tr><th>" + escHTML(b[1]) + "</th>";
+      FLOTANTES_PAGINAS.forEach(function (p) {
+        var guardado = cfg[b[0]] && typeof cfg[b[0]][p[0]] === "boolean" ? cfg[b[0]][p[0]] : FLOTANTES_DEF[b[0]][p[0]];
+        html += '<td><input type="checkbox" data-flot="' + b[0] + ":" + p[0] + '"' + (guardado ? " checked" : "") + "></td>";
+      });
+      html += "</tr>";
+    });
+    html += "</tbody></table>";
+    cont.innerHTML = html;
+
+    $("[data-flot]", cont).forEach(function (chk) {
+      chk.addEventListener("change", function () {
+        var partes = chk.getAttribute("data-flot").split(":");
+        var cfg2 = flotantes();
+        if (!cfg2[partes[0]]) cfg2[partes[0]] = {};
+        cfg2[partes[0]][partes[1]] = chk.checked;
+        markDirty();
+      });
+    });
+  }
+
+
   /* ---------------- save ---------------- */
   function initSave() {
     /* El contenido general se guarda entero cada vez, así que no hay riesgo de
@@ -3306,6 +3616,8 @@
     initChallengeReset();
     initRuletaTab();
     initRedeemTab();
+    initLockedAdd();
+    initLockedSave();
     initHistoryTabs();
     initCodesSearch();
     initCarouselPreviewModal();

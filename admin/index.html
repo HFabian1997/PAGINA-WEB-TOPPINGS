@@ -54,11 +54,13 @@
     <button class="admin-tab" data-tab="redeem">🎟️ Códigos de Premio</button>
     <button class="admin-tab" data-tab="historial">📊 Historial</button>
     <button class="admin-tab" data-tab="clientes">👥 Clientes</button>
+    <button class="admin-tab" data-tab="bloqueado">🔒 Premio Bloqueado</button>
     <button class="admin-tab" data-tab="stikers">Stikers encontrados</button>
 
     <span class="admin-tab-group-label">⚙️ Configuración general</span>
     <button class="admin-tab" data-tab="ia">Configuración de IA</button>
     <button class="admin-tab" data-tab="personalizacion">Personalización</button>
+    <button class="admin-tab" data-tab="flotantes">🫧 Botones flotantes</button>
   </nav>
 
   <section class="admin-panel" data-panel="negocio">
@@ -747,6 +749,61 @@
       <input type="file" accept=".txt,.pdf,.docx" data-ai-doc-upload hidden>
     </label>
     <button type="button" class="btn btn-ghost" data-ai-doc-remove>Quitar documento</button>
+  </section>
+
+  <section class="admin-panel" data-panel="bloqueado" hidden>
+    <h2>🔒 Premio Bloqueado</h2>
+    <p class="hint">Un premio secreto con cuenta regresiva. Nadie sabe qué es hasta que llega la hora, y se lo lleva <strong>la primera persona</strong> que lo reclame. El botón 🔒 aparece debajo del 🎁 y el cliente lo abre cuando quiere: nunca se abre solo.</p>
+
+    <label class="switch"><input type="checkbox" data-field="premioBloqueado.active"> Mostrar el botón 🔒 en la página</label>
+    <label class="switch"><input type="checkbox" data-field="premioBloqueado.ocultarSinPremio"> Ocultar el botón cuando no haya ningún premio programado</label>
+
+    <h3>🗓️ Premios programados</h3>
+    <p class="hint">Se ordenan solos por fecha. Cuando alguien gana uno, el siguiente toma su lugar automáticamente — no tenés que configurar nada después de cada ganador. Los ya ganados quedan abajo como historial y no se pueden editar.</p>
+    <div class="locked-admin-list" data-locked-list></div>
+    <button type="button" class="btn btn-primary" data-locked-add>+ Programar premio</button>
+
+    <div class="ruleta-savebar">
+      <span class="save-status" data-locked-save-status></span>
+      <button type="button" class="btn btn-ghost" data-locked-save-btn>Guardar ahora</button>
+    </div>
+
+    <h3>🏆 Ganadores</h3>
+    <div class="locked-winners-list" data-locked-winners></div>
+
+    <details class="admin-collapsible">
+      <summary>✍️ Textos</summary>
+      <p class="hint">Lo que lee el cliente. Podés usar <strong>{nombre}</strong> en la línea del ganador anterior.</p>
+      <div class="field-grid" data-form="premioBloqueado.textos">
+        <label>Título bloqueado <input type="text" data-field="titulo" placeholder="PREMIO BLOQUEADO"></label>
+        <label>Título desbloqueado <input type="text" data-field="tituloAbierto" placeholder="¡PREMIO DESBLOQUEADO!"></label>
+        <label class="full">Texto de intriga <input type="text" data-field="intro" placeholder="Hay un premio secreto esperando... 👀"></label>
+        <label>Texto del contador <input type="text" data-field="labelContador" placeholder="Se desbloquea en"></label>
+        <label>Cuántos ganadores <input type="text" data-field="ganadores" placeholder="1 GANADOR"></label>
+        <label class="full">Regla <input type="text" data-field="regla" placeholder="Solo la primera persona en reclamarlo se lo lleva."></label>
+        <label>Antes de reclamar <input type="text" data-field="sePrimero" placeholder="¡Sé el primero!"></label>
+        <label>Botón de reclamar <input type="text" data-field="botonReclamar" placeholder="RECLAMAR PREMIO"></label>
+        <label class="full">Cuando llegó primero <input type="text" data-field="fuistePrimero" placeholder="¡Fuiste el primero!"></label>
+        <label class="full">Cuando otro fue más rápido <input type="text" data-field="llegoOtro" placeholder="¡Alguien fue más rápido! Este premio ya fue reclamado."></label>
+        <label>Título sin premio <input type="text" data-field="tituloSinPremio" placeholder="PRÓXIMO PREMIO"></label>
+        <label class="full">Texto sin premio <input type="text" data-field="sinPremio" placeholder="Muy pronto tendremos otro Premio Bloqueado 👀"></label>
+        <label class="full">Ganador anterior <input type="text" data-field="ganadorAnterior" placeholder="{nombre} se llevó el premio anterior"></label>
+      </div>
+    </details>
+
+    <details class="admin-collapsible">
+      <summary>🎨 Apariencia del botón</summary>
+      <div class="field-grid" data-form="premioBloqueado">
+        <label>Ícono <input type="text" data-field="icono" maxlength="4" placeholder="🔒"></label>
+        <label class="switch-inline"><input type="checkbox" data-field="animacion"> Con latido</label>
+      </div>
+    </details>
+  </section>
+
+  <section class="admin-panel" data-panel="flotantes" hidden>
+    <h2>🫧 Botones flotantes</h2>
+    <p class="hint">Qué botón se ve en cada página. Solo controla dónde aparecen: cómo funcionan no cambia — la burbuja de Zona Secreta, por ejemplo, sigue igual donde la muestres.</p>
+    <div class="flotantes-tabla" data-flotantes-tabla></div>
   </section>
 
   <section class="admin-panel" data-panel="personalizacion" hidden>

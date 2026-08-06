@@ -8,6 +8,10 @@ admin/content.json
 # Clave de la API de IA
 api/ai-config.php
 
+# Clave de servicio (api/push-config.php). Sí viaja en el despliegue —igual que
+# ai-config.php— pero NUNCA a GitHub, que es público.
+api/push-config.php
+
 # Datos reales de clientes: nombres, puntajes, códigos de premio,
 # reclamos del día. No es código, es información de personas.
 api/data/*.json
