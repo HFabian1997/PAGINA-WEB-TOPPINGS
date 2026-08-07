@@ -2935,7 +2935,9 @@
       return '<div class="gift-code-row is-pending">' +
         '<span class="gift-code-icon">🎡</span>' +
         '<span class="gift-code-info"><strong>Tiro en la Ruleta</strong><br>' +
-        '<span class="hint">Sin usar · ' + formatCountdown(t.expiresAt - Date.now()) + '</span></span>' +
+        '<span class="hint">Sin usar · ' + formatCountdown(t.expiresAt - Date.now()) + '</span>' +
+        // de qué dinámica salió este tiro — es lo que más se pregunta la gente
+        lineaOrigen(t.source) + '</span>' +
         '<button type="button" class="btn btn-primary gift-code-claim-btn" data-spin-ticket="' + escHTML(t.id) + '">Girar</button>' +
       '</div>';
     }).join("");
@@ -2944,7 +2946,8 @@
         return '<div class="gift-code-row is-expired">' +
           '<span class="gift-code-icon">' + (c.prizeIcon || "🎁") + '</span>' +
           '<span class="gift-code-info"><strong>' + escHTML(c.prizeName) + '</strong><br>' +
-          '<span class="hint">Este premio venció</span></span>' +
+          '<span class="hint">Este premio venció</span>' +
+          lineaOrigen(c.source) + '</span>' +
           '<button type="button" class="btn gift-code-claim-btn is-expired-btn" disabled>VENCIDO</button>' +
           '<button type="button" class="gift-code-dismiss-btn" data-dismiss-code="' + escHTML(c.code) + '" aria-label="Cerrar">&times;</button>' +
         '</div>';
@@ -2954,7 +2957,8 @@
       return '<div class="gift-code-row is-pending">' +
         '<span class="gift-code-icon">' + (c.prizeIcon || "🎁") + '</span>' +
         '<span class="gift-code-info"><strong>' + escHTML(c.prizeName) + '</strong><br>' +
-        '<span class="hint">' + statusLabel + ' · ' + countdown + '</span></span>' +
+        '<span class="hint">' + statusLabel + ' · ' + countdown + '</span>' +
+        lineaOrigen(c.source) + '</span>' +
         '<button type="button" class="btn btn-primary gift-code-claim-btn" data-code="' + escHTML(c.code) + '">Reclamar</button>' +
       '</div>';
     }).join("");
@@ -3475,12 +3479,29 @@
      Toppings Run entrega el premio sin pedir que nadie toque nada, así que
      hace falta contárselo cuando vuelva. Se muestra UNA tarjeta aunque haya
      varios premios: cinco ventanas seguidas serían insoportables. */
+  /* De dónde salió cada premio. Con ocho formas de ganar, "Malteada Oreo" a
+     secas no dice nada: la misma malteada puede venir del cronómetro, de la
+     tarjeta de fidelidad o de haber quedado primero en el juego. La frase se
+     escribe para que enganche con "Ganaste X ___" y con "Ganado ___". */
   var ORIGEN_PREMIO = {
-    toppingsRun: "Toppings Run", loyalty: "tu tarjeta de fidelidad",
-    cronometro: "el cronómetro", challenge: "el reto", ruleta: "la ruleta",
-    stoptime: "Detén el tiempo", redeem: "un código", aviso: "un aviso",
-    "premio-bloqueado": "el Premio Bloqueado"
+    toppingsRun:        { icono: "🏆", frase: "por quedar #1 en Toppings Run" },
+    loyalty:            { icono: "🎟️", frase: "por completar tu tarjeta de fidelidad" },
+    cronometro:         { icono: "⏱️", frase: "por el cronómetro" },
+    stoptime:           { icono: "⏱️", frase: "por Detén el tiempo" },
+    challenge:          { icono: "🎯", frase: "por el reto del día" },
+    ruleta:             { icono: "🎡", frase: "por girar la ruleta" },
+    "premio-bloqueado": { icono: "🔒", frase: "por ser el primero en el Premio Bloqueado" },
+    redeem:             { icono: "🎟️", frase: "por canjear un código" },
+    aviso:              { icono: "📣", frase: "por un aviso de TOPPINGS" }
   };
+
+  /** La línea de origen de una fila. Sin origen conocido no devuelve nada:
+      antes que un "por undefined", mejor no decir nada. */
+  function lineaOrigen(source) {
+    var o = ORIGEN_PREMIO[source];
+    if (!o) return "";
+    return '<span class="gift-code-origin">' + o.icono + " Ganado " + escHTML(o.frase) + "</span>";
+  }
 
   function mostrarPremiosNuevos() {
     var deviceId = getDeviceId();
@@ -3501,9 +3522,9 @@
         var texto;
         if (res.nuevos === 1) {
           var p = res.premios[0] || {};
-          var origen = ORIGEN_PREMIO[p.source] || "TOPPINGS";
+          var o = ORIGEN_PREMIO[p.source];
           texto = "Ganaste " + (p.prizeIcon || "🎁") + " " + (p.prizeName || "un premio") +
-                  " en " + origen + ".\nYa lo guardamos en 🎁 Mis premios.";
+                  (o ? " " + o.frase : "") + ".\nYa lo guardamos en 🎁 Mis premios.";
         } else {
           texto = "Tienes " + res.nuevos + " nuevos premios guardados en 🎁 Mis premios.";
         }

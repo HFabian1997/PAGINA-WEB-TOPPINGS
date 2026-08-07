@@ -716,6 +716,14 @@ body.no-animations .claim-waiting-spinner { animation: none; }
 .gift-code-icon { font-size: 1.6rem; flex: none; }
 .gift-code-info { flex: 1 1 auto; font-size: .88rem; color: var(--ink-soft); }
 .gift-code-info code { color: var(--accent); }
+/* De qué dinámica salió el premio. Va en su propia línea y no pegado al
+   estado: en un celular, "Disponible · 23 h · por quedar #1 en Toppings Run"
+   se parte feo. Vacío no ocupa nada. */
+.gift-code-origin {
+  display: block; margin-top: .15rem;
+  font-size: .72rem; line-height: 1.3; color: var(--ink-mute);
+}
+.gift-code-origin:empty { display: none; }
 .gift-code-claim-btn {
   flex: none; padding: .45rem .8rem; border-radius: var(--radius-sm); border: 1px solid var(--accent);
   background: var(--accent); color: var(--accent-ink); font-weight: 700; cursor: pointer; font-size: .82rem;
