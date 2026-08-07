@@ -978,6 +978,8 @@
         dustTimer: 0,
         chispaTimer: 0,
         ultimoEscalon: -1,   // en qué escalón de la escalera va, para el rebote
+        pajaros: [],         // obstáculos del aire, solo mientras vuela
+        pajaroTimer: 900,
         ultimoEnSuelo: -99,  // cuándo pisó por última vez, para el margen del salto
         enSaltito: false,    // va en el rebote de un escalón (el salto igual vale)
         monedasParaBono: 0,  // cuenta hasta 5 y regala 100 puntos
@@ -1321,6 +1323,21 @@
       state.terrain.forEach(function (t) { t.x -= state.speed * dt; });
       maybeExtendTerrain();
 
+      /* Pájaros. Se mueven y chocan SIEMPRE, no solo mientras dura el poder:
+         si dejaran de existir al acabarse el vuelo, desaparecerían de golpe
+         en la cara del jugador. Siguen su camino hasta salir de pantalla. */
+      var chocaPajaro = false;
+      var pxCentro = W * CHAR_X_RATIO + CHAR_SIZE / 2;
+      var pyCentro = state.charY + CHAR_SIZE / 2;
+      state.pajaros.forEach(function (pa) {
+        pa.x -= (state.speed + pa.vx) * dt;
+        pa.aleteo += dt * 14;
+        var ddx = pxCentro - pa.x, ddy = pyCentro - pa.y;
+        if (Math.sqrt(ddx * ddx + ddy * ddy) < pa.r + CHAR_SIZE * 0.36) chocaPajaro = true;
+      });
+      state.pajaros = state.pajaros.filter(function (pa) { return pa.x > -50; });
+      if (chocaPajaro && !state.falling) registerHit();
+
       if (state.activePowerups.volar > 0) {
         /* ---- Volando ----
            Se sube a una altura de crucero y se queda ahí, con un resorte
@@ -1338,6 +1355,23 @@
         state.charY += state.velocityY * dt;
         // que no se salga por arriba de la pantalla
         if (state.charY < 8) { state.charY = 8; state.velocityY = Math.max(0, state.velocityY); }
+
+        /* Los pájaros solo aparecen volando. Sin ellos el poder era gratis:
+           subías, no te podía pasar nada y esperabas a que se acabara. Ahora
+           el aire también tiene con qué chocarte. */
+        state.pajaroTimer -= dt * 1000;
+        if (state.pajaroTimer <= 0) {
+          state.pajaroTimer = 700 + Math.random() * 900;
+          var altoVuelo = groundY() - CHAR_SIZE - ALTURA_VUELO;
+          state.pajaros.push({
+            x: W + 30,
+            y: altoVuelo + (Math.random() - 0.5) * 130,
+            r: 9 + Math.random() * 4,
+            // vuelan en contra, así que llegan más rápido que el escenario
+            vx: state.speed * (0.35 + Math.random() * 0.4),
+            aleteo: Math.random() * 6
+          });
+        }
 
         // estela de plumitas mientras vuela
         state.dustTimer -= dt * 1000;
@@ -1538,8 +1572,14 @@
         p.x -= state.speed * dt;
         /* El imán se lleva TODO lo que haya en pantalla: monedas, corazones,
            escudos, rayos, otros imanes. Es un imán, no un recogedor de
-           monedas — y así se siente el poder de verdad. */
-        if (state.activePowerups.magnet > 0) {
+           monedas — y así se siente el poder de verdad.
+
+           La única excepción es el poder de volar mientras YA se está
+           volando: si el imán se lo tragara, el vuelo se renovaría solo una y
+           otra vez y la partida se volvería infinita. Ese hay que ir a
+           buscarlo. */
+        var loIgnora = p.type === "volar" && state.activePowerups.volar > 0;
+        if (state.activePowerups.magnet > 0 && !loIgnora) {
           var dx = charCenterX - p.x, dy = charCenterY - p.y;
           var dist = Math.sqrt(dx * dx + dy * dy);
           if (dist < MAGNET_RADIUS) { p.x += dx * Math.min(1, dt * 6); p.y += dy * Math.min(1, dt * 6); }
@@ -2519,6 +2559,25 @@
       });
 
       state.pickups.forEach(drawPickup);
+
+      /* Los pájaros. Dos arcos que aletean con el cuerpo en medio: alcanza
+         para leerse de una, y a este tamaño un dibujo detallado no se vería. */
+      state.pajaros.forEach(function (pa) {
+        var ala = Math.sin(pa.aleteo) * pa.r * 0.85;
+        ctx.strokeStyle = "rgba(30,24,34,.92)";
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.moveTo(pa.x - pa.r * 1.5, pa.y + ala);
+        ctx.quadraticCurveTo(pa.x - pa.r * 0.4, pa.y - pa.r * 0.9, pa.x, pa.y);
+        ctx.quadraticCurveTo(pa.x + pa.r * 0.4, pa.y - pa.r * 0.9, pa.x + pa.r * 1.5, pa.y + ala);
+        ctx.stroke();
+        ctx.lineWidth = 1;
+        ctx.fillStyle = "rgba(30,24,34,.92)";
+        ctx.beginPath(); ctx.ellipse(pa.x, pa.y + 1, pa.r * 0.42, pa.r * 0.3, 0, 0, Math.PI * 2); ctx.fill();
+        // el ojo, que es lo que lo hace ver vivo y no una mancha
+        ctx.fillStyle = "rgba(255,220,120,.9)";
+        ctx.beginPath(); ctx.arc(pa.x - pa.r * 0.18, pa.y, 1.1, 0, Math.PI * 2); ctx.fill();
+      });
 
       /* El aura del imán. Sin esto la gente agarraba el 🧲 y no pasaba nada
          visible, así que parecía que el power-up estaba roto. */
