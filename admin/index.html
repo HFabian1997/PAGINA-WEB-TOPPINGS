@@ -569,6 +569,25 @@
         <label>Volumen de la música (0 = silencio, 1 = máximo) <input type="range" min="0" max="1" step="0.05" data-field="musicVolume"></label>
       </div>
 
+      <h4>🎨 Escenario del juego</h4>
+      <p class="hint">El mundo por el que corre el jugador. Cambia el cielo, el fondo, el piso y cómo aparece la marca.</p>
+      <div class="field-grid" data-form="dailyPrize.toppingsRun">
+        <label class="full">Escenario
+          <select data-field="escenario">
+            <option value="ciudad">🌆 Ciudad TOPPINGS — rótulos de neón, noche urbana</option>
+            <option value="universidad">🎓 Zona Universitaria — grafiti, árboles, escaleras</option>
+            <option value="extrema">⚡ Noche Extrema — puente, relámpagos, todo en rojo</option>
+            <option value="amanecer">🌄 Amanecer en el Valle — el único de día, con neblina</option>
+            <option value="rotar">🔀 Ir cambiando — uno distinto en cada partida</option>
+          </select>
+        </label>
+      </div>
+
+      <h4>💬 Frases en las vallas</h4>
+      <p class="hint">Carteles que van pasando dentro del juego. Escribe las tuyas — cortas se leen mejor, que pasan rápido. Sin frases, no aparece ninguna valla.</p>
+      <div class="repeat-list" data-list="dailyPrize.toppingsRun.frases" data-item-fields="texto" data-item-labels="Frase"></div>
+      <button class="btn btn-ghost" data-add="dailyPrize.toppingsRun.frases">+ Agregar frase</button>
+
       <h4>🏆 Configuración del Ranking</h4>
       <p class="hint">Solo una modalidad puede estar activa a la vez. Al terminar el período, el jugador #1 tiene 24 horas para reclamar el premio; mientras tanto el ranking queda congelado (nadie más puede sumar puntos ni superarlo).</p>
       <div class="field-grid" data-form="dailyPrize.toppingsRun">

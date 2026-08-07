@@ -140,12 +140,101 @@
   var RUN_BG_PATTERN = [110, 110, 146.83, 110, 130.81, 98, 110, 130.81];
   var RUN_BG_STEP_S = 0.16;
 
+  function runInfo() {
+    return (window.__BRAND__ && window.__BRAND__.dailyPrize && window.__BRAND__.dailyPrize.toppingsRun) || {};
+  }
+
   function runMusicConfig() {
-    var info = (window.__BRAND__ && window.__BRAND__.dailyPrize && window.__BRAND__.dailyPrize.toppingsRun) || {};
+    var info = runInfo();
     return {
       file: info.musicFile || "",
       volume: typeof info.musicVolume === "number" ? info.musicVolume : 0.5
     };
+  }
+
+  /* ---------------- Escenarios ----------------
+     El fondo era uno solo, escrito a mano dentro del dibujo. Ahora es una
+     tabla: cada escenario dice de qué color es su cielo, qué silueta va al
+     fondo, de qué color es el piso y qué cosas aparecen. El código de dibujo
+     es el mismo para los cuatro; lo único que cambia son estos datos.
+
+     `acento` es el color de marca del escenario: tiñe ventanas, luces y
+     carteles. Es lo que hace que cada mundo se sienta distinto sin tener que
+     escribir un dibujo aparte para cada uno. */
+  var ESCENARIOS = {
+    ciudad: {
+      nombre: "Ciudad TOPPINGS",
+      cielo: [[0, "#241631"], [0.55, "#8a3f2c"], [1, "#3a2418"]],
+      acento: "255,212,0",
+      astro: "luna",
+      estrellas: 28, nubes: 5, neblina: 0,
+      fondo: "cerros",
+      piso: ["#3b3340", "#2a2430", "#171220"],
+      carril: "255,232,150",
+      props: ["poste", "hidrante", "cono", "caja", "barril"],
+      marca: "neon"
+    },
+    universidad: {
+      nombre: "Zona Universitaria",
+      cielo: [[0, "#140f2a"], [0.5, "#33245c"], [1, "#241a38"]],
+      acento: "255,212,0",
+      astro: "luna",
+      estrellas: 34, nubes: 3, neblina: 0,
+      fondo: "arboles",
+      piso: ["#4c4754", "#37333f", "#201d28"],   // concreto, no asfalto
+      carril: "230,230,240",
+      props: ["poste", "banca", "basura", "cono"],
+      marca: "grafiti"
+    },
+    extrema: {
+      nombre: "Noche Extrema",
+      cielo: [[0, "#07070f", ], [0.55, "#161628"], [1, "#0a0a14"]],
+      acento: "255,70,70",
+      astro: "lunaPalida",
+      estrellas: 16, nubes: 2, neblina: 0,
+      fondo: "puente",
+      piso: ["#33333d", "#22222b", "#111119"],
+      carril: "255,120,120",
+      props: ["torre", "contenedor", "cono"],
+      marca: "chorreado",
+      rayos: true
+    },
+    amanecer: {
+      nombre: "Amanecer en el Valle",
+      cielo: [[0, "#3a2150"], [0.45, "#d9663a"], [0.8, "#f2a95f"], [1, "#f6c98a"]],
+      acento: "255,150,30",
+      astro: "sol",
+      estrellas: 4, nubes: 8, neblina: 0.16,
+      fondo: "cerros",
+      piso: ["#59493c", "#41352d", "#2a221d"],   // tierra
+      carril: "255,240,200",
+      props: ["poste", "cono", "caja"],
+      marca: "neon"
+    }
+  };
+  var ORDEN_ESCENARIOS = ["ciudad", "universidad", "extrema", "amanecer"];
+
+  /** Cuál toca. "rotar" va cambiando en cada partida. */
+  function elegirEscenario() {
+    var pedido = String(runInfo().escenario || "ciudad");
+    if (pedido === "rotar") {
+      // se guarda cuál salió la última vez, para no repetir dos seguidas
+      var ultimo = "";
+      try { ultimo = localStorage.getItem("toppings_run_escenario") || ""; } catch (e) {}
+      var opciones = ORDEN_ESCENARIOS.filter(function (k) { return k !== ultimo; });
+      pedido = opciones[Math.floor(Math.random() * opciones.length)];
+      try { localStorage.setItem("toppings_run_escenario", pedido); } catch (e) {}
+    }
+    return ESCENARIOS[pedido] || ESCENARIOS.ciudad;
+  }
+
+  /** Las frases de las vallas, las que escriba el negocio en el panel. */
+  function frasesDeMarca() {
+    var f = runInfo().frases;
+    if (!Array.isArray(f)) return [];
+    return f.map(function (x) {
+      return String((x && typeof x === "object" ? x.texto : x) || "").trim();
+    }).filter(function (t) { return t !== ""; }).slice(0, 12);
   }
 
   function startRunBgMusic() {
@@ -580,6 +669,29 @@
       return out;
     }
 
+    /* Vallas publicitarias con las frases del negocio. Se reparten a lo largo
+       de un tramo largo y se reciclan, igual que los edificios, así que van
+       apareciendo cada tanto en vez de todas juntas. */
+    function buildVallas() {
+      var frases = frasesDeMarca();
+      if (!frases.length) return { items: [], totalW: 1 };
+      var items = [];
+      var x = 260;
+      for (var i = 0; i < frases.length; i++) {
+        items.push({
+          x: x,
+          texto: frases[i],
+          alto: 26 + Math.random() * 10,
+          /* Bien alto a propósito: el rótulo de TOPPINGS vive entre los 44 y
+             los 66 px sobre el suelo, y con postes cortos las vallas le caían
+             encima. Desde 70 para arriba nunca se pisan. */
+          poste: 72 + Math.random() * 46
+        });
+        x += 420 + Math.random() * 320;
+      }
+      return { items: items, totalW: x + 300 };
+    }
+
     /* Campo de estrellas fijo por partida (no se regenera cada frame) —
        cada una titila a su propio ritmo. Puramente decorativo. */
     function buildStars(count) {
@@ -598,6 +710,8 @@
 
     function resetGame() {
       var prevRecord = state ? state.record : Number(localStorage.getItem(RECORD_KEY) || 0);
+      var esc = elegirEscenario();
+      olvidarDegradados();   // el mundo cambió: los degradados viejos ya no sirven
       state = {
         charY: groundY() - CHAR_SIZE,
         velocityY: 0,
@@ -639,15 +753,21 @@
         bgScrollNear: 0,
         bgScrollCerros: 0,
         groundScroll: 0,
+        // el escenario se elige AL EMPEZAR la partida, no a cada cuadro: si
+        // estuviera en "ir cambiando", cambiaría de mundo mientras jugás
+        esc: esc,
+        frases: frasesDeMarca(),
         bgFar: buildSkylinePattern(9, 34, 74, 26, 50),
         bgNear: buildSkylinePattern(7, 20, 46, 22, 40),
-        // los cerros son mucho más altos que los edificios: son los que
-        // llenan la mitad de la pantalla que antes era cielo pelado
+        // la capa de más atrás: cerros, árboles o el puente según el mundo
         cerros: buildMountains(7, 90, 190, 130, 230),
-        nubes: buildClouds(5),
+        vallas: buildVallas(),
+        nubes: buildClouds(esc.nubes),
         estrellaFugaz: null,
         proximaFugaz: 4 + Math.random() * 9,
-        stars: buildStars(28),
+        rayo: 0,
+        proximoRayo: 2 + Math.random() * 5,
+        stars: buildStars(esc.estrellas),
         moonSeed: Math.random(),
         record: prevRecord,
         over: false
@@ -861,6 +981,19 @@
         var nb = state.nubes[ni];
         nb.x -= nb.vel * dt;
         if (nb.x < -0.2) { nb.x = 1.2; nb.y = 0.08 + Math.random() * 0.42; }
+      }
+
+      // relámpagos, solo en Noche Extrema
+      if (state.esc.rayos) {
+        if (state.rayo > 0) {
+          state.rayo = Math.max(0, state.rayo - dt * 3.4);
+        } else {
+          state.proximoRayo -= dt;
+          if (state.proximoRayo <= 0) {
+            state.rayo = 1;
+            state.proximoRayo = 3 + Math.random() * 7;
+          }
+        }
       }
 
       /* Estrella fugaz cada tanto. Dura poco a propósito: si se viera seguido
@@ -1161,35 +1294,18 @@
     }
 
     function drawBackground() {
-      ctx.fillStyle = degradado("cielo", function () {
+      var esc = state.esc;
+
+      // el cielo lo define el escenario: la clave del caché lleva su nombre
+      // para que al cambiar de mundo no se reuse el degradado del anterior
+      ctx.fillStyle = degradado("cielo:" + esc.nombre, function () {
         var g = ctx.createLinearGradient(0, 0, 0, groundY());
-        g.addColorStop(0, "#241631");
-        g.addColorStop(0.55, "#8a3f2c");
-        g.addColorStop(1, "#3a2418");
+        for (var i = 0; i < esc.cielo.length; i++) g.addColorStop(esc.cielo[i][0], esc.cielo[i][1]);
         return g;
       });
       ctx.fillRect(0, 0, W, groundY());
 
-      // luna, con un halo suave
-      var moonX = W * (0.72 + state.moonSeed * 0.15);
-      var moonY = groundY() * 0.16;
-      var moonR = 15;
-      /* El halo se arma centrado en (0,0) y se mueve con translate: así no
-         depende de dónde caiga la luna y alcanza con guardarlo una vez. */
-      ctx.save();
-      ctx.translate(moonX, moonY);
-      ctx.fillStyle = degradado("halo", function () {
-        var g = ctx.createRadialGradient(0, 0, moonR * 0.6, 0, 0, moonR * 3.2);
-        g.addColorStop(0, "rgba(255,244,214,.25)");
-        g.addColorStop(1, "rgba(255,244,214,0)");
-        return g;
-      });
-      ctx.beginPath(); ctx.arc(0, 0, moonR * 3.2, 0, Math.PI * 2); ctx.fill();
-      ctx.restore();
-      ctx.fillStyle = "#fff4d6";
-      ctx.beginPath(); ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = "rgba(138,63,44,.35)";
-      ctx.beginPath(); ctx.arc(moonX - moonR * 0.35, moonY - moonR * 0.2, moonR * 0.9, 0, Math.PI * 2); ctx.fill();
+      drawAstro();
 
       // estrellas titilando, fijas por partida
       state.stars.forEach(function (s) {
@@ -1202,10 +1318,68 @@
 
       drawNubes();
       drawEstrellaFugaz();
-      drawCerros();
-      drawSkylineLayer(state.bgFar, state.bgScrollFar, "rgba(18,12,22,.55)", "rgba(255,212,0,.35)");
-      drawSkylineLayer(state.bgNear, state.bgScrollNear, "rgba(14,9,16,.8)", "rgba(255,212,0,.55)");
+
+      // la capa de más atrás cambia por completo según el mundo
+      if (esc.fondo === "arboles") drawArboles();
+      else if (esc.fondo === "puente") drawPuente();
+      else drawCerros();
+
+      var tinte = "rgba(" + esc.acento + ",";
+      drawSkylineLayer(state.bgFar, state.bgScrollFar, "rgba(18,12,22,.55)", tinte + ".35)");
+      drawSkylineLayer(state.bgNear, state.bgScrollNear, "rgba(14,9,16,.8)", tinte + ".55)");
       drawLetreroToppings();
+      drawVallas();
+
+      // neblina baja: solo el amanecer la usa, y va DESPUÉS de las siluetas
+      // para que se vea el vapor pasando por delante de los cerros
+      if (esc.neblina > 0) {
+        ctx.fillStyle = degradado("neblina:" + esc.nombre, function () {
+          var g = ctx.createLinearGradient(0, groundY() - 150, 0, groundY());
+          g.addColorStop(0, "rgba(255,225,190,0)");
+          g.addColorStop(1, "rgba(255,225,190," + esc.neblina + ")");
+          return g;
+        });
+        ctx.fillRect(0, groundY() - 150, W, 150);
+      }
+
+      if (esc.rayos) drawRayo();
+    }
+
+    /* Luna, luna pálida o sol, según el mundo. Es el elemento que más rápido
+       le dice al ojo si es de noche o de día. */
+    function drawAstro() {
+      var esc = state.esc;
+      var x = W * (0.72 + state.moonSeed * 0.15);
+      var y = groundY() * 0.16;
+      var r = esc.astro === "sol" ? 21 : 15;
+
+      var cuerpo = esc.astro === "sol" ? "#ffe9a8"
+                 : esc.astro === "lunaPalida" ? "#c9c9d8" : "#fff4d6";
+      var halo = esc.astro === "sol" ? "255,200,110"
+               : esc.astro === "lunaPalida" ? "200,200,225" : "255,244,214";
+      var fuerza = esc.astro === "sol" ? 0.4 : esc.astro === "lunaPalida" ? 0.14 : 0.25;
+
+      /* El halo se arma centrado en (0,0) y se mueve con translate: así no
+         depende de dónde caiga y alcanza con guardarlo una vez. */
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.fillStyle = degradado("halo:" + esc.nombre, function () {
+        var g = ctx.createRadialGradient(0, 0, r * 0.6, 0, 0, r * 3.4);
+        g.addColorStop(0, "rgba(" + halo + "," + fuerza + ")");
+        g.addColorStop(1, "rgba(" + halo + ",0)");
+        return g;
+      });
+      ctx.beginPath(); ctx.arc(0, 0, r * 3.4, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+
+      ctx.fillStyle = cuerpo;
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+
+      // el cráter que le da volumen a la luna; el sol va limpio
+      if (esc.astro !== "sol") {
+        ctx.fillStyle = "rgba(120,110,130,.30)";
+        ctx.beginPath(); ctx.arc(x - r * 0.35, y - r * 0.2, r * 0.9, 0, Math.PI * 2); ctx.fill();
+      }
     }
 
     /* Cordillera. Un solo camino relleno para las dos vueltas del patrón:
@@ -1254,6 +1428,143 @@
       }
     }
 
+    /* Arboleda de la zona universitaria. Se reusa el patrón de los cerros
+       (mismo array, misma vuelta) pero cada "pico" se dibuja como copa de
+       árbol: tronco + tres bochas. */
+    function drawArboles() {
+      var p = state.cerros;
+      var totalW = p.totalW;
+      var offset = state.bgScrollCerros % totalW;
+      var base = groundY();
+
+      for (var v = 0; v < 2; v++) {
+        for (var i = 0; i < p.items.length; i++) {
+          var a = p.items[i];
+          var x = a.x - offset + v * totalW + a.w * 0.5;
+          if (x > W + 80 || x < -80) continue;
+          var alto = a.h * 0.62;
+          var rc = 26 + (a.w % 17);
+
+          ctx.fillStyle = "rgba(20,26,20,.85)";
+          ctx.fillRect(x - 3, base - alto * 0.55, 6, alto * 0.55);
+
+          ctx.fillStyle = "rgba(26,40,30,.9)";
+          ctx.beginPath();
+          ctx.arc(x, base - alto * 0.62, rc, 0, Math.PI * 2);
+          ctx.arc(x - rc * 0.72, base - alto * 0.48, rc * 0.72, 0, Math.PI * 2);
+          ctx.arc(x + rc * 0.72, base - alto * 0.5, rc * 0.78, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+
+    /* Puente colgante de Noche Extrema: dos torres, el cable colgando entre
+       ellas y las tirantas verticales. Con luces rojas de aviso arriba. */
+    function drawPuente() {
+      var totalW = Math.max(520, W * 1.4);
+      var offset = state.bgScrollCerros % totalW;
+      var base = groundY();
+      var altoTorre = Math.min(groundY() * 0.55, 230);
+
+      for (var v = 0; v < 2; v++) {
+        var x0 = -offset + v * totalW;
+        var x1 = x0 + totalW * 0.62;
+        if (x0 > W + 200 && x1 > W + 200) continue;
+
+        var tabla = base - altoTorre * 0.34;
+
+        // la calzada
+        ctx.fillStyle = "rgba(16,16,24,.85)";
+        ctx.fillRect(x0 - 40, tabla, (x1 - x0) + 80, 5);
+
+        // el cable principal, colgando entre las dos torres
+        ctx.strokeStyle = "rgba(70,70,92,.85)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x0, base - altoTorre);
+        ctx.quadraticCurveTo((x0 + x1) / 2, base - altoTorre * 0.42, x1, base - altoTorre);
+        ctx.stroke();
+
+        // tirantas: se calcula la parábola del cable para colgarlas de ahí
+        ctx.strokeStyle = "rgba(70,70,92,.5)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (var t = 0.08; t < 0.96; t += 0.09) {
+          var tx = x0 + (x1 - x0) * t;
+          var u = 1 - t;
+          var ty = u * u * (base - altoTorre) +
+                   2 * u * t * (base - altoTorre * 0.42) +
+                   t * t * (base - altoTorre);
+          ctx.moveTo(tx, ty); ctx.lineTo(tx, tabla);
+        }
+        ctx.stroke();
+
+        // las dos torres, con su luz de aviso
+        [x0, x1].forEach(function (tx) {
+          ctx.fillStyle = "rgba(22,22,32,.92)";
+          ctx.fillRect(tx - 5, base - altoTorre, 10, altoTorre);
+          ctx.fillStyle = "rgba(255,70,70," + (0.45 + 0.45 * Math.sin(state.elapsed * 3)).toFixed(2) + ")";
+          ctx.beginPath(); ctx.arc(tx, base - altoTorre - 4, 3, 0, Math.PI * 2); ctx.fill();
+        });
+      }
+      ctx.lineWidth = 1;
+    }
+
+    /** Relámpago: un fogonazo blanco corto en todo el cielo. */
+    function drawRayo() {
+      if (!(state.rayo > 0)) return;
+      // dos golpes seguidos, como los relámpagos de verdad
+      var f = state.rayo;
+      var alpha = (f > 0.75 ? (1 - f) * 4 : f) * 0.16;
+      if (alpha <= 0) return;
+      ctx.fillStyle = "rgba(210,225,255," + alpha.toFixed(3) + ")";
+      ctx.fillRect(0, 0, W, groundY());
+    }
+
+    /* Las vallas con las frases del negocio. Viajan con la ciudad cercana,
+       así que pasan al mismo ritmo que los edificios de adelante. */
+    function drawVallas() {
+      var p = state.vallas;
+      if (!p.items.length) return;
+      var totalW = p.totalW;
+      var offset = state.bgScrollNear % totalW;
+      var base = groundY();
+      var esc = state.esc;
+
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      for (var v = 0; v < 2; v++) {
+        for (var i = 0; i < p.items.length; i++) {
+          var c = p.items[i];
+          var x = c.x - offset + v * totalW;
+          if (x > W + 150 || x < -150) continue;
+
+          ctx.font = "800 12px system-ui, -apple-system, sans-serif";
+          var ancho = Math.min(W * 0.62, ctx.measureText(c.texto).width + 26);
+          var alto = 30;
+          var top = base - c.poste - alto;
+
+          // los dos postes
+          ctx.fillStyle = "rgba(10,8,14,.9)";
+          ctx.fillRect(x - ancho / 2 + 6, top + alto, 3, c.poste);
+          ctx.fillRect(x + ancho / 2 - 9, top + alto, 3, c.poste);
+
+          // el tablero y su marco encendido
+          ctx.fillStyle = "rgba(18,13,22,.94)";
+          ctx.fillRect(x - ancho / 2, top, ancho, alto);
+          ctx.strokeStyle = "rgba(" + esc.acento + ",.6)";
+          ctx.lineWidth = 1.4;
+          ctx.strokeRect(x - ancho / 2 + 0.5, top + 0.5, ancho - 1, alto - 1);
+          ctx.lineWidth = 1;
+
+          ctx.fillStyle = "rgba(" + esc.acento + ",.95)";
+          ctx.fillText(c.texto, x, top + alto / 2);
+        }
+      }
+      ctx.textAlign = "start";
+      ctx.textBaseline = "alphabetic";
+    }
+
     function drawNubes() {
       var alto = groundY();
       for (var i = 0; i < state.nubes.length; i++) {
@@ -1292,30 +1603,87 @@
 
     /* Un letrero de TOPPINGS en el horizonte, apoyado en la ciudad. Late
        despacio, como un aviso de neón. Es lo único de marca en el fondo. */
+    /* La marca dentro del mundo. Cambia de forma según el escenario, que es
+       lo que hace que se sienta parte del lugar y no un logo pegado encima:
+       rótulo de neón en la ciudad, grafiti en el muro de la universidad, y
+       letras chorreadas en Noche Extrema. */
     function drawLetreroToppings() {
       var totalW = state.bgNear.totalW;
       var x = W * 0.62 - (state.bgScrollNear % (totalW * 2));
       // el letrero viaja con la ciudad y reaparece cada dos vueltas
-      if (x < -160) x += totalW * 2;
-      if (x > W + 40 || x < -160) return;
+      if (x < -220) x += totalW * 2;
+      if (x > W + 40 || x < -220) return;
 
+      var acento = state.esc.acento;
       var base = groundY() - 44;
-      var pulso = 0.72 + 0.28 * Math.sin(state.elapsed * 2.2);
 
-      // los dos postes
+      if (state.esc.marca === "grafiti") {
+        /* Muro pintado. Va pegado al piso y con la letra torcida, como una
+           pinta de verdad — un cartel prolijo ahí quedaría fuera de lugar. */
+        var mh = 46, mw = 190;
+        var my = groundY() - mh;
+        ctx.fillStyle = "rgba(58,54,64,.95)";
+        ctx.fillRect(x, my, mw, mh);
+        ctx.fillStyle = "rgba(30,28,36,.6)";
+        for (var lad = 0; lad < 3; lad++) ctx.fillRect(x, my + lad * 16, mw, 1);
+
+        ctx.save();
+        ctx.translate(x + mw / 2, my + mh / 2);
+        ctx.rotate(-0.045);
+        ctx.font = "900 26px system-ui, -apple-system, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "rgba(12,10,16,.9)";
+        ctx.strokeText("TOPPINGS", 0, 0);
+        ctx.fillStyle = "rgba(" + acento + ",.92)";
+        ctx.fillText("TOPPINGS", 0, 0);
+        ctx.restore();
+        ctx.lineWidth = 1;
+        ctx.textAlign = "start";
+        ctx.textBaseline = "alphabetic";
+        return;
+      }
+
+      if (state.esc.marca === "chorreado") {
+        // letras grandes con chorreados colgando, sobre el muro industrial
+        ctx.save();
+        ctx.translate(x + 90, groundY() - 62);
+        ctx.font = "900 30px system-ui, -apple-system, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = "rgba(8,8,12,.95)";
+        ctx.strokeText("TOPPINGS", 0, 0);
+        ctx.fillStyle = "rgba(" + acento + ",.85)";
+        ctx.fillText("TOPPINGS", 0, 0);
+        // los chorreados: se reparten a lo ancho de la palabra
+        ctx.fillStyle = "rgba(" + acento + ",.55)";
+        for (var ch = 0; ch < 6; ch++) {
+          var cx = -70 + ch * 28;
+          ctx.fillRect(cx, 12, 2, 8 + hash01(ch, 3, 0) * 16);
+        }
+        ctx.restore();
+        ctx.lineWidth = 1;
+        ctx.textAlign = "start";
+        ctx.textBaseline = "alphabetic";
+        return;
+      }
+
+      // neón: el rótulo colgado, latiendo
+      var pulso = 0.72 + 0.28 * Math.sin(state.elapsed * 2.2);
       ctx.fillStyle = "rgba(10,7,12,.9)";
       ctx.fillRect(x + 8, base, 3, 44);
       ctx.fillRect(x + 62, base, 3, 44);
 
-      // el tablero
       ctx.fillStyle = "rgba(16,10,18,.92)";
       ctx.fillRect(x, base - 20, 74, 22);
-      ctx.strokeStyle = "rgba(255,212,0," + (pulso * 0.75).toFixed(2) + ")";
+      ctx.strokeStyle = "rgba(" + acento + "," + (pulso * 0.75).toFixed(2) + ")";
       ctx.lineWidth = 1.4;
       ctx.strokeRect(x + 0.5, base - 19.5, 73, 21);
       ctx.lineWidth = 1;
 
-      ctx.fillStyle = "rgba(255,212,0," + pulso.toFixed(2) + ")";
+      ctx.fillStyle = "rgba(" + acento + "," + pulso.toFixed(2) + ")";
       ctx.font = "800 11px system-ui, -apple-system, sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
@@ -1543,11 +1911,12 @@
         /* Asfalto de verdad. Antes era un blanco translúcido que dejaba ver el
            cielo por debajo y hacía que el piso pareciera de vidrio; ahora es
            opaco y oscuro, con la cara de arriba más clara que el canto. */
-        ctx.fillStyle = degradado("suelo:" + tArriba + ":" + tAbajo, function () {
+        var piso = state.esc.piso;
+        ctx.fillStyle = degradado("suelo:" + state.esc.nombre + ":" + tArriba + ":" + tAbajo, function () {
           var g = ctx.createLinearGradient(0, tArriba, 0, tAbajo);
-          g.addColorStop(0, "#3b3340");
-          g.addColorStop(0.35, "#2a2430");
-          g.addColorStop(1, "#171220");
+          g.addColorStop(0, piso[0]);
+          g.addColorStop(0.35, piso[1]);
+          g.addColorStop(1, piso[2]);
           return g;
         });
         if (t.stepped && t.h0 !== t.h1) {
@@ -1567,7 +1936,7 @@
           ctx.lineTo(t.x + t.w, ty1 + GROUND_H);
           ctx.closePath();
           ctx.fill();
-          ctx.strokeStyle = "rgba(255,212,0,.4)";
+          ctx.strokeStyle = "rgba(" + state.esc.acento + ",.4)";
           ctx.beginPath();
           for (var sj = 0; sj < steps; sj++) {
             var ex0 = t.x + (t.w * sj) / steps;
@@ -1584,7 +1953,7 @@
           ctx.lineTo(t.x, ty0 + GROUND_H);
           ctx.closePath();
           ctx.fill();
-          ctx.strokeStyle = "rgba(255,212,0,.4)";
+          ctx.strokeStyle = "rgba(" + state.esc.acento + ",.4)";
           ctx.beginPath(); ctx.moveTo(t.x, ty0); ctx.lineTo(t.x + t.w, ty1); ctx.stroke();
         }
         if (t.isBridge) {
@@ -1634,7 +2003,7 @@
       // marcas de carril, siguiendo la altura del terreno en cada punto
       var dashLen = 16, dashGap = 14, dashCycle = dashLen + dashGap;
       var dashOffset = state.groundScroll % dashCycle;
-      ctx.fillStyle = "rgba(255,232,150,.30)";
+      ctx.fillStyle = "rgba(" + state.esc.carril + ",.30)";
       for (var dx = -dashOffset; dx < W; dx += dashCycle) {
         var dh = terrainHeightAt(dx);
         if (dh === null) continue; // no hay marcas sobre un abismo
