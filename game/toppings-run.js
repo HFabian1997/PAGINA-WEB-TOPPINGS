@@ -501,6 +501,85 @@
       return { items: items, totalW: Math.max(x, 60) };
     }
 
+    /* ---- El cielo ----
+       En un celular el lienzo es una columna alta y la acción pasa toda abajo,
+       así que arriba sobraba muchísimo espacio vacío. Estas tres capas lo
+       llenan SIN tocar el juego: son fondo puro, no chocan con nada.
+
+       Todo se arma una vez por partida y se recicla, igual que los edificios:
+       nada de esto crea objetos ni degradados por cuadro. */
+
+    /* Cordillera del fondo. Va detrás de la ciudad y sube bastante más alto,
+       que es lo que llena el medio de la pantalla. */
+    /* ---- Partículas ----
+       Con tope. En un celular viejo, dejar que se acumulen sin límite es
+       justo lo que hace que el juego se arrastre: cada una es un círculo
+       más por cuadro. Al pasarse, se descarta la más vieja. */
+    var TOPE_PARTICULAS = 70;
+
+    function empujarParticula(p) {
+      if (state.particles.length >= TOPE_PARTICULAS) state.particles.shift();
+      state.particles.push(p);
+    }
+
+    /** Nube de polvo al caer. Más fuerte el golpe, más polvo y más abierto. */
+    function polvoDeAterrizaje(charX, sueloY, fuerza) {
+      var cuantas = 4 + Math.round(fuerza * 6);
+      for (var i = 0; i < cuantas; i++) {
+        var haciaLaDerecha = i % 2 === 0;
+        empujarParticula({
+          x: charX + CHAR_SIZE / 2 + (Math.random() - 0.5) * 10,
+          y: sueloY - 2,
+          vx: (haciaLaDerecha ? 1 : -1) * (25 + Math.random() * 75) * (0.5 + fuerza),
+          vy: -25 - Math.random() * 55 * fuerza,
+          life: 0.36 + Math.random() * 0.22,
+          maxLife: 0.58,
+          r: 2 + Math.random() * 3
+        });
+      }
+    }
+
+    function buildMountains(count, minH, maxH, minW, maxW) {
+      var items = [];
+      var x = 0;
+      for (var i = 0; i < count; i++) {
+        var w = minW + Math.random() * (maxW - minW);
+        var h = minH + Math.random() * (maxH - minH);
+        // el pico no va siempre al medio: si no, parecen todos el mismo cerro
+        items.push({ x: x, w: w, h: h, pico: 0.3 + Math.random() * 0.4 });
+        x += w * (0.55 + Math.random() * 0.25);   // se solapan, como cerros de verdad
+      }
+      return { items: items, totalW: Math.max(x, 80) };
+    }
+
+    /* Nubes que cruzan lento. Cada una es un puñado de círculos. */
+    function buildClouds(count) {
+      var out = [];
+      for (var i = 0; i < count; i++) {
+        /* Las bolas se pisan bastante entre sí a propósito: separadas se leen
+           como pelotas grises, encimadas se leen como una nube. */
+        var bolas = [];
+        var n = 4 + Math.floor(Math.random() * 3);
+        for (var j = 0; j < n; j++) {
+          var t = n === 1 ? 0 : (j / (n - 1)) - 0.5;   // -0.5 .. 0.5
+          bolas.push({
+            dx: t * 46,
+            dy: (0.5 - Math.abs(t)) * -9 + (Math.random() - 0.5) * 4,   // más alta al centro
+            r: 15 + (0.5 - Math.abs(t)) * 16 + Math.random() * 4
+          });
+        }
+        out.push({
+          x: Math.random(),                 // 0..1 del ancho
+          y: 0.06 + Math.random() * 0.5,    // 0..1 del alto del cielo
+          escala: 0.75 + Math.random() * 0.8,
+          vel: 0.004 + Math.random() * 0.008,
+          alpha: 0.05 + Math.random() * 0.035
+        });
+        out[out.length - 1].bolas = bolas;
+      }
+      return out;
+    }
+
     /* Campo de estrellas fijo por partida (no se regenera cada frame) —
        cada una titila a su propio ritmo. Puramente decorativo. */
     function buildStars(count) {
@@ -553,11 +632,21 @@
         hasJumpedOnce: false,
         animT: 0,
         dustTimer: 0,
+        chispaTimer: 0,
+        aterrizaje: 0,   // 0..1, cuánto se aplasta al caer (se va solo)
+        destello: 0,     // 0..1, el fogonazo rojo al chocar
         bgScrollFar: 0,
         bgScrollNear: 0,
+        bgScrollCerros: 0,
         groundScroll: 0,
         bgFar: buildSkylinePattern(9, 34, 74, 26, 50),
         bgNear: buildSkylinePattern(7, 20, 46, 22, 40),
+        // los cerros son mucho más altos que los edificios: son los que
+        // llenan la mitad de la pantalla que antes era cielo pelado
+        cerros: buildMountains(7, 90, 190, 130, 230),
+        nubes: buildClouds(5),
+        estrellaFugaz: null,
+        proximaFugaz: 4 + Math.random() * 9,
         stars: buildStars(28),
         moonSeed: Math.random(),
         record: prevRecord,
@@ -704,9 +793,11 @@
       if (state.shieldCharges > 0) {
         state.shieldCharges--;
         state.invulnUntil = state.elapsed + INVULN_S;
+        state.destello = 0.55;   // el escudo aguanta, pero se nota
         renderPowerupBar();
         return;
       }
+      state.destello = 1;
       state.lives--;
       state.invulnUntil = state.elapsed + INVULN_S;
       renderLives();
@@ -762,6 +853,33 @@
       state.animT += dt * (state.speed / 70);
       state.bgScrollFar += dt * state.speed * 0.15;
       state.bgScrollNear += dt * state.speed * 0.4;
+      // los cerros van mucho más lento: es lo que da sensación de distancia
+      state.bgScrollCerros += dt * state.speed * 0.05;
+
+      // nubes: cruzan solas, no dependen de la velocidad del juego
+      for (var ni = 0; ni < state.nubes.length; ni++) {
+        var nb = state.nubes[ni];
+        nb.x -= nb.vel * dt;
+        if (nb.x < -0.2) { nb.x = 1.2; nb.y = 0.08 + Math.random() * 0.42; }
+      }
+
+      /* Estrella fugaz cada tanto. Dura poco a propósito: si se viera seguido
+         dejaría de llamar la atención. */
+      if (state.estrellaFugaz) {
+        state.estrellaFugaz.t += dt;
+        if (state.estrellaFugaz.t > 0.9) state.estrellaFugaz = null;
+      } else {
+        state.proximaFugaz -= dt;
+        if (state.proximaFugaz <= 0) {
+          state.estrellaFugaz = {
+            t: 0,
+            x: 0.15 + Math.random() * 0.6,
+            y: 0.06 + Math.random() * 0.3,
+            largo: 40 + Math.random() * 45
+          };
+          state.proximaFugaz = 7 + Math.random() * 12;
+        }
+      }
 
       // power-ups activos: cuentan hacia atrás
       var puChanged = false;
@@ -823,9 +941,20 @@
         } else {
           var restY = (state.currentRail ? state.currentRail.y : groundY() - (terrainH || 0)) - CHAR_SIZE;
           if (state.charY >= restY) {
+            /* Cuánto venía cayendo: lo usan el aplastón del personaje y la
+               nube de polvo, para que un salto grande se sienta más pesado
+               que bajar un escalón. */
+            var golpe = Math.min(1, Math.max(0, state.velocityY / 900));
+            var veniaEnElAire = !state.onGround;
+
             state.charY = restY;
             state.velocityY = 0;
             state.onGround = true;
+
+            if (veniaEnElAire && golpe > 0.12) {
+              state.aterrizaje = golpe;          // lo lee drawCharacter
+              polvoDeAterrizaje(charX, restY + CHAR_SIZE, golpe);
+            }
             if (state.trick && state.trick.active) {
               state.trick.active = false;
               state.score += state.trick.bonus;
@@ -848,15 +977,37 @@
         state.dustTimer -= dt * 1000;
         if (state.dustTimer <= 0) {
           state.dustTimer = 90;
-          state.particles.push({
+          empujarParticula({
             x: W * CHAR_X_RATIO + 6, y: groundYAt(charX) - 3,
             vx: -state.speed * 0.35, vy: -18 - Math.random() * 18,
             life: 0.5, maxLife: 0.5, r: 2 + Math.random() * 2
           });
         }
+
+        /* Chispas al ir montado en un riel. Salen hacia atrás y hacia arriba,
+           como cuando raspa el metal. */
+        if (state.currentRail) {
+          state.chispaTimer = (state.chispaTimer || 0) - dt * 1000;
+          if (state.chispaTimer <= 0) {
+            state.chispaTimer = 45;
+            for (var ch = 0; ch < 2; ch++) {
+              empujarParticula({
+                x: W * CHAR_X_RATIO + 4, y: state.charY + CHAR_SIZE - 2,
+                vx: -state.speed * (0.5 + Math.random() * 0.4),
+                vy: -60 - Math.random() * 90,
+                life: 0.32, maxLife: 0.32, r: 1.2 + Math.random(),
+                chispa: true
+              });
+            }
+          }
+        }
       }
       state.particles.forEach(function (p) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 200 * dt; p.life -= dt; });
       state.particles = state.particles.filter(function (p) { return p.life > 0; });
+
+      // el aplastón del aterrizaje y el destello del golpe se van solos
+      if (state.aterrizaje > 0) state.aterrizaje = Math.max(0, state.aterrizaje - dt * 4.5);
+      if (state.destello > 0) state.destello = Math.max(0, state.destello - dt * 3.2);
 
       // obstáculos/rampas: mover, generar nuevos, descartar los que ya salieron
       state.nextSpawnIn -= dt * 1000;
@@ -1049,8 +1200,128 @@
         ctx.fill();
       });
 
+      drawNubes();
+      drawEstrellaFugaz();
+      drawCerros();
       drawSkylineLayer(state.bgFar, state.bgScrollFar, "rgba(18,12,22,.55)", "rgba(255,212,0,.35)");
       drawSkylineLayer(state.bgNear, state.bgScrollNear, "rgba(14,9,16,.8)", "rgba(255,212,0,.55)");
+      drawLetreroToppings();
+    }
+
+    /* Cordillera. Un solo camino relleno para las dos vueltas del patrón:
+       menos llamadas al canvas que dibujar cerro por cerro. */
+    function drawCerros() {
+      var p = state.cerros;
+      var totalW = p.totalW;
+      var offset = state.bgScrollCerros % totalW;
+      var base = groundY();
+
+      ctx.fillStyle = "rgba(30,18,34,.72)";
+      ctx.beginPath();
+      ctx.moveTo(-10, base);
+      for (var vuelta = 0; vuelta < 2; vuelta++) {
+        for (var i = 0; i < p.items.length; i++) {
+          var c = p.items[i];
+          var x0 = c.x - offset + vuelta * totalW;
+          if (x0 > W + 60 || x0 + c.w < -60) continue;
+          ctx.lineTo(x0, base);
+          ctx.lineTo(x0 + c.w * c.pico, base - c.h);
+          ctx.lineTo(x0 + c.w, base);
+        }
+      }
+      ctx.lineTo(W + 10, base);
+      ctx.closePath();
+      ctx.fill();
+
+      /* Nieve/niebla en las puntas: una pincelada clara arriba de cada pico.
+         Es lo que hace que se lean como cerros y no como triángulos. */
+      ctx.fillStyle = "rgba(255,235,205,.10)";
+      for (var v2 = 0; v2 < 2; v2++) {
+        for (var j = 0; j < p.items.length; j++) {
+          var m = p.items[j];
+          var mx = m.x - offset + v2 * totalW;
+          if (mx > W + 60 || mx + m.w < -60) continue;
+          var px = mx + m.w * m.pico;
+          var py = base - m.h;
+          var caida = m.h * 0.22;
+          ctx.beginPath();
+          ctx.moveTo(px, py);
+          ctx.lineTo(px + m.w * 0.16, py + caida);
+          ctx.lineTo(px - m.w * 0.16, py + caida);
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+    }
+
+    function drawNubes() {
+      var alto = groundY();
+      for (var i = 0; i < state.nubes.length; i++) {
+        var n = state.nubes[i];
+        var cx = n.x * W, cy = n.y * alto;
+        ctx.fillStyle = "rgba(255,228,205," + n.alpha.toFixed(3) + ")";
+        /* TODOS los círculos en un solo trazo y un solo relleno. Rellenándolos
+           de a uno, el alpha se suma donde se pisan y la nube se ve como un
+           montón de pelotas; en un trazo único queda una sola mancha pareja. */
+        ctx.beginPath();
+        for (var j = 0; j < n.bolas.length; j++) {
+          var b = n.bolas[j];
+          ctx.moveTo(cx + b.dx * n.escala + b.r * n.escala, cy + b.dy * n.escala);
+          ctx.arc(cx + b.dx * n.escala, cy + b.dy * n.escala, b.r * n.escala, 0, Math.PI * 2);
+        }
+        ctx.fill();
+      }
+    }
+
+    function drawEstrellaFugaz() {
+      var f = state.estrellaFugaz;
+      if (!f) return;
+      // aparece y se apaga con el mismo gesto, para que no corte de golpe
+      var vida = f.t / 0.9;
+      var alpha = Math.sin(vida * Math.PI) * 0.85;
+      var x = f.x * W + vida * f.largo * 1.6;
+      var y = f.y * groundY() + vida * f.largo * 0.6;
+      ctx.strokeStyle = "rgba(255,246,224," + alpha.toFixed(2) + ")";
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x - f.largo * 0.9, y - f.largo * 0.34);
+      ctx.stroke();
+      ctx.lineWidth = 1;
+    }
+
+    /* Un letrero de TOPPINGS en el horizonte, apoyado en la ciudad. Late
+       despacio, como un aviso de neón. Es lo único de marca en el fondo. */
+    function drawLetreroToppings() {
+      var totalW = state.bgNear.totalW;
+      var x = W * 0.62 - (state.bgScrollNear % (totalW * 2));
+      // el letrero viaja con la ciudad y reaparece cada dos vueltas
+      if (x < -160) x += totalW * 2;
+      if (x > W + 40 || x < -160) return;
+
+      var base = groundY() - 44;
+      var pulso = 0.72 + 0.28 * Math.sin(state.elapsed * 2.2);
+
+      // los dos postes
+      ctx.fillStyle = "rgba(10,7,12,.9)";
+      ctx.fillRect(x + 8, base, 3, 44);
+      ctx.fillRect(x + 62, base, 3, 44);
+
+      // el tablero
+      ctx.fillStyle = "rgba(16,10,18,.92)";
+      ctx.fillRect(x, base - 20, 74, 22);
+      ctx.strokeStyle = "rgba(255,212,0," + (pulso * 0.75).toFixed(2) + ")";
+      ctx.lineWidth = 1.4;
+      ctx.strokeRect(x + 0.5, base - 19.5, 73, 21);
+      ctx.lineWidth = 1;
+
+      ctx.fillStyle = "rgba(255,212,0," + pulso.toFixed(2) + ")";
+      ctx.font = "800 11px system-ui, -apple-system, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("TOPPINGS", x + 37, base - 9);
+      ctx.textAlign = "start";
+      ctx.textBaseline = "alphabetic";
     }
 
     /* ---- figura temporal en dos ruedas — mientras corre por el suelo
@@ -1112,6 +1383,24 @@
         // el tamaño de la colisión en sí no cambia.
         var rh = CHAR_SIZE * 1.55;
         var rw = rh * (img.naturalWidth / img.naturalHeight);
+
+        /* Aplastar y estirar. Es un dibujo solo, sin cuadros de animación:
+           al caer se achata y se ensancha, y en el aire se estira un poco
+           hacia arriba. Es el truco más viejo del mundo y es el que hace que
+           un muñeco quieto parezca que tiene peso.
+
+           Se deforma desde los PIES, no desde el centro: si no, al achatarse
+           parecería que flota sobre el piso. */
+        var apl = state.aterrizaje || 0;
+        var enElAire = !state.onGround && !state.falling && !doingTrick;
+        var estira = enElAire ? Math.min(0.13, Math.abs(state.velocityY) / 5200) : 0;
+        var escX = 1 + apl * 0.26 - estira * 0.7;
+        var escY = 1 - apl * 0.3 + estira;
+
+        ctx.translate(0, rh / 2);      // al piso
+        ctx.scale(escX, escY);
+        ctx.translate(0, -rh / 2);     // y de vuelta
+
         ctx.drawImage(img, -rw / 2, -rh / 2, rw, rh);
         ctx.restore();
       } else {
@@ -1213,10 +1502,16 @@
       ctx.clearRect(0, 0, W, H);
       drawBackground();
 
-      // partículas de polvo (detrás de todo lo demás en el suelo)
+      // partículas: el polvo es blanco apagado, las chispas del riel amarillas
       state.particles.forEach(function (p) {
-        ctx.globalAlpha = Math.max(0, p.life / p.maxLife) * 0.5;
-        ctx.fillStyle = "#fff";
+        var vida = Math.max(0, p.life / p.maxLife);
+        if (p.chispa) {
+          ctx.globalAlpha = vida;
+          ctx.fillStyle = vida > 0.5 ? "#fff3b0" : "#ffb02e";
+        } else {
+          ctx.globalAlpha = vida * 0.5;
+          ctx.fillStyle = "#fff";
+        }
         ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
       });
       ctx.globalAlpha = 1;
@@ -1245,10 +1540,14 @@
            acierta. El tope evita que crezca sin control si aparecieran muchas. */
         var tArriba = Math.round(Math.min(ty0, ty1));
         var tAbajo = Math.round(Math.max(ty0, ty1) + GROUND_H);
+        /* Asfalto de verdad. Antes era un blanco translúcido que dejaba ver el
+           cielo por debajo y hacía que el piso pareciera de vidrio; ahora es
+           opaco y oscuro, con la cara de arriba más clara que el canto. */
         ctx.fillStyle = degradado("suelo:" + tArriba + ":" + tAbajo, function () {
           var g = ctx.createLinearGradient(0, tArriba, 0, tAbajo);
-          g.addColorStop(0, "rgba(255,255,255,.14)");
-          g.addColorStop(1, "rgba(255,255,255,.03)");
+          g.addColorStop(0, "#3b3340");
+          g.addColorStop(0.35, "#2a2430");
+          g.addColorStop(1, "#171220");
           return g;
         });
         if (t.stepped && t.h0 !== t.h1) {
@@ -1317,10 +1616,25 @@
         }
       });
 
+      /* Granito del asfalto. Las posiciones salen de hash01 sobre la distancia
+         recorrida, NO de Math.random: si fueran al azar cada cuadro el piso
+         titilaría como ruido de televisión. Así viajan pegadas al suelo. */
+      var granoPaso = 13;
+      var granoBase = Math.floor(state.groundScroll / granoPaso);
+      ctx.fillStyle = "rgba(255,255,255,.07)";
+      for (var gi = 0; gi < Math.ceil(W / granoPaso) + 2; gi++) {
+        var idx = granoBase + gi;
+        var gx = idx * granoPaso - state.groundScroll;
+        var gh = terrainHeightAt(gx);
+        if (gh === null) continue;
+        var gyTop = groundY() - gh;
+        ctx.fillRect(gx + hash01(idx, 1, 0) * granoPaso, gyTop + 3 + hash01(idx, 2, 0) * (GROUND_H - 8), 2, 2);
+      }
+
       // marcas de carril, siguiendo la altura del terreno en cada punto
       var dashLen = 16, dashGap = 14, dashCycle = dashLen + dashGap;
       var dashOffset = state.groundScroll % dashCycle;
-      ctx.fillStyle = "rgba(255,255,255,.22)";
+      ctx.fillStyle = "rgba(255,232,150,.30)";
       for (var dx = -dashOffset; dx < W; dx += dashCycle) {
         var dh = terrainHeightAt(dx);
         if (dh === null) continue; // no hay marcas sobre un abismo
@@ -1424,6 +1738,40 @@
         ctx.fillText(state.trickText.text, ttx, tty);
         ctx.restore();
       }
+
+      drawLineasDeVelocidad();
+      drawDestello();
+    }
+
+    /* Rayas horizontales que cruzan la pantalla cuando el escenario ya va
+       rápido. Aparecen de a poco: si estuvieran desde el arranque no se
+       notaría que el juego se está acelerando, que es justo lo que cuentan. */
+    function drawLineasDeVelocidad() {
+      var exceso = (state.speed - BASE_SPEED * 1.5) / (BASE_SPEED * 2);
+      if (exceso <= 0) return;
+      var fuerza = Math.min(1, exceso);
+      var cuantas = 5;
+      ctx.strokeStyle = "rgba(255,255,255," + (0.05 + fuerza * 0.13).toFixed(3) + ")";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (var i = 0; i < cuantas; i++) {
+        // cada raya tiene su propia altura y su propio ciclo, para que no
+        // parezcan un peine bajando junto
+        var ciclo = (state.groundScroll * (0.8 + i * 0.12) + i * 240) % (W + 200);
+        var x = W + 100 - ciclo;
+        var y = groundY() * (0.12 + hash01(i, 7, 0) * 0.72);
+        var largo = 30 + hash01(i, 9, 0) * 55 * fuerza;
+        ctx.moveTo(x, y);
+        ctx.lineTo(x - largo, y);
+      }
+      ctx.stroke();
+    }
+
+    /** Fogonazo al chocar: tiñe la pantalla un instante. */
+    function drawDestello() {
+      if (!(state.destello > 0)) return;
+      ctx.fillStyle = "rgba(255,70,70," + (state.destello * 0.26).toFixed(3) + ")";
+      ctx.fillRect(0, 0, W, H);
     }
 
     function gameOver() {
