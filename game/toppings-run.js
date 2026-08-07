@@ -212,11 +212,96 @@
       marca: "neon"
     }
   };
+  /* ---- Los cuatro de temporada ----
+     Mismos campos que los otros. `chispas` es lo que cae del cielo (nieve,
+     corazones, confeti) y `luces` pinta las ventanas de colores en vez del
+     amarillo de siempre. */
+  ESCENARIOS.navidad = {
+    nombre: "Navidad",
+    cielo: [[0, "#04101f"], [0.55, "#0d2b47"], [1, "#123049"]],
+    acento: "255,80,80",
+    astro: "luna",
+    estrellas: 40, nubes: 3, neblina: 0.05,
+    fondo: "cerros",
+    piso: ["#e8eef5", "#c3cfdb", "#8a99a8"],   // nieve pisada
+    carril: "255,255,255",
+    props: ["poste", "cono", "caja"],
+    marca: "neon",
+    chispas: "nieve",
+    luces: ["255,80,80", "90,220,120", "255,212,0"]
+  };
+  ESCENARIOS.amor = {
+    nombre: "Amor",
+    cielo: [[0, "#3d1533"], [0.5, "#b0446a"], [1, "#f0949c"]],
+    acento: "255,110,150",
+    astro: "sol",
+    estrellas: 8, nubes: 7, neblina: 0.12,
+    fondo: "cerros",
+    piso: ["#5c3a48", "#452c37", "#2c1c24"],
+    carril: "255,200,220",
+    props: ["poste", "banca", "cono"],
+    marca: "neon",
+    chispas: "corazones",
+    luces: ["255,110,150", "255,180,200"]
+  };
+  ESCENARIOS.halloween = {
+    nombre: "Halloween",
+    cielo: [[0, "#0c0716"], [0.5, "#241141"], [1, "#3d2a12"]],
+    acento: "255,140,20",
+    astro: "lunaGigante",
+    estrellas: 22, nubes: 4, neblina: 0.18,
+    fondo: "arboles",
+    piso: ["#3a3330", "#282320", "#151210"],
+    carril: "170,255,120",
+    props: ["poste", "basura", "cono"],
+    marca: "chorreado",
+    chispas: "murcielagos",
+    luces: ["255,140,20", "170,255,120"]
+  };
+  ESCENARIOS.fiesta = {
+    nombre: "Fiesta",
+    cielo: [[0, "#170a33"], [0.5, "#3d1466"], [1, "#5c1a5c"]],
+    acento: "255,212,0",
+    astro: "luna",
+    estrellas: 30, nubes: 2, neblina: 0,
+    fondo: "cerros",
+    piso: ["#413454", "#2e2540", "#1a142a"],
+    carril: "255,255,255",
+    props: ["poste", "cono", "caja"],
+    marca: "neon",
+    chispas: "confeti",
+    luces: ["255,80,80", "90,220,255", "255,212,0", "180,120,255", "120,255,150"]
+  };
+
   var ORDEN_ESCENARIOS = ["ciudad", "universidad", "extrema", "amanecer"];
+
+  /* Qué temporada es hoy. Fiesta no está: ese no tiene fecha, lo pone Fabián
+     cuando hay un evento en el local. */
+  function escenarioDeTemporada() {
+    var d = new Date();
+    var mes = d.getMonth() + 1, dia = d.getDate();
+    if ((mes === 10 && dia >= 20) || (mes === 11 && dia <= 2)) return "halloween";
+    if ((mes === 12) || (mes === 1 && dia <= 6)) return "navidad";
+    if (mes === 2 && dia >= 7 && dia <= 20) return "amor";
+    return null;
+  }
 
   /** Cuál toca. "rotar" va cambiando en cada partida. */
   function elegirEscenario() {
-    var pedido = String(runInfo().escenario || "ciudad");
+    var info = runInfo();
+    var pedido = String(info.escenario || "ciudad");
+
+    /* La temporada manda, salvo que Fabián apague el interruptor. Así en
+       diciembre sale el de Navidad sin que tenga que acordarse, y aun así
+       puede forzar el que quiera apagándolo. */
+    var usarTemporada = info.escenarioTemporada === undefined ? true : !!info.escenarioTemporada;
+    if (pedido === "auto" || usarTemporada) {
+      var temp = escenarioDeTemporada();
+      if (temp) return ESCENARIOS[temp];
+    }
+    // "auto" fuera de temporada cae en la ciudad
+    if (pedido === "auto") return ESCENARIOS.ciudad;
+
     if (pedido === "rotar") {
       // se guarda cuál salió la última vez, para no repetir dos seguidas
       var ultimo = "";
@@ -426,10 +511,16 @@
     var BASE_SPEED = 190;      // px/s, velocidad inicial del escenario — arranca despacio
     var ACCEL_PER_S = 8;       // cuánto aumenta la velocidad cada segundo — sin techo, sube para siempre
 
-    var MAX_LIVES = 3;
+    var MAX_LIVES = 3;          // con cuántas se arranca
+    var MAX_VIDAS = 5;          // hasta dónde puede subir con corazones
+    var PROB_CORAZON = 0.05;    // raro a propósito, y solo si le falta vida
+    var MONEDAS_POR_BONO = 5;
+    var BONO_MONEDAS = 100;
     var INVULN_S = 1.4;
     var COIN_VALUE = 10;
-    var MAGNET_RADIUS = 75;
+    /* El imán YA atraía monedas, pero con 75 px de radio —poco más que el
+       propio personaje— no se notaba y parecía que no hacía nada. */
+    var MAGNET_RADIUS = 165;
     var POWERUP_DURATION_MS = { magnet: 6000, turbo: 5000, doubleCoin: 8000 };
     var POWERUP_ICON = { magnet: "🧲", turbo: "⚡", doubleCoin: "2×", shield: "🛡️" };
 
@@ -448,6 +539,16 @@
        adorno) y abismos reales (si el personaje llega al piso sobre uno,
        cae de verdad y pierde todas las vidas). Barandas para deslizar. ---- */
     var TERRAIN_HILL_H = 46;        // qué tan alto llega una colina
+    var BLOQUE_W = 26;              // el escalón que hay que saltar para subir
+    var BLOQUE_LLANO_MIN = 190;     // llano obligatorio arriba, antes de bajar
+    // el rebote de bajar un escalón: como un 20% de un salto normal
+    var SALTITO_ESCALON = JUMP_VELOCITY * 0.2;
+    // La megarampa y su abismo gigante. Máximo 2 por partida: si saliera
+    // seguido dejaría de ser el momento grande de la carrera.
+    var MAX_MEGA_POR_PARTIDA = 2;
+    var MEGA_RAMPA_W = 74;
+    var MEGA_RAMPA_H = 52;
+    var MEGA_VELOCITY_MULT = 1.85;
     var TERRAIN_SLOPE_W = 130;      // ancho por defecto de un tramo de subida o bajada
     var TERRAIN_SLOPE_GENTLE_MIN = 140, TERRAIN_SLOPE_GENTLE_MAX = 200; // subida suave: más ancho, menos inclinada
     var TERRAIN_SLOPE_STEEP_MIN = 55, TERRAIN_SLOPE_STEEP_MAX = 90;     // bajada pronunciada: mismo alto, menos ancho
@@ -484,6 +585,11 @@
         stepped: !!(extra && extra.stepped),
         isBridge: !!(extra && extra.isBridge),
         curb: !!(extra && extra.curb),
+        // el escalón que hay que saltar para subir (la colisión lo mira)
+        bloque: !!(extra && extra.bloque),
+        // la carrera de entrada y el vacío del salto grande, para dibujarlos aparte
+        megaPista: !!(extra && extra.megaPista),
+        megaAbismo: !!(extra && extra.megaAbismo),
         prop: (extra && extra.prop) || null
       };
       state.terrain.push(seg);
@@ -531,23 +637,115 @@
             var pw = jd2 * (PIT_BIG_FRAC_MIN + Math.random() * (PIT_BIG_FRAC_MAX - PIT_BIG_FRAC_MIN));
             pushTerrain(pw, 0, 0, true);
             pushTerrain(PIT_LANDING_W, 0, 0, false);
+          } else if (state.megaUsados < MAX_MEGA_POR_PARTIDA && state.elapsed > 20 && Math.random() < 0.12) {
+            /* ---- El abismo gigante ----
+               Nunca, jamás, se genera sin su megarampa: la rampa se empuja
+               PRIMERO y en el mismo paso, así no hay forma de que salga el
+               vacío solo aunque cambie algo más adelante.
+
+               El ancho sale del alcance CON el impulso de la megarampa, no del
+               salto normal, y se deja un margen: así siempre se puede pasar,
+               pero hay que usar la rampa de verdad. */
+            state.megaUsados++;
+            var carrera = 150 + Math.random() * 60;
+            pushTerrain(carrera, 0, 0, false, { megaPista: true });
+
+            var alcanceMega = jumpDistancePx(state.speed) * MEGA_VELOCITY_MULT;
+            var anchoMega = alcanceMega * 0.72;
+            pushTerrain(anchoMega, 0, 0, true, { megaAbismo: true });
+            pushTerrain(PIT_LANDING_W + 120, 0, 0, false);
+
+            // la megarampa, justo en el borde de la carrera de entrada
+            state.obstacles.push({
+              x: state.terrain[state.terrain.length - 3].x + carrera - MEGA_RAMPA_W,
+              w: MEGA_RAMPA_W, h: MEGA_RAMPA_H, type: "ramp", triggered: false,
+              gesture: "hold", bonusMult: 3, velocityMult: MEGA_VELOCITY_MULT, mega: true
+            });
           } else {
             // colina: subida suave (o en escalones) + plataforma arriba;
-            // la bajada que sigue queda decidida para el próximo tramo
-            var stepped = Math.random() < 0.3;
-            var ascW = TERRAIN_SLOPE_GENTLE_MIN + Math.random() * (TERRAIN_SLOPE_GENTLE_MAX - TERRAIN_SLOPE_GENTLE_MIN);
+            /* Colina. La SUBIDA nunca es escalonada — no existen las escaleras
+               de subida: o es una rampa, o es un bloque que hay que saltar.
+               La bajada sí puede ser escalonada, y esa es la única forma en
+               que aparecen escaleras en el juego. */
+            var esBloque = Math.random() < 0.45;
+            var bajadaEscalonada = Math.random() < 0.45;
+
             state.pendingDescentW = Math.random() < 0.55
               ? (TERRAIN_SLOPE_STEEP_MIN + Math.random() * (TERRAIN_SLOPE_STEEP_MAX - TERRAIN_SLOPE_STEEP_MIN))
               : TERRAIN_SLOPE_W;
-            state.pendingDescentStepped = stepped;
-            pushTerrain(ascW, 0, TERRAIN_HILL_H, false, stepped ? { stepped: true } : null);
-            pushTerrain(TERRAIN_CREST_MIN + Math.random() * (TERRAIN_CREST_MAX - TERRAIN_CREST_MIN), TERRAIN_HILL_H, TERRAIN_HILL_H, false);
+            state.pendingDescentStepped = bajadaEscalonada;
+
+            if (esBloque) {
+              /* El bloque: la altura sube de golpe en muy poco ancho, así que
+                 hay que saltarlo. Se marca con `bloque` para que la colisión
+                 sepa que chocarse de frente cuesta una vida. */
+              pushTerrain(BLOQUE_W, TERRAIN_HILL_H, TERRAIN_HILL_H, false, { bloque: true });
+              /* Y arriba se fuerza un llano largo ANTES de que pueda venir la
+                 bajada: sin esto, uno salta el bloque y ya está cayendo por la
+                 escalera sin tiempo de reaccionar. */
+              pushTerrain(BLOQUE_LLANO_MIN + Math.random() * 120, TERRAIN_HILL_H, TERRAIN_HILL_H, false);
+            } else {
+              var ascW = TERRAIN_SLOPE_GENTLE_MIN + Math.random() * (TERRAIN_SLOPE_GENTLE_MAX - TERRAIN_SLOPE_GENTLE_MIN);
+              pushTerrain(ascW, 0, TERRAIN_HILL_H, false, null);
+              pushTerrain(TERRAIN_CREST_MIN + Math.random() * (TERRAIN_CREST_MAX - TERRAIN_CREST_MIN), TERRAIN_HILL_H, TERRAIN_HILL_H, false);
+            }
           }
         }
         lastX = state.terrain[state.terrain.length - 1].x + state.terrain[state.terrain.length - 1].w;
         guard++;
       }
       state.terrain = state.terrain.filter(function (t) { return t.x + t.w > -20; });
+    }
+
+    /* ---- Escaleras ----
+       El dibujo y la física TIENEN que usar el mismo número de escalones y la
+       misma fórmula. Antes no: se dibujaban escalones pero terrainHeightAt()
+       devolvía una rampa lisa, así que el personaje pasaba por encima de la
+       escalera como si no existiera. De ahí que "las saltara". */
+    var TERRAIN_STEPS = 4;
+
+    /** Altura de un tramo escalonado en la posición p (0..1) del tramo. */
+    function alturaEscalonada(t, p) {
+      var i = Math.min(TERRAIN_STEPS - 1, Math.max(0, Math.floor(p * TERRAIN_STEPS)));
+      return t.h0 + (t.h1 - t.h0) * ((i + 1) / TERRAIN_STEPS);
+    }
+
+    /* Cuánto puede quedar por debajo de la superficie sin que cuente como
+       chocar de frente. Da para subir una rampa o un escalón de escalera, pero
+       no para atravesar un bloque de 46 px. */
+    var BLOQUE_TOLERANCIA = 16;
+
+    /** El tramo de terreno que está en esa X, o null. */
+    function tramoEn(x) {
+      for (var i = 0; i < state.terrain.length; i++) {
+        var t = state.terrain[i];
+        if (x >= t.x && x < t.x + t.w) return t;
+      }
+      return null;
+    }
+
+    /** El perfil de la superficie de un tramo, como lista de puntos. */
+    function perfilDeTramo(t) {
+      var base = groundY();
+      if (!(t.stepped && t.h0 !== t.h1)) {
+        return [[t.x, base - t.h0], [t.x + t.w, base - t.h1]];
+      }
+      var pts = [[t.x, base - t.h0]];
+      for (var i = 0; i < TERRAIN_STEPS; i++) {
+        var y = base - (t.h0 + (t.h1 - t.h0) * ((i + 1) / TERRAIN_STEPS));
+        pts.push([t.x + (t.w * i) / TERRAIN_STEPS, y]);
+        pts.push([t.x + (t.w * (i + 1)) / TERRAIN_STEPS, y]);
+      }
+      return pts;
+    }
+
+    /** Un color hexadecimal, más oscuro. Para el subsuelo. */
+    function oscurecer(hex, factor) {
+      var n = parseInt(hex.slice(1), 16);
+      var r = Math.round(((n >> 16) & 255) * (1 - factor));
+      var g = Math.round(((n >> 8) & 255) * (1 - factor));
+      var b = Math.round((n & 255) * (1 - factor));
+      return "rgb(" + r + "," + g + "," + b + ")";
     }
 
     /** Altura del terreno (encima de la línea base) en una posición X del
@@ -558,6 +756,8 @@
         if (x >= t.x && x < t.x + t.w) {
           if (t.isPit) return null;
           var p = (x - t.x) / t.w;
+          // en una escalera la altura va por escalones, igual que el dibujo
+          if (t.stepped && t.h0 !== t.h1) return alturaEscalonada(t, p);
           return t.h0 + (t.h1 - t.h0) * p;
         }
       }
@@ -692,6 +892,32 @@
       return { items: items, totalW: x + 300 };
     }
 
+    /** Lo que cae del cielo en las temporadas. Vacío si el escenario no usa. */
+    function buildChispas(esc) {
+      if (!esc.chispas) return [];
+      var cuantas = esc.chispas === "murcielagos" ? 7 : 26;
+      var out = [];
+      for (var i = 0; i < cuantas; i++) {
+        out.push({
+          x: Math.random(),
+          y: Math.random(),
+          r: esc.chispas === "nieve" ? (1 + Math.random() * 2)
+             : esc.chispas === "murcielagos" ? (3 + Math.random() * 2.5)
+             : (2 + Math.random() * 2.5),
+          vel: 0.04 + Math.random() * 0.11,
+          vaiven: 0.6 + Math.random() * 1.4,
+          amplitud: 6 + Math.random() * 16,
+          giro: 1 + Math.random() * 3,
+          semilla: Math.random() * 10,
+          alpha: 0.4 + Math.random() * 0.45,
+          color: (esc.luces && esc.luces.length)
+            ? esc.luces[Math.floor(Math.random() * esc.luces.length)]
+            : "255,255,255"
+        });
+      }
+      return out;
+    }
+
     /* Campo de estrellas fijo por partida (no se regenera cada frame) —
        cada una titila a su propio ritmo. Puramente decorativo. */
     function buildStars(count) {
@@ -747,6 +973,9 @@
         animT: 0,
         dustTimer: 0,
         chispaTimer: 0,
+        ultimoEscalon: -1,   // en qué escalón de la escalera va, para el rebote
+        monedasParaBono: 0,  // cuenta hasta 5 y regala 100 puntos
+        megaUsados: 0,       // cuántos abismos gigantes salieron (tope 2)
         aterrizaje: 0,   // 0..1, cuánto se aplasta al caer (se va solo)
         destello: 0,     // 0..1, el fogonazo rojo al chocar
         bgScrollFar: 0,
@@ -763,6 +992,7 @@
         cerros: buildMountains(7, 90, 190, 130, 230),
         vallas: buildVallas(),
         nubes: buildClouds(esc.nubes),
+        chispas: buildChispas(esc),
         estrellaFugaz: null,
         proximaFugaz: 4 + Math.random() * 9,
         rayo: 0,
@@ -799,8 +1029,12 @@
 
     function renderLives() {
       if (!livesEl || !state) return;
+      /* Se dibujan tantos huecos como vidas pueda tener AHORA: con los
+         corazones puede pasar de 3, y antes esto pintaba siempre 3 fijas, así
+         que la cuarta vida no se veía por ningún lado. */
+      var huecos = Math.max(MAX_LIVES, state.lives);
       var s = "";
-      for (var i = 0; i < MAX_LIVES; i++) s += (i < state.lives ? "❤️" : "🖤");
+      for (var i = 0; i < huecos; i++) s += (i < state.lives ? "❤️" : "🖤");
       livesEl.textContent = s;
     }
 
@@ -850,9 +1084,12 @@
           bonusMult: dims.bonusMult, velocityMult: dims.velocityMult
         });
       } else if (roll < 0.46) {
-        var railW = 60 + Math.random() * 45;
+        /* Rieles de dos largos. El largo da bastante más puntos porque hay que
+           mantener el equilibrio más tiempo sin saltar. */
+        var esLargo = Math.random() < 0.35;
+        var railW = esLargo ? (170 + Math.random() * 90) : (60 + Math.random() * 45);
         state.obstacles.push({
-          x: W + railW, w: railW, type: "rail",
+          x: W + railW, w: railW, type: "rail", largo: esLargo,
           y: groundYAt(W) - RAIL_HEIGHT_ABOVE_GROUND, grinded: false
         });
       } else {
@@ -870,9 +1107,15 @@
       else if (roll > 0.7) type = "magnet";
       else if (roll > 0.54) type = "turbo";
       else if (roll > 0.38) type = "doubleCoin";
+
+      /* El corazón es raro de verdad, y solo aparece si le falta alguna vida:
+         regalarlo con la vida llena no le sirve a nadie y le quitaría la
+         emoción de encontrarlo justo cuando hace falta. */
+      if (state.lives < MAX_VIDAS && Math.random() < PROB_CORAZON) type = "heart";
+
       var groundLevel = groundYAt(W) - CHAR_SIZE * 0.55;
       var jumpLevel = groundYAt(W) - CHAR_SIZE - 30;
-      var y = (type === "coin" && Math.random() > 0.45) ? jumpLevel : groundLevel;
+      var y = ((type === "coin" || type === "heart") && Math.random() > 0.45) ? jumpLevel : groundLevel;
       state.pickups.push({ x: W + 16, y: y, type: type, r: type === "coin" ? 7 : 11 });
     }
 
@@ -898,6 +1141,20 @@
         state.score += COIN_VALUE * mult * state.multiplier;
         if (coinsEl) coinsEl.textContent = "🪙 " + state.coins;
         sfxCoin();
+
+        /* Cada 5 monedas, 100 puntos de regalo. Da una meta corta y clara
+           mientras corre: junta cinco y algo pasa. */
+        state.monedasParaBono += mult;
+        while (state.monedasParaBono >= MONEDAS_POR_BONO) {
+          state.monedasParaBono -= MONEDAS_POR_BONO;
+          state.score += BONO_MONEDAS;
+          state.trickText = { text: "🪙 x" + MONEDAS_POR_BONO + " +" + BONO_MONEDAS, life: 1.1 };
+        }
+      } else if (p.type === "heart") {
+        if (state.lives < MAX_VIDAS) state.lives++;
+        renderLives();
+        state.trickText = { text: "❤️ +1 VIDA", life: 1.3 };
+        sfxPowerup();
       } else if (p.type === "shield") {
         state.shieldCharges++;
         sfxPowerup();
@@ -975,6 +1232,20 @@
       state.bgScrollNear += dt * state.speed * 0.4;
       // los cerros van mucho más lento: es lo que da sensación de distancia
       state.bgScrollCerros += dt * state.speed * 0.05;
+
+      // lo que cae del cielo: baja y vuelve a aparecer arriba
+      for (var ci = 0; ci < state.chispas.length; ci++) {
+        var ch2 = state.chispas[ci];
+        ch2.y += ch2.vel * dt;
+        // los murciélagos cruzan en horizontal, no caen
+        if (state.esc.chispas === "murcielagos") {
+          ch2.y -= ch2.vel * dt;
+          ch2.x -= ch2.vel * dt * 0.5;
+          if (ch2.x < -0.1) { ch2.x = 1.1; ch2.y = Math.random() * 0.5; }
+        } else if (ch2.y > 1.05) {
+          ch2.y = -0.05; ch2.x = Math.random();
+        }
+      }
 
       // nubes: cruzan solas, no dependen de la velocidad del juego
       for (var ni = 0; ni < state.nubes.length; ni++) {
@@ -1055,8 +1326,13 @@
         if (state.currentRail && state.currentRail.x + state.currentRail.w < charX) {
           if (!state.currentRail.grinded) {
             state.currentRail.grinded = true;
-            state.score += RAIL_BONUS;
-            state.trickText = { text: "¡GRIND! +" + RAIL_BONUS, life: 1.1 };
+            var bono = state.currentRail.largo ? RAIL_BONUS * 2.5 : RAIL_BONUS;
+            bono = Math.round(bono);
+            state.score += bono;
+            state.trickText = {
+              text: (state.currentRail.largo ? "¡GRIND LARGO! +" : "¡GRIND! +") + bono,
+              life: 1.1
+            };
           }
           state.currentRail = null;
         }
@@ -1073,6 +1349,17 @@
           }
         } else {
           var restY = (state.currentRail ? state.currentRail.y : groundY() - (terrainH || 0)) - CHAR_SIZE;
+
+          /* ¿Se estrelló de frente contra un bloque? Si la superficie está muy
+             por encima de sus pies, no está aterrizando encima: le pegó al
+             costado. Sin esto el personaje se teletransportaba a la cima del
+             bloque como si nada. Cuesta una vida, pero igual se lo sube arriba
+             para que la carrera pueda seguir en vez de quedar trabado. */
+          if (!state.currentRail && terrainH !== null && state.charY + CHAR_SIZE > (groundY() - terrainH) + BLOQUE_TOLERANCIA) {
+            var tramo = tramoEn(charX);
+            if (tramo && tramo.bloque) registerHit();
+          }
+
           if (state.charY >= restY) {
             /* Cuánto venía cayendo: lo usan el aplastón del personaje y la
                nube de polvo, para que un salto grande se sienta más pesado
@@ -1087,6 +1374,23 @@
             if (veniaEnElAire && golpe > 0.12) {
               state.aterrizaje = golpe;          // lo lee drawCharacter
               polvoDeAterrizaje(charX, restY + CHAR_SIZE, golpe);
+            }
+
+            /* Bajando una escalera: en cada escalón se le da un empujoncito
+               hacia arriba. Sin esto el personaje se arrastra pegado al piso
+               y no se ve que esté BAJANDO escalones — que es justo lo que
+               Fabián quería ver. Es chico a propósito: no es un salto, es el
+               rebote de bajar un escalón. */
+            var tr = tramoEn(charX);
+            if (tr && tr.stepped && tr.h0 > tr.h1) {
+              var escalonAhora = Math.floor(((charX - tr.x) / tr.w) * TERRAIN_STEPS);
+              if (state.ultimoEscalon !== escalonAhora) {
+                state.ultimoEscalon = escalonAhora;
+                state.velocityY = SALTITO_ESCALON;
+                state.onGround = false;
+              }
+            } else {
+              state.ultimoEscalon = -1;
             }
             if (state.trick && state.trick.active) {
               state.trick.active = false;
@@ -1166,7 +1470,8 @@
       var charCenterY = state.charY + CHAR_SIZE / 2;
       state.pickups.forEach(function (p) {
         p.x -= state.speed * dt;
-        if (state.activePowerups.magnet > 0 && p.type === "coin") {
+        // el imán se lleva monedas Y corazones — un corazón perdido duele más
+        if (state.activePowerups.magnet > 0 && (p.type === "coin" || p.type === "heart")) {
           var dx = charCenterX - p.x, dy = charCenterY - p.y;
           var dist = Math.sqrt(dx * dx + dy * dy);
           if (dist < MAGNET_RADIUS) { p.x += dx * Math.min(1, dt * 6); p.y += dy * Math.min(1, dt * 6); }
@@ -1343,6 +1648,48 @@
       }
 
       if (esc.rayos) drawRayo();
+      if (esc.chispas) drawChispas();
+    }
+
+    /* Lo que cae del cielo en las temporadas: nieve, corazones, murciélagos o
+       confeti. Es una sola pasada con las mismas partículas; solo cambia cómo
+       se dibuja cada una, así que sale barato aunque se vea muy distinto. */
+    function drawChispas() {
+      var tipo = state.esc.chispas;
+      var alto = groundY();
+      for (var i = 0; i < state.chispas.length; i++) {
+        var c = state.chispas[i];
+        var x = c.x * W + Math.sin(state.elapsed * c.vaiven + c.semilla) * c.amplitud;
+        var y = c.y * alto;
+
+        if (tipo === "nieve") {
+          ctx.fillStyle = "rgba(255,255,255," + c.alpha.toFixed(2) + ")";
+          ctx.beginPath(); ctx.arc(x, y, c.r, 0, Math.PI * 2); ctx.fill();
+        } else if (tipo === "corazones") {
+          ctx.fillStyle = "rgba(255,120,160," + c.alpha.toFixed(2) + ")";
+          ctx.font = (c.r * 5).toFixed(0) + "px sans-serif";
+          ctx.textAlign = "center"; ctx.textBaseline = "middle";
+          ctx.fillText("♥", x, y);
+        } else if (tipo === "murcielagos") {
+          // dos arcos que aletean: alcanza para leerse como murciélago
+          var ala = Math.sin(state.elapsed * 9 + c.semilla) * c.r * 1.1;
+          ctx.strokeStyle = "rgba(20,14,26," + (c.alpha + 0.25).toFixed(2) + ")";
+          ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          ctx.moveTo(x - c.r * 2.2, y + ala);
+          ctx.quadraticCurveTo(x, y - c.r * 1.6, x + c.r * 2.2, y + ala);
+          ctx.stroke();
+        } else {
+          ctx.fillStyle = "rgba(" + c.color + "," + c.alpha.toFixed(2) + ")";
+          ctx.save();
+          ctx.translate(x, y);
+          ctx.rotate(state.elapsed * c.giro + c.semilla);
+          ctx.fillRect(-c.r, -c.r * 0.5, c.r * 2, c.r);
+          ctx.restore();
+        }
+      }
+      ctx.lineWidth = 1;
+      ctx.textAlign = "start"; ctx.textBaseline = "alphabetic";
     }
 
     /* Luna, luna pálida o sol, según el mundo. Es el elemento que más rápido
@@ -1351,13 +1698,17 @@
       var esc = state.esc;
       var x = W * (0.72 + state.moonSeed * 0.15);
       var y = groundY() * 0.16;
-      var r = esc.astro === "sol" ? 21 : 15;
+      var r = esc.astro === "sol" ? 21 : esc.astro === "lunaGigante" ? 46 : 15;
 
       var cuerpo = esc.astro === "sol" ? "#ffe9a8"
-                 : esc.astro === "lunaPalida" ? "#c9c9d8" : "#fff4d6";
+                 : esc.astro === "lunaPalida" ? "#c9c9d8"
+                 : esc.astro === "lunaGigante" ? "#ffcf7a" : "#fff4d6";
       var halo = esc.astro === "sol" ? "255,200,110"
-               : esc.astro === "lunaPalida" ? "200,200,225" : "255,244,214";
-      var fuerza = esc.astro === "sol" ? 0.4 : esc.astro === "lunaPalida" ? 0.14 : 0.25;
+               : esc.astro === "lunaPalida" ? "200,200,225"
+               : esc.astro === "lunaGigante" ? "255,160,40" : "255,244,214";
+      var fuerza = esc.astro === "sol" ? 0.4
+                 : esc.astro === "lunaPalida" ? 0.14
+                 : esc.astro === "lunaGigante" ? 0.34 : 0.25;
 
       /* El halo se arma centrado en (0,0) y se mueve con translate: así no
          depende de dónde caiga y alcanza con guardarlo una vez. */
@@ -1852,6 +2203,20 @@
         ctx.fillStyle = "#7a5a00";
         ctx.font = "bold 8px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
         ctx.fillText("T", 0, 0.5);
+      } else if (p.type === "heart") {
+        /* El corazón late y brilla en rojo, distinto de todo lo demás: si es
+           raro y vale una vida, tiene que gritar desde lejos. */
+        var latido = 1 + Math.sin(state.elapsed * 7 + p.x * 0.04) * 0.14;
+        ctx.scale(latido, latido);
+        ctx.fillStyle = degradado("brilloCorazon", function () {
+          var g = ctx.createRadialGradient(0, 0, 1, 0, 0, 18);
+          g.addColorStop(0, "rgba(255,70,110,.5)");
+          g.addColorStop(1, "rgba(255,70,110,0)");
+          return g;
+        });
+        ctx.beginPath(); ctx.arc(0, 0, 18, 0, Math.PI * 2); ctx.fill();
+        ctx.font = "17px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText("❤️", 0, 0);
       } else {
         ctx.fillStyle = degradado("brillo", function () {
           var g = ctx.createRadialGradient(0, 0, 1, 0, 0, 14);
@@ -1889,73 +2254,68 @@
       // parte real del camino, no un adorno encima.
       state.terrain.forEach(function (t) {
         if (t.isPit) {
+          /* El abismo también baja hasta el fondo: si se quedara en la franja
+             de 26 px se vería el cielo abajo y parecería un bache pintado, no
+             un vacío. */
           ctx.fillStyle = degradado("hueco", function () {
-            var g = ctx.createLinearGradient(0, groundY(), 0, groundY() + GROUND_H);
+            var g = ctx.createLinearGradient(0, groundY(), 0, H);
             g.addColorStop(0, "#000");
-            g.addColorStop(1, "#1a0f08");
+            g.addColorStop(0.35, "#0d0805");
+            g.addColorStop(1, "#000");
             return g;
           });
-          ctx.fillRect(t.x, groundY(), t.w, GROUND_H);
+          ctx.fillRect(t.x, groundY() - 2, t.w, H - groundY() + 2);
+          // las paredes del abismo, que es lo que le da la profundidad
           ctx.strokeStyle = "rgba(255,90,60,.55)"; ctx.lineWidth = 1.5;
-          ctx.beginPath(); ctx.moveTo(t.x, groundY()); ctx.lineTo(t.x, groundY() + GROUND_H); ctx.stroke();
-          ctx.beginPath(); ctx.moveTo(t.x + t.w, groundY()); ctx.lineTo(t.x + t.w, groundY() + GROUND_H); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(t.x, groundY()); ctx.lineTo(t.x, H); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(t.x + t.w, groundY()); ctx.lineTo(t.x + t.w, H); ctx.stroke();
+          ctx.lineWidth = 1;
           return;
         }
         var ty0 = groundY() - t.h0, ty1 = groundY() - t.h1;
-        /* Este va por tramo de suelo, y su rampa depende solo del alto del
-           tramo (la x ya es 0). Se guarda por ese alto redondeado: las alturas
-           del terreno salen de un puñado de escalones, así que casi siempre
-           acierta. El tope evita que crezca sin control si aparecieran muchas. */
-        var tArriba = Math.round(Math.min(ty0, ty1));
-        var tAbajo = Math.round(Math.max(ty0, ty1) + GROUND_H);
-        /* Asfalto de verdad. Antes era un blanco translúcido que dejaba ver el
-           cielo por debajo y hacía que el piso pareciera de vidrio; ahora es
-           opaco y oscuro, con la cara de arriba más clara que el canto. */
         var piso = state.esc.piso;
-        ctx.fillStyle = degradado("suelo:" + state.esc.nombre + ":" + tArriba + ":" + tAbajo, function () {
-          var g = ctx.createLinearGradient(0, tArriba, 0, tAbajo);
+        var perfil = perfilDeTramo(t);
+
+        /* El terreno se rellena HASTA ABAJO del lienzo, no en una franja.
+           Antes era una losa de 26 px con el cielo asomando por debajo, y por
+           eso la carretera parecía flotar y "quebrarse" al subir. Ahora es un
+           bloque de tierra: cara de asfalto arriba, y subsuelo hasta el fondo. */
+        var tArriba = Math.round(Math.min(ty0, ty1));
+        ctx.fillStyle = degradado("subsuelo:" + state.esc.nombre + ":" + tArriba, function () {
+          var g = ctx.createLinearGradient(0, tArriba + GROUND_H, 0, H);
+          g.addColorStop(0, piso[2]);
+          g.addColorStop(1, oscurecer(piso[2], 0.45));
+          return g;
+        });
+        ctx.beginPath();
+        ctx.moveTo(perfil[0][0], perfil[0][1]);
+        for (var pi = 1; pi < perfil.length; pi++) ctx.lineTo(perfil[pi][0], perfil[pi][1]);
+        ctx.lineTo(perfil[perfil.length - 1][0], H);
+        ctx.lineTo(perfil[0][0], H);
+        ctx.closePath();
+        ctx.fill();
+
+        // la cara de arriba: el asfalto propiamente dicho
+        ctx.fillStyle = degradado("suelo:" + state.esc.nombre + ":" + tArriba, function () {
+          var g = ctx.createLinearGradient(0, tArriba, 0, tArriba + GROUND_H);
           g.addColorStop(0, piso[0]);
-          g.addColorStop(0.35, piso[1]);
+          g.addColorStop(0.5, piso[1]);
           g.addColorStop(1, piso[2]);
           return g;
         });
-        if (t.stepped && t.h0 !== t.h1) {
-          // escalera: mismo perfil de altura por debajo (la física no
-          // cambia), pero se dibuja en bloques en vez de una rampa lisa
-          var steps = 4;
-          ctx.beginPath();
-          ctx.moveTo(t.x, ty0 + GROUND_H);
-          ctx.lineTo(t.x, ty0);
-          for (var si = 0; si < steps; si++) {
-            var sx0 = t.x + (t.w * si) / steps;
-            var sx1 = t.x + (t.w * (si + 1)) / steps;
-            var sy = groundY() - (t.h0 + (t.h1 - t.h0) * ((si + 1) / steps));
-            ctx.lineTo(sx0, sy);
-            ctx.lineTo(sx1, sy);
-          }
-          ctx.lineTo(t.x + t.w, ty1 + GROUND_H);
-          ctx.closePath();
-          ctx.fill();
-          ctx.strokeStyle = "rgba(" + state.esc.acento + ",.4)";
-          ctx.beginPath();
-          for (var sj = 0; sj < steps; sj++) {
-            var ex0 = t.x + (t.w * sj) / steps;
-            var ex1 = t.x + (t.w * (sj + 1)) / steps;
-            var ey = groundY() - (t.h0 + (t.h1 - t.h0) * ((sj + 1) / steps));
-            ctx.moveTo(ex0, ey); ctx.lineTo(ex1, ey);
-          }
-          ctx.stroke();
-        } else {
-          ctx.beginPath();
-          ctx.moveTo(t.x, ty0);
-          ctx.lineTo(t.x + t.w, ty1);
-          ctx.lineTo(t.x + t.w, ty1 + GROUND_H);
-          ctx.lineTo(t.x, ty0 + GROUND_H);
-          ctx.closePath();
-          ctx.fill();
-          ctx.strokeStyle = "rgba(" + state.esc.acento + ",.4)";
-          ctx.beginPath(); ctx.moveTo(t.x, ty0); ctx.lineTo(t.x + t.w, ty1); ctx.stroke();
-        }
+        ctx.beginPath();
+        ctx.moveTo(perfil[0][0], perfil[0][1]);
+        for (var pj = 1; pj < perfil.length; pj++) ctx.lineTo(perfil[pj][0], perfil[pj][1]);
+        for (var pk = perfil.length - 1; pk >= 0; pk--) ctx.lineTo(perfil[pk][0], perfil[pk][1] + GROUND_H);
+        ctx.closePath();
+        ctx.fill();
+
+        // el filo de la superficie, que es lo que dibuja el borde de la calle
+        ctx.strokeStyle = "rgba(" + state.esc.acento + ",.4)";
+        ctx.beginPath();
+        ctx.moveTo(perfil[0][0], perfil[0][1]);
+        for (var pm = 1; pm < perfil.length; pm++) ctx.lineTo(perfil[pm][0], perfil[pm][1]);
+        ctx.stroke();
         if (t.isBridge) {
           // puente: puramente decorativo, el terreno debajo sigue plano y sin peligro
           ctx.strokeStyle = "rgba(255,255,255,.3)"; ctx.lineWidth = 2;
@@ -2091,6 +2451,20 @@
       });
 
       state.pickups.forEach(drawPickup);
+
+      /* El aura del imán. Sin esto la gente agarraba el 🧲 y no pasaba nada
+         visible, así que parecía que el power-up estaba roto. */
+      if (state.activePowerups.magnet > 0) {
+        var mx = W * CHAR_X_RATIO + CHAR_SIZE / 2;
+        var my = state.charY + CHAR_SIZE / 2;
+        var pulsoIman = 0.85 + 0.15 * Math.sin(state.elapsed * 5);
+        ctx.strokeStyle = "rgba(120,190,255," + (0.16 * pulsoIman).toFixed(3) + ")";
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(mx, my, MAGNET_RADIUS * pulsoIman, 0, Math.PI * 2); ctx.stroke();
+        ctx.strokeStyle = "rgba(120,190,255," + (0.10 * pulsoIman).toFixed(3) + ")";
+        ctx.beginPath(); ctx.arc(mx, my, MAGNET_RADIUS * 0.62 * pulsoIman, 0, Math.PI * 2); ctx.stroke();
+        ctx.lineWidth = 1;
+      }
 
       drawCharacter(W * CHAR_X_RATIO);
 
