@@ -521,8 +521,10 @@
     /* El imán YA atraía monedas, pero con 75 px de radio —poco más que el
        propio personaje— no se notaba y parecía que no hacía nada. */
     var MAGNET_RADIUS = 165;
-    var POWERUP_DURATION_MS = { magnet: 6000, turbo: 5000, doubleCoin: 8000 };
-    var POWERUP_ICON = { magnet: "🧲", turbo: "⚡", doubleCoin: "2×", shield: "🛡️" };
+    var POWERUP_DURATION_MS = { magnet: 6000, turbo: 5000, doubleCoin: 8000, volar: 6000 };
+    var POWERUP_ICON = { magnet: "🧲", turbo: "⚡", doubleCoin: "2×", shield: "🛡️", volar: "🪽" };
+    // a qué altura se estabiliza mientras vuela
+    var ALTURA_VUELO = 110;
 
     // el multiplicador sube por distancia recorrida, no por tiempo — como la
     // velocidad va acelerando sin techo, entre más rápido vayas más rápido
@@ -543,6 +545,8 @@
     var BLOQUE_LLANO_MIN = 190;     // llano obligatorio arriba, antes de bajar
     // el rebote de bajar un escalón: como un 20% de un salto normal
     var SALTITO_ESCALON = JUMP_VELOCITY * 0.2;
+    // cuánto se le sigue aceptando el salto después de dejar el suelo
+    var COYOTE_S = 0.14;
     // La megarampa y su abismo gigante. Máximo 2 por partida: si saliera
     // seguido dejaría de ser el momento grande de la carrera.
     var MAX_MEGA_POR_PARTIDA = 2;
@@ -962,7 +966,7 @@
         lives: MAX_LIVES,
         shieldCharges: 0,
         invulnUntil: 0,
-        activePowerups: { magnet: 0, turbo: 0, doubleCoin: 0 },
+        activePowerups: { magnet: 0, turbo: 0, doubleCoin: 0, volar: 0 },
         trick: null,
         trickText: null,
         multiplier: 1,
@@ -974,6 +978,8 @@
         dustTimer: 0,
         chispaTimer: 0,
         ultimoEscalon: -1,   // en qué escalón de la escalera va, para el rebote
+        ultimoEnSuelo: -99,  // cuándo pisó por última vez, para el margen del salto
+        enSaltito: false,    // va en el rebote de un escalón (el salto igual vale)
         monedasParaBono: 0,  // cuenta hasta 5 y regala 100 puntos
         megaUsados: 0,       // cuántos abismos gigantes salieron (tope 2)
         aterrizaje: 0,   // 0..1, cuánto se aplasta al caer (se va solo)
@@ -1042,7 +1048,7 @@
       if (!powerupBarEl || !state) return;
       var parts = [];
       if (state.shieldCharges > 0) parts.push("🛡️×" + state.shieldCharges);
-      ["magnet", "turbo", "doubleCoin"].forEach(function (k) {
+      ["magnet", "turbo", "doubleCoin", "volar"].forEach(function (k) {
         if (state.activePowerups[k] > 0) {
           parts.push(POWERUP_ICON[k] + Math.ceil(state.activePowerups[k] / 1000) + "s");
         }
@@ -1053,9 +1059,24 @@
     function jump() {
       if (!state || state.over || state.falling) return;
       state.hasJumpedOnce = true;
-      if (state.onGround) {
+
+      // volando: cada toque lo empuja más arriba, no hay salto normal
+      if (state.activePowerups.volar > 0) {
+        state.velocityY = Math.min(state.velocityY, 0) + JUMP_VELOCITY * 0.55;
+        sfxJump();
+        return;
+      }
+
+      /* Margen de gracia. Sin esto, bajando una escalera el salto NO salía:
+         el saltito de cada escalón pone onGround en false por un instante y
+         el toque se perdía. Además hace que el salto se sienta menos duro
+         cuando uno toca justo al salir de un borde. */
+      var recienEstuvo = (state.elapsed - state.ultimoEnSuelo) < COYOTE_S;
+      if (state.onGround || state.enSaltito || recienEstuvo) {
         state.velocityY = JUMP_VELOCITY;
         state.onGround = false;
+        state.enSaltito = false;
+        state.ultimoEnSuelo = -99;      // que no valga dos veces el mismo margen
         state.currentRail = null; // saltar desde una baranda la suelta, sin bonus
         sfxJump();
       }
@@ -1103,9 +1124,10 @@
     function spawnPickup() {
       var roll = Math.random();
       var type = "coin";
-      if (roll > 0.86) type = "shield";
-      else if (roll > 0.7) type = "magnet";
-      else if (roll > 0.54) type = "turbo";
+      if (roll > 0.90) type = "volar";     // el más escaso de los poderes
+      else if (roll > 0.80) type = "shield";
+      else if (roll > 0.66) type = "magnet";
+      else if (roll > 0.52) type = "turbo";
       else if (roll > 0.38) type = "doubleCoin";
 
       /* El corazón es raro de verdad, y solo aparece si le falta alguna vida:
@@ -1287,7 +1309,7 @@
 
       // power-ups activos: cuentan hacia atrás
       var puChanged = false;
-      ["magnet", "turbo", "doubleCoin"].forEach(function (k) {
+      ["magnet", "turbo", "doubleCoin", "volar"].forEach(function (k) {
         if (state.activePowerups[k] > 0) {
           state.activePowerups[k] = Math.max(0, state.activePowerups[k] - dt * 1000);
           puChanged = true;
@@ -1299,7 +1321,35 @@
       state.terrain.forEach(function (t) { t.x -= state.speed * dt; });
       maybeExtendTerrain();
 
-      if (state.falling) {
+      if (state.activePowerups.volar > 0) {
+        /* ---- Volando ----
+           Se sube a una altura de crucero y se queda ahí, con un resorte
+           suave en vez de gravedad. Los toques lo empujan más arriba.
+
+           Mientras vuela NO se cae a los abismos ni se engancha en rieles:
+           está por encima de todo, que es exactamente la gracia del poder.
+           Los obstáculos tampoco lo alcanzan porque son mucho más bajos. */
+        state.falling = false;
+        state.currentRail = null;
+        state.onGround = false;
+        var destino = groundY() - CHAR_SIZE - ALTURA_VUELO;
+        state.velocityY += (destino - state.charY) * 7 * dt;
+        state.velocityY *= 0.92;                       // amortigua el rebote
+        state.charY += state.velocityY * dt;
+        // que no se salga por arriba de la pantalla
+        if (state.charY < 8) { state.charY = 8; state.velocityY = Math.max(0, state.velocityY); }
+
+        // estela de plumitas mientras vuela
+        state.dustTimer -= dt * 1000;
+        if (state.dustTimer <= 0) {
+          state.dustTimer = 70;
+          empujarParticula({
+            x: W * CHAR_X_RATIO + 4, y: state.charY + CHAR_SIZE * 0.6,
+            vx: -state.speed * 0.45, vy: 12 + Math.random() * 26,
+            life: 0.45, maxLife: 0.45, r: 1.5 + Math.random() * 2
+          });
+        }
+      } else if (state.falling) {
         // cayendo de verdad al abismo — sigue bajando acelerando, con vuelta
         // de campana, hasta que se acaba la animación y ahí sí termina el juego
         state.fallT += dt;
@@ -1319,6 +1369,17 @@
             if (ro.type === "rail" && !ro.grinded && ro.x <= charX && ro.x + ro.w > charX &&
                 state.charY + CHAR_SIZE >= ro.y && state.charY + CHAR_SIZE <= ro.y + 18) {
               state.currentRail = ro;
+              // el chispazo del momento en que el metal engancha: un golpe
+              // fuerte y corto, distinto del chisporroteo de ir deslizándose
+              for (var chz = 0; chz < 12; chz++) {
+                empujarParticula({
+                  x: charX + CHAR_SIZE * 0.5, y: ro.y - 1,
+                  vx: -state.speed * (0.3 + Math.random() * 0.8),
+                  vy: -40 - Math.random() * 150,
+                  life: 0.3 + Math.random() * 0.2, maxLife: 0.5,
+                  r: 1.2 + Math.random() * 1.4, chispa: true
+                });
+              }
               break;
             }
           }
@@ -1381,6 +1442,9 @@
                y no se ve que esté BAJANDO escalones — que es justo lo que
                Fabián quería ver. Es chico a propósito: no es un salto, es el
                rebote de bajar un escalón. */
+            state.ultimoEnSuelo = state.elapsed;   // para el margen de gracia
+            state.enSaltito = false;
+
             var tr = tramoEn(charX);
             if (tr && tr.stepped && tr.h0 > tr.h1) {
               var escalonAhora = Math.floor(((charX - tr.x) / tr.w) * TERRAIN_STEPS);
@@ -1388,6 +1452,8 @@
                 state.ultimoEscalon = escalonAhora;
                 state.velocityY = SALTITO_ESCALON;
                 state.onGround = false;
+                // se marca para que el salto siga aceptándose durante el rebote
+                state.enSaltito = true;
               }
             } else {
               state.ultimoEscalon = -1;
@@ -1470,8 +1536,10 @@
       var charCenterY = state.charY + CHAR_SIZE / 2;
       state.pickups.forEach(function (p) {
         p.x -= state.speed * dt;
-        // el imán se lleva monedas Y corazones — un corazón perdido duele más
-        if (state.activePowerups.magnet > 0 && (p.type === "coin" || p.type === "heart")) {
+        /* El imán se lleva TODO lo que haya en pantalla: monedas, corazones,
+           escudos, rayos, otros imanes. Es un imán, no un recogedor de
+           monedas — y así se siente el poder de verdad. */
+        if (state.activePowerups.magnet > 0) {
           var dx = charCenterX - p.x, dy = charCenterY - p.y;
           var dist = Math.sqrt(dx * dx + dy * dy);
           if (dist < MAGNET_RADIUS) { p.x += dx * Math.min(1, dt * 6); p.y += dy * Math.min(1, dt * 6); }
