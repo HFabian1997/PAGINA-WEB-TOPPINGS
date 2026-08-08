@@ -2759,22 +2759,56 @@
       try { return localStorage.getItem(GANE_KEY) === periodo; } catch (e) { return false; }
     }
 
+    /** Los datos del evento pasado para ESTE jugador, gane o no. */
+    function resultadoPasado(res) {
+      if (res.eventoPasado) return res.eventoPasado;
+      // servidor viejo: solo sabía del ganador
+      if (res.ganePasado) {
+        return {
+          puesto: 1, score: res.ganePasado.score, name: res.ganePasado.name,
+          jugadores: 0, periodStart: res.ganePasado.periodStart, gano: true
+        };
+      }
+      return null;
+    }
+
+    /** "2º", "3º"… en palabras cortas, que es como lo lee la gente. */
+    function ordinal(n) {
+      return n === 1 ? "1º" : n === 2 ? "2º" : n === 3 ? "3º" : (n + "º");
+    }
+
     function mostrarAvisoGane(res) {
-      var g = res.ganePasado;
-      var periodo = (g && g.periodStart) || "";
+      var g = resultadoPasado(res);
+      if (!g) return;
+      var periodo = g.periodStart || "";
+      var gano = !!g.gano;
       if (avisoGane && avisoGane.parentNode) avisoGane.parentNode.removeChild(avisoGane);
 
       avisoGane = document.createElement("div");
-      avisoGane.className = "run-prev-win";
+      avisoGane.className = "run-prev-win" + (gano ? "" : " is-perdio");
       avisoGane.setAttribute("data-run-prev-win", "");
+
+      /* Al que ganó se le cuenta dónde está su premio. Al resto se le dice en
+         qué puesto quedó — antes no se enteraban de nada: volvían y ya estaba
+         el evento nuevo corriendo como si el anterior nunca hubiera pasado. */
+      var cuerpo = gano
+        ? '<p class="run-prev-win-title">🏆 ¡GANASTE EL EVENTO ANTERIOR!</p>' +
+          '<p class="run-prev-win-text">Quedaste <strong>#1</strong> con ' +
+            escHtml(String(g.score || 0)) + " puntos" +
+            (periodo ? " · " + escHtml(periodo) : "") + ".</p>" +
+          '<p class="run-prev-win-text">Tu premio ya está guardado en <strong>🎁 ' +
+            escHtml(etiquetaRegalo()) + "</strong>, arriba. Mostralo en el local para reclamarlo.</p>"
+        : '<p class="run-prev-win-title">🎮 EVENTO ANTERIOR</p>' +
+          '<p class="run-prev-win-text">Quedaste <strong>' + escHtml(ordinal(g.puesto)) + "</strong> con " +
+            escHtml(String(g.score || 0)) + " puntos" +
+            (g.jugadores > 1 ? " entre " + escHtml(String(g.jugadores)) + " jugadores" : "") +
+            (periodo ? " · " + escHtml(periodo) : "") + ".</p>" +
+          '<p class="run-prev-win-text">Esta vez no ganaste el premio — <strong>solo el 1º se lo lleva</strong>. ' +
+            "¡Ya arrancó otro evento y podés intentarlo de nuevo!</p>";
+
       avisoGane.innerHTML =
         '<button type="button" class="run-prev-win-close" aria-label="Cerrar">&times;</button>' +
-        '<p class="run-prev-win-title">🏆 ¡GANASTE EL EVENTO ANTERIOR!</p>' +
-        '<p class="run-prev-win-text">Quedaste <strong>#1</strong> con ' +
-          escHtml(String(g.score || 0)) + " puntos" +
-          (periodo ? " · " + escHtml(periodo) : "") + ".</p>" +
-        '<p class="run-prev-win-text">Tu premio ya está guardado en <strong>🎁 ' +
-          escHtml(etiquetaRegalo()) + "</strong>, arriba. Mostralo en el local para reclamarlo.</p>" +
+        cuerpo +
         '<button type="button" class="run-prev-win-ok">VER EL EVENTO NUEVO</button>';
 
       function cerrar() {
@@ -2801,9 +2835,11 @@
       clearInterval(eventCountdownTimer);
       lastStatus = res;
 
-      /* Si ganó el evento pasado y todavía no lo sabe, el evento nuevo espera:
-         se le tapa hasta que cierre el mensaje. */
-      if (res.ganePasado && !yaVioSuVictoria(res.ganePasado.periodStart || "")) {
+      /* Si jugó el evento pasado y todavía no vio cómo le fue, el evento
+         nuevo espera: se le tapa hasta que cierre el mensaje. Vale para
+         TODOS los que jugaron, no solo para el que ganó. */
+      var pasado = resultadoPasado(res);
+      if (pasado && !yaVioSuVictoria(pasado.periodStart || "")) {
         mostrarAvisoGane(res);
         if (leaderboardEl) leaderboardEl.hidden = true;
         if (statusEl) statusEl.hidden = true;

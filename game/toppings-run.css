@@ -181,6 +181,16 @@
   background: none; border: 0; padding: .2rem .35rem;
   font-size: 1.15rem; line-height: 1; cursor: pointer; color: var(--ink-mute);
 }
+/* Al que no ganó no se le pinta de dorado: sería burlarse. Mismo formato,
+   tono neutro, y el mensaje empuja a volver a intentarlo. */
+.run-prev-win.is-perdio {
+  border-color: var(--line, #3a3a44);
+  background: color-mix(in srgb, #7a8090 10%, var(--bg-2, #151515));
+}
+.run-prev-win.is-perdio .run-prev-win-title { color: var(--ink-soft, #ddd); }
+.run-prev-win.is-perdio .run-prev-win-ok {
+  background: var(--brand, #ffd400); color: #111;
+}
 .run-prev-win-ok {
   margin-top: .25rem; width: 100%; padding: .6rem .8rem;
   border: 0; border-radius: 10px; cursor: pointer;

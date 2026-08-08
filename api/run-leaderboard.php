@@ -380,6 +380,28 @@ function resetPeriod(&$state, $type) {
   $state['claim'] = array('status' => 'waiting', 'windowEndsAtMs' => null, 'claimedAt' => null, 'claimedName' => null, 'claimedDevice' => null);
 }
 
+/**
+ * La tabla final del periodo: quién quedó en qué puesto. Se guarda con el
+ * historial para poder contarle a cada jugador cómo le fue cuando vuelva.
+ *
+ * Se corta en 60 porque es un archivo JSON que se lee entero en cada
+ * consulta: guardar cientos de filas por periodo lo haría pesado sin que
+ * nadie mire más allá de los primeros puestos.
+ */
+function puestosDelPeriodo($state) {
+  $filas = array();
+  foreach ($state['scores'] as $deviceId => $info) {
+    if (!is_array($info)) continue;
+    $filas[] = array(
+      'deviceId' => (string) $deviceId,
+      'name' => isset($info['name']) ? $info['name'] : '',
+      'score' => (int) $info['score'],
+    );
+  }
+  usort($filas, function ($a, $b) { return $b['score'] - $a['score']; });
+  return array_slice($filas, 0, 60);
+}
+
 function appendHistory(&$state, $outcome) {
   $entry = array(
     'name' => $state['winner'] ? $state['winner']['name'] : null,
@@ -389,6 +411,10 @@ function appendHistory(&$state, $outcome) {
        viaja al cliente tal cual: buildPublicPayload solo dice si el que
        pregunta es él o no. */
     'deviceId' => $state['winner'] && isset($state['winner']['deviceId']) ? $state['winner']['deviceId'] : null,
+    /* Y la tabla completa de puestos, para poder decirle a CADA jugador en
+       qué lugar quedó, no solo al primero. Se arma acá porque resetPeriod()
+       borra los puntajes enseguida y después ya no habría de dónde sacarla. */
+    'puestos' => puestosDelPeriodo($state),
     'rankingType' => $state['rankingType'],
     'periodStart' => $state['periodStart'],
     'outcome' => $outcome, // 'claimed' | 'auto' | 'expired' | 'admin-reset'
@@ -538,6 +564,31 @@ function buildPublicPayload($state, $requesterName, $requesterDevice) {
     }
   }
 
+  /* Cómo le fue a ESTE jugador en el evento pasado, haya ganado o no. Antes
+     solo se le avisaba al primero; el que quedaba segundo volvía y se
+     encontraba el evento nuevo sin saber nunca cómo había terminado.
+     Se busca su puesto en la tabla guardada y se le devuelve SOLO el suyo:
+     los deviceId de los demás no salen nunca del servidor. */
+  $eventoPasado = null;
+  if ($requesterDevice !== '' && count($state['history'])) {
+    $ult2 = $state['history'][0];
+    $tabla = isset($ult2['puestos']) && is_array($ult2['puestos']) ? $ult2['puestos'] : array();
+    for ($i = 0; $i < count($tabla); $i++) {
+      $fila = $tabla[$i];
+      if (empty($fila['deviceId'])) continue;
+      if (!hash_equals((string) $fila['deviceId'], (string) $requesterDevice)) continue;
+      $eventoPasado = array(
+        'puesto' => $i + 1,
+        'score' => isset($fila['score']) ? (int) $fila['score'] : 0,
+        'name' => isset($fila['name']) ? $fila['name'] : '',
+        'jugadores' => count($tabla),
+        'periodStart' => isset($ult2['periodStart']) ? $ult2['periodStart'] : '',
+        'gano' => ($i === 0),
+      );
+      break;
+    }
+  }
+
   return array(
     'ok' => true,
     'rankingType' => $state['rankingType'],
@@ -553,7 +604,10 @@ function buildPublicPayload($state, $requesterName, $requesterDevice) {
       'claimedName' => $claim['claimedName'],
     ),
     'canClaim' => $canClaim,
+    // se mandan los dos: si alguien tiene el juego viejo y el servidor nuevo
+    // (o al revés), el ganador igual recibe su aviso y nada se rompe
     'ganePasado' => $ganePasado,
+    'eventoPasado' => $eventoPasado,
     'history' => $history,
     // compatibilidad con el nombre anterior del campo, por si algo viejo lo espera
     'weekStart' => $state['periodStart'],
