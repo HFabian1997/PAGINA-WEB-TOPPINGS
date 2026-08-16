@@ -116,6 +116,11 @@ function toppingsRunFormaEntrega() {
   return $v === 'reclamar' ? 'reclamar' : 'automatico';
 }
 
+/* Hasta cuántos días atrás se le sigue contando a alguien cómo le fue.
+   Más allá no aporta: enterarse de que quedó 3º hace un mes no le dice nada
+   y solo le estorba para empezar a jugar. */
+define('AVISO_MAX_DIAS', 10);
+
 function nowMs() { return (int) round(microtime(true) * 1000); }
 
 /** Lunes de esta semana (America/Bogota), como fecha Y-m-d. */
@@ -569,23 +574,40 @@ function buildPublicPayload($state, $requesterName, $requesterDevice) {
      encontraba el evento nuevo sin saber nunca cómo había terminado.
      Se busca su puesto en la tabla guardada y se le devuelve SOLO el suyo:
      los deviceId de los demás no salen nunca del servidor. */
+  /* Se busca hacia ATRÁS, no solo en el último evento. Si alguien jugó y
+     volvió cinco días después, en el medio cerraron otros eventos en los que
+     no participó: mirando solo el más reciente nunca se enteraría de cómo le
+     fue en el suyo. Se toma el más nuevo en el que SÍ jugó.
+
+     Con un tope de días, porque contarle a alguien que quedó 3º hace un mes
+     no le dice nada y solo estorba para empezar a jugar. */
   $eventoPasado = null;
   if ($requesterDevice !== '' && count($state['history'])) {
-    $ult2 = $state['history'][0];
-    $tabla = isset($ult2['puestos']) && is_array($ult2['puestos']) ? $ult2['puestos'] : array();
-    for ($i = 0; $i < count($tabla); $i++) {
-      $fila = $tabla[$i];
-      if (empty($fila['deviceId'])) continue;
-      if (!hash_equals((string) $fila['deviceId'], (string) $requesterDevice)) continue;
-      $eventoPasado = array(
-        'puesto' => $i + 1,
-        'score' => isset($fila['score']) ? (int) $fila['score'] : 0,
-        'name' => isset($fila['name']) ? $fila['name'] : '',
-        'jugadores' => count($tabla),
-        'periodStart' => isset($ult2['periodStart']) ? $ult2['periodStart'] : '',
-        'gano' => ($i === 0),
-      );
-      break;
+    $ahoraMs = nowMs();
+    foreach ($state['history'] as $ev) {
+      if (!is_array($ev)) continue;
+      $cuando = isset($ev['endedAt']) ? (int) $ev['endedAt'] : 0;
+      if ($cuando > 0 && ($ahoraMs - $cuando) > AVISO_MAX_DIAS * 86400000) break;  // ya son viejos
+
+      $tabla = isset($ev['puestos']) && is_array($ev['puestos']) ? $ev['puestos'] : array();
+      for ($i = 0; $i < count($tabla); $i++) {
+        $fila = $tabla[$i];
+        if (empty($fila['deviceId'])) continue;
+        if (!hash_equals((string) $fila['deviceId'], (string) $requesterDevice)) continue;
+        $eventoPasado = array(
+          'puesto' => $i + 1,
+          'score' => isset($fila['score']) ? (int) $fila['score'] : 0,
+          'name' => isset($fila['name']) ? $fila['name'] : '',
+          'jugadores' => count($tabla),
+          'periodStart' => isset($ev['periodStart']) ? $ev['periodStart'] : '',
+          'terminoMs' => $cuando,
+          // cuántos días pasaron, para que el mensaje lo pueda decir
+          'diasAtras' => $cuando > 0 ? (int) floor(($ahoraMs - $cuando) / 86400000) : 0,
+          'gano' => ($i === 0),
+        );
+        break;
+      }
+      if ($eventoPasado) break;   // el más reciente en el que jugó, y listo
     }
   }
 

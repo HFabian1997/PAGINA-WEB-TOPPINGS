@@ -2791,20 +2791,30 @@
       /* Al que ganó se le cuenta dónde está su premio. Al resto se le dice en
          qué puesto quedó — antes no se enteraban de nada: volvían y ya estaba
          el evento nuevo corriendo como si el anterior nunca hubiera pasado. */
+      /* Cuándo fue. Importa: si alguien vuelve cinco días después, decirle
+         "el evento anterior" a secas es confuso —en el medio hubo otros—, y
+         además no entendería por qué le hablan de algo que no recuerda. */
+      var dias = Number(g.diasAtras) || 0;
+      var cuando = dias <= 0 ? "el evento anterior"
+                 : dias === 1 ? "el evento de ayer"
+                 : "el evento de hace " + dias + " días";
+      var titulo = dias <= 0 ? "EVENTO ANTERIOR" : "TU ÚLTIMO EVENTO";
+
       var cuerpo = gano
-        ? '<p class="run-prev-win-title">🏆 ¡GANASTE EL EVENTO ANTERIOR!</p>' +
-          '<p class="run-prev-win-text">Quedaste <strong>#1</strong> con ' +
+        ? '<p class="run-prev-win-title">🏆 ¡GANASTE ' + escHtml(titulo) + "!</p>" +
+          '<p class="run-prev-win-text">En ' + escHtml(cuando) + " quedaste <strong>#1</strong> con " +
             escHtml(String(g.score || 0)) + " puntos" +
             (periodo ? " · " + escHtml(periodo) : "") + ".</p>" +
           '<p class="run-prev-win-text">Tu premio ya está guardado en <strong>🎁 ' +
             escHtml(etiquetaRegalo()) + "</strong>, arriba. Mostralo en el local para reclamarlo.</p>"
-        : '<p class="run-prev-win-title">🎮 EVENTO ANTERIOR</p>' +
-          '<p class="run-prev-win-text">Quedaste <strong>' + escHtml(ordinal(g.puesto)) + "</strong> con " +
+        : '<p class="run-prev-win-title">🎮 ' + escHtml(titulo) + "</p>" +
+          '<p class="run-prev-win-text">En ' + escHtml(cuando) + " quedaste <strong>" +
+            escHtml(ordinal(g.puesto)) + "</strong> con " +
             escHtml(String(g.score || 0)) + " puntos" +
             (g.jugadores > 1 ? " entre " + escHtml(String(g.jugadores)) + " jugadores" : "") +
             (periodo ? " · " + escHtml(periodo) : "") + ".</p>" +
-          '<p class="run-prev-win-text">Esta vez no ganaste el premio — <strong>solo el 1º se lo lleva</strong>. ' +
-            "¡Ya arrancó otro evento y podés intentarlo de nuevo!</p>";
+          '<p class="run-prev-win-text">Esa vez no ganaste el premio — <strong>solo el 1º se lo lleva</strong>. ' +
+            "¡Ya hay otro evento corriendo y podés intentarlo de nuevo!</p>";
 
       avisoGane.innerHTML =
         '<button type="button" class="run-prev-win-close" aria-label="Cerrar">&times;</button>' +
