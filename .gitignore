@@ -20,7 +20,15 @@ api/data/*.json
 api/uploads/*
 !api/uploads/.htaccess
 
+# Lo de Claude Code: se ignora la carpeta, MENOS el guardado automático.
+# Esos tres archivos sí tienen que viajar: si se clona el repo en otra
+# computadora y no están, se deja de guardar solo y no se nota hasta que
+# ya se perdieron días de trabajo.
+.claude/*
+!.claude/settings.json
+!.claude/auto-guardar.sh
+!.claude/auto-subir.sh
+
 # Respaldos y archivos de trabajo
 toppings_*.zip
 RESTAURAR_*.zip
-.claude/
