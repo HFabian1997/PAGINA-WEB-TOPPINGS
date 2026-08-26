@@ -906,7 +906,35 @@
 
     /* ---- tamaño del canvas: 100% del ancho de su tarjeta, nunca más — así
        nunca causa desplazamiento horizontal de la página. ---- */
-    var W = 0, H = 0, DPR = Math.min(window.devicePixelRatio || 1, 2);
+    /* ---- Calidad que se adapta al celular ----
+
+       El lienzo se dibuja a más resolución que su tamaño en pantalla para
+       verse nítido. En un celular bueno eso no cuesta nada; en uno justo
+       es lo que lo hunde, porque el trabajo crece con el CUADRADO: pasar
+       de 2 a 1,6 son 36% menos píxeles que pintar.
+
+       Medido en un Samsung A55: 45 cuadros por segundo y 20 de cada 45
+       pasando de 20 ms. No es un pico ocasional, es carga sostenida.
+
+       En vez de bajarle la nitidez a todo el mundo, el juego se mide solo
+       y baja un escalón únicamente si no llega. Un celular que anda bien
+       se queda siempre en el mejor. */
+    var CALIDADES = [2, 1.6, 1.3];
+    var nivelCalidad = (function () {
+      try {
+        /* ?calidad=alta borra lo guardado y vuelve a empezar en el máximo.
+           Hace falta para probar, y por si un celular quedó marcado como
+           lento por una vez que andaba mal (otra app pesada, batería baja). */
+        if (/[?&]calidad=alta/.test(location.search)) {
+          localStorage.removeItem("toppings_calidad");
+          return 0;
+        }
+        var g = parseInt(localStorage.getItem("toppings_calidad"), 10);
+        return (g >= 0 && g < CALIDADES.length) ? g : 0;
+      } catch (e) { return 0; }
+    })();
+
+    var W = 0, H = 0, DPR = Math.min(window.devicePixelRatio || 1, CALIDADES[nivelCalidad]);
     function resizeCanvas(forzar) {
       var rect = canvasWrap.getBoundingClientRect();
       var nuevoW = Math.max(240, Math.round(rect.width));
@@ -2421,6 +2449,30 @@
                    porcentajeGris: Math.round(escalones / perfil.length * 100) };
         },
 
+        /** Le da de comer cuadros falsos al vigilante, para comprobar que
+         *  baja la calidad cuando hace falta y que NO la baja cuando el
+         *  celular va bien. Sin esto habría que creerle a la lógica. */
+        simularCuadros: function (cuantos, msPorCuadro) {
+          var reloj = performance.now();
+          for (var i = 0; i < cuantos; i++) {
+            reloj += msPorCuadro;
+            vigilarRendimiento(reloj, msPorCuadro);
+          }
+          return { calidad: CALIDADES[nivelCalidad], nivel: nivelCalidad,
+                   lienzo: canvas.width + "x" + canvas.height };
+        },
+
+        /** Vuelve todo a la mejor calidad, para poder repetir la prueba. */
+        reiniciarCalidad: function () {
+          nivelCalidad = 0;
+          vigia = { desde: 0, cuadros: 0, lentos: 0, bajadas: 0 };
+          try { localStorage.removeItem("toppings_calidad"); } catch (e) {}
+          DPR = Math.min(window.devicePixelRatio || 1, CALIDADES[0]);
+          capaDeLuz = null; focos = {};
+          resizeCanvas(true);
+          return CALIDADES[nivelCalidad];
+        },
+
         /** La lista de mundos, para recorrerlos todos en una prueba. */
         mundos: function () { return Object.keys(ESCENARIOS); },
       };
@@ -3241,7 +3293,7 @@
       if (!fpsDatos.desde) fpsDatos.desde = ahora;
       if (ahora - fpsDatos.desde >= 1000) {
         if (fpsDatos.peor > (fpsDatos.peorDeTodo || 0)) fpsDatos.peorDeTodo = fpsDatos.peor;
-        fpsDatos.texto = fpsDatos.cuadros + " fps · peor " + fpsDatos.peor.toFixed(0) +
+        fpsDatos.texto = fpsDatos.cuadros + " fps · " + CALIDADES[nivelCalidad] + "x · peor " + fpsDatos.peor.toFixed(0) +
                          " ms · " + fpsDatos.lentos + " tirones · max " +
                          (fpsDatos.peorDeTodo || 0).toFixed(0);
         fpsDatos.cuadros = 0; fpsDatos.peor = 0; fpsDatos.lentos = 0; fpsDatos.desde = ahora;
@@ -3263,6 +3315,52 @@
       ctx.textAlign = "left"; ctx.textBaseline = "middle";
       ctx.fillText(fpsDatos.texto, 15, 20);
       ctx.restore();
+    }
+
+
+    /* ---- El vigilante de cuadros ----
+
+       Mira cómo viene el juego y, si no llega, baja un escalón de calidad.
+       Trabaja SIEMPRE, no solo con ?fps=1: medir un par de restas por
+       cuadro no cuesta nada, y de eso depende que el juego sea jugable en
+       un celular flojo.
+
+       Reglas, todas para que no moleste:
+         · espera 2 s antes de juzgar, para no reaccionar al arranque
+         · baja solo si MÁS DE LA MITAD de los cuadros pasan de 20 ms,
+           que es lo que se siente como tirones
+         · baja de a un escalón y como mucho dos veces
+         · nunca vuelve a subir sola en la misma partida: subir y bajar
+           parpadeando sería peor que quedarse abajo
+         · se acuerda para la próxima, así no hay que sufrirlo de nuevo */
+    var vigia = { desde: 0, cuadros: 0, lentos: 0, bajadas: 0 };
+
+    function vigilarRendimiento(ahora, dt) {
+      if (nivelCalidad >= CALIDADES.length - 1 || vigia.bajadas >= 2) return;
+      if (!vigia.desde) { vigia.desde = ahora; return; }
+      if (ahora - vigia.desde < 2000) {
+        if (dt > 0 && dt < 500) { vigia.cuadros++; if (dt > 20) vigia.lentos++; }
+        return;
+      }
+      /* El mínimo de cuadros va BAJO a propósito. Pedía 40 en dos segundos,
+         y eso salía al revés: a 22 ms por cuadro entran 90 y funcionaba,
+         pero a 60 ms —un celular de verdad flojo— entran 33 y nunca bajaba.
+         Cuanto peor andaba, menos ayuda recibía. */
+      if (vigia.cuadros >= 12 && vigia.lentos > vigia.cuadros * 0.5) bajarCalidad();
+      vigia.desde = ahora; vigia.cuadros = 0; vigia.lentos = 0;
+    }
+
+    function bajarCalidad() {
+      nivelCalidad++;
+      vigia.bajadas++;
+      try { localStorage.setItem("toppings_calidad", String(nivelCalidad)); } catch (e) {}
+      DPR = Math.min(window.devicePixelRatio || 1, CALIDADES[nivelCalidad]);
+      /* Todo lo guardado se dibujó al tamaño viejo: hay que rehacerlo o
+         saldría estirado. */
+      capaDeLuz = null;
+      focos = {};
+      resizeCanvas(true);
+      if (MEDIR_FPS) fpsDatos.texto = "calidad " + CALIDADES[nivelCalidad] + "x — midiendo...";
     }
 
     function drawBackground() {
@@ -7770,6 +7868,7 @@
       var dt = Math.min(0.05, (ts - lastTs) / 1000);
       lastTs = ts;
       anotarCuadro(ts);       // solo hace algo con ?fps=1
+      vigilarRendimiento(ts, dt * 1000);   // este trabaja siempre
       update(dt);
       draw();
       if (state && !state.over) rafId = requestAnimationFrame(loop);
