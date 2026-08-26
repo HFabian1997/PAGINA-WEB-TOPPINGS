@@ -590,6 +590,19 @@
         <label>Volumen de la música (0 = silencio, 1 = máximo) <input type="range" min="0" max="1" step="0.05" data-field="musicVolume"></label>
       </div>
 
+      <h4>⚡ Qué tanto se dibuja</h4>
+      <p class="hint">Cuántos efectos usa el juego. Bajarlo lo hace correr mejor en celulares flojos, a cambio de que se vea más simple.</p>
+      <div class="field-grid" data-form="dailyPrize.toppingsRun">
+        <label class="full">Nivel de detalle
+          <select data-field="calidad">
+            <option value="alto">🔥 Alto — todo: fondos, letreros, luces y brillos</option>
+            <option value="medio">⚖️ Medio — sin luces, viñeta ni brillos. Fondos y letreros sí</option>
+            <option value="bajo">🪶 Bajo — solo cielo, piso, obstáculos y personaje</option>
+          </select>
+        </label>
+        <p class="hint full">Aparte de esto, <strong>el juego se mide solo en cada celular</strong> y baja la resolución si no llega a ir fluido. Si ponés <em>Alto</em> y alguien entra con un celular flojo, igual le va a andar — se le bajan los efectos a él solo, sin cambiar lo que ven los demás. Al revés no: si ponés <em>Bajo</em>, se respeta en todos.</p>
+      </div>
+
       <h4>🎨 Escenario del juego</h4>
       <p class="hint">El mundo por el que corre el jugador. Cambia el cielo, el fondo, el piso y cómo aparece la marca.</p>
       <div class="field-grid" data-form="dailyPrize.toppingsRun">

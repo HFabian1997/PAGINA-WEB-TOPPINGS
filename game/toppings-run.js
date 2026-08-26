@@ -933,8 +933,42 @@
     var CALIDADES = [2, 1.6, 1.3, 1];
     var NIVEL_LIVIANO = 3;   // desde acá se apagan los adornos
 
-    /** ¿Está en el escalón donde se apagan los efectos? */
+    /** ¿El celular pidió apagar efectos por su cuenta? */
     function modoLiviano() { return nivelCalidad >= NIVEL_LIVIANO; }
+
+    /* ---- Qué tanto se dibuja: lo elige Fabián desde el panel ----
+
+       Son DOS cosas distintas y a propósito separadas:
+
+         · el panel decide QUÉ se dibuja  (alto / medio / bajo)
+         · el celular decide A QUÉ RESOLUCIÓN se dibuja (solo, midiéndose)
+
+       Si Fabián pone "alto" pero el celular no da, el automático igual lo
+       baja: nadie queda con el juego trabado por una configuración. Al
+       revés no: si él pone "bajo", se respeta aunque el celular sea una
+       bestia — es su decisión.
+
+         alto   todo como está
+         medio  sin los efectos caros: luces, viñeta, neblina, motas,
+                bandadas, maleza y el brillo del letrero. Los fondos y los
+                letreros siguen
+         bajo   además sin el paisaje decorado ni los carteles: cielo,
+                piso, obstáculos y personaje. Lo básico para jugar */
+    var EFECTOS = { bajo: 0, medio: 1, alto: 2 };
+
+    function nivelEfectos() {
+      var pedido = String(runInfo().calidad || "alto").toLowerCase();
+      var n = EFECTOS.hasOwnProperty(pedido) ? EFECTOS[pedido] : EFECTOS.alto;
+      // el celular puede bajarlo, nunca subirlo
+      if (modoLiviano() && n > EFECTOS.medio) n = EFECTOS.medio;
+      return n;
+    }
+
+    /** Luces, viñeta, neblina, motas, brillos: lo bonito y lo caro. */
+    function hayEfectos() { return nivelEfectos() >= EFECTOS.alto; }
+
+    /** El paisaje de cada mundo y los carteles. En "bajo" no se dibujan. */
+    function hayPaisaje() { return nivelEfectos() >= EFECTOS.medio; }
     var nivelCalidad = (function () {
       try {
         /* ?calidad=alta borra lo guardado y vuelve a empezar en el máximo.
@@ -3189,7 +3223,7 @@
        Va DETRÁS del piso y del personaje. Encima de ellos los borronearía,
        que es lo contrario de lo que se busca. */
     function nieblaDeDistancia() {
-      if (modoLiviano()) return;
+      if (!hayEfectos()) return;
       var esc = state.esc;
       var base = groundY();
       var colorLejos = esc.cielo[esc.cielo.length - 1][1];
@@ -3247,7 +3281,7 @@
     function luzDeAmbiente() {
       /* Es una pantalla entera por cuadro. Es lo primero que se apaga:
          cuesta mucho y es lo que menos se extraña. */
-      if (modoLiviano()) return;
+      if (!hayEfectos()) return;
       ctx.drawImage(prepararCapaDeLuz(state.esc), 0, 0, W, H);
     }
 
@@ -3407,6 +3441,15 @@
 
       drawNubes();
       drawEstrellaFugaz();
+
+      /* En "bajo" no se dibuja el paisaje de cada mundo: queda el cielo,
+         el piso y los obstáculos. Es lo que hace que el juego corra en un
+         celular que no puede con nada más. */
+      if (!hayPaisaje()) {
+        if (esc.rayos) drawRayo();
+        if (esc.chispas) drawChispas();
+        return;
+      }
 
       // la capa de más atrás cambia por completo según el mundo
       if (esc.fondo === "arboles") drawArboles();
@@ -3986,7 +4029,7 @@
     var lucesPendientes = [];
 
     function luzPuntual(x, y, radio, color, fuerza) {
-      if (modoLiviano()) return;   // cambian el modo de composición: son de lo más caro
+      if (!hayEfectos()) return;   // cambian el modo de composición: son de lo más caro
       var a = 0.42 * fuerza;
       if (a <= 0.004 || radio <= 0) return;          // no se vería: no se dibuja
       if (x + radio < 0 || x - radio > W) return;    // fuera de pantalla
@@ -4067,7 +4110,7 @@
     /** Una bandada cruzando el cielo. Cada bicho lleva su altura, su
      *  velocidad y su aleteo, para que no parezcan un grupo pegado. */
     function bandada(cuantos, color, altoMin, altoAlto, velocidad, tipo) {
-      if (modoLiviano()) return;
+      if (!hayEfectos()) return;
       var base = groundY();
       ctx.fillStyle = color;
       ctx.strokeStyle = color;
@@ -4099,7 +4142,7 @@
     /** Pasto o matorral del primer plano, meciéndose. Va bajito, pegado al
      *  piso: es lo que le da un borde vivo al camino. */
     function maleza(sep, vel, alto, color, cuantos) {
-      if (modoLiviano()) return;   // tres trazos por mata, y hay muchas
+      if (!hayEfectos()) return;   // tres trazos por mata, y hay muchas
       var base = groundY();
       ctx.strokeStyle = color;
       ctx.lineWidth = 1.8;
@@ -4120,7 +4163,7 @@
     /** Polvo, ceniza, polen: motas que flotan a contraluz. Cuesta cuatro
      *  líneas y es lo que le saca el aire de vacío a un fondo. */
     function motas(cuantas, color, velocidad, tam) {
-      if (modoLiviano()) return;   // adorno puro
+      if (!hayEfectos()) return;   // adorno puro
       var base = groundY();
       ctx.fillStyle = color;
       for (var m = 0; m < cuantas; m++) {
@@ -6656,7 +6699,7 @@
     /** El aire iluminado alrededor del cartel. Suave y ancho: una luz real
      *  se desvanece con la distancia, no tiene borde. */
     function auraDelLetrero(cx, cy, an, al, acento, fuerza) {
-      if (modoLiviano()) return;
+      if (!hayEfectos()) return;
       ctx.save();
       ctx.globalCompositeOperation = "lighter";
       var r = Math.max(an, al) * 0.95;
@@ -6674,7 +6717,7 @@
     /** El charco de luz en el piso. Es lo que apoya el cartel en el mundo:
      *  sin esto se ve pegado encima del fondo, como una calcomanía. */
     function luzEnElPiso(cx, an, acento, fuerza) {
-      if (modoLiviano()) return;
+      if (!hayEfectos()) return;
       var base = groundY();
       ctx.save();
       ctx.globalCompositeOperation = "lighter";
@@ -6771,7 +6814,7 @@
       /* El desenfoque es lo más caro que tiene el canvas en un celular. En
          modo liviano el letrero queda encendido igual —la letra clara sobre
          chapa oscura— pero sin el halo alrededor. */
-      if (!modoLiviano()) {
+      if (hayEfectos()) {
         ctx.shadowBlur = m.tam * 0.35 * luz * fz;
         ctx.fillStyle = "rgba(" + acento + "," + (0.5 * luz * fz).toFixed(2) + ")";
         ctx.fillText(texto, cx, mediaY);
