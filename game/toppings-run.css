@@ -213,7 +213,38 @@
   font-family: var(--display); font-size: 1.35rem; line-height: 1.1;
   color: var(--accent); font-variant-numeric: tabular-nums;
 }
-.run-leaderboard-list { display: flex; flex-direction: column; gap: .2rem; }
+/* Alto fijo con desplazamiento adentro: el servidor manda hasta 50 jugadores
+   y pintarlos a lo largo haría crecer la tarjeta del juego hasta empujar todo
+   lo de abajo. El alto está en filas, no en pixeles fijos, para que se vea
+   parecido si cambia el tamaño de letra del celular. */
+.run-leaderboard-list {
+  display: flex; flex-direction: column; gap: .2rem;
+  max-height: 8.6rem; overflow-y: auto;
+  scrollbar-width: thin;
+  /* que el gesto no se escape a la página cuando la lista llega a su tope */
+  overscroll-behavior: contain;
+}
+.run-leaderboard-list::-webkit-scrollbar { width: 4px; }
+.run-leaderboard-list::-webkit-scrollbar-thumb { background: var(--line); border-radius: 999px; }
+
+/* Las flechas: aparecen solo si hay más jugadores de los que entran, y se
+   apagan al llegar a los extremos. */
+.run-lb-arrow {
+  display: block; width: 100%; padding: .1rem 0; margin: 0;
+  background: rgba(255,255,255,.04); border: 1px solid var(--line); border-radius: 6px;
+  color: var(--accent); cursor: pointer; line-height: 1;
+  transition: opacity .2s var(--ease-out), background .2s var(--ease-out);
+}
+.run-lb-arrow[hidden] { display: none; }
+.run-lb-arrow:disabled { opacity: .25; cursor: default; }
+.run-lb-arrow:not(:disabled):hover { background: rgba(255,212,0,.12); }
+/* la punta, dibujada — un emoji de flecha se ve distinto en cada celular */
+.run-lb-arrow::before {
+  content: ""; display: block; width: 7px; height: 7px; margin: .18rem auto;
+  border-left: 2px solid currentColor; border-top: 2px solid currentColor;
+  transform: rotate(45deg);
+}
+.run-lb-arrow.is-down::before { transform: rotate(-135deg); margin-top: .05rem; margin-bottom: .3rem; }
 .run-leaderboard-list li {
   display: flex; align-items: center; gap: .4rem; padding: .3rem .5rem;
   background: rgba(255,255,255,.04); border-radius: var(--radius-sm); font-size: .72rem;
