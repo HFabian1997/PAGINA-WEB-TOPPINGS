@@ -701,3 +701,229 @@ body.is-sorting-active { user-select: none; }
 .flotantes-grid tbody th { text-align: left; font-weight: 700; color: var(--ink-soft); white-space: nowrap; }
 .flotantes-grid input { width: 18px; height: 18px; }
 .locked-winner-row { margin-bottom: .6rem; }
+
+/* ---- Tarjeta de fidelidad: dar sellos a mano ---- */
+.loyalty-admin { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.loyalty-admin h4 { margin: 0 0 .35rem; font-size: .95rem; }
+.loyalty-admin-tools { display: flex; gap: .5rem; align-items: center; margin: .6rem 0; flex-wrap: wrap; }
+.loyalty-admin-tools input[type="search"] { flex: 1; min-width: 180px; }
+
+/* Se le pone tope de alto: con muchos clientes la lista dejaba la pestaña
+   larguísima y había que bajar mucho para llegar al resto de la ficha. */
+.loyalty-admin-list { max-height: 340px; overflow-y: auto; display: flex; flex-direction: column; gap: .35rem; }
+
+.loyalty-row {
+  display: flex; align-items: center; justify-content: space-between; gap: .75rem;
+  padding: .5rem .65rem; border: 1px solid var(--line); border-radius: 10px;
+  background: rgba(255,255,255,.03);
+}
+.loyalty-row.is-full { border-color: var(--accent); background: rgba(255,212,0,.07); }
+.loyalty-row-who { display: flex; flex-direction: column; gap: .1rem; min-width: 0; }
+.loyalty-row-who strong { font-size: .88rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.loyalty-row-who .hint { margin: 0; font-size: .74rem; }
+.loyalty-row-actions { display: flex; gap: .3rem; flex-shrink: 0; }
+.loyalty-row-actions .btn { padding: .25rem .7rem; font-size: 1rem; line-height: 1.2; min-width: 38px; }
+
+.loyalty-admin-danger { display: flex; align-items: center; gap: .6rem; margin-top: .75rem; flex-wrap: wrap; }
+.loyalty-admin-danger .hint { margin: 0; }
+
+/* ---- 🗳️ Votaciones ---- */
+.votes-toolbar { display: flex; gap: .5rem; flex-wrap: wrap; margin: .9rem 0 1rem; }
+.votes-list { display: flex; flex-direction: column; gap: .6rem; }
+
+.vote-poll summary { font-weight: 800; }
+.vote-poll-tag {
+  font-weight: 600; font-size: .72rem; color: var(--ink-mute);
+  background: rgba(255,255,255,.06); padding: .1rem .45rem; border-radius: 999px; margin-left: .35rem;
+}
+.vote-poll h4 { margin: 1.1rem 0 .25rem; font-size: .9rem; }
+.vote-poll-actions { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: 1.1rem; }
+
+.vote-opts { display: flex; flex-direction: column; gap: .45rem; margin: .5rem 0; }
+.vote-opt-row {
+  display: flex; align-items: center; gap: .6rem;
+  padding: .5rem; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.03);
+}
+.vote-opt-thumb {
+  width: 46px; height: 46px; flex-shrink: 0; border-radius: 8px; overflow: hidden;
+  background: rgba(255,255,255,.05); display: flex; align-items: center; justify-content: center;
+  font-size: .58rem; color: var(--ink-mute); text-align: center; line-height: 1.1;
+}
+.vote-opt-thumb img { width: 100%; height: 100%; object-fit: cover; }
+/* los dos campos se apilan: en el celular del panel no caben lado a lado */
+.vote-opt-fields { flex: 1 1 180px; min-width: 150px; display: flex; flex-direction: column; gap: .3rem; }
+.vote-opt-fields input { width: 100%; min-width: 0; }
+.vote-opt-actions { display: flex; gap: .25rem; flex-shrink: 0; }
+.vote-opt-actions .btn { padding: .3rem .5rem; font-size: .85rem; }
+.vote-opt-count { font-size: .72rem; font-weight: 800; color: var(--accent); flex-shrink: 0; }
+
+/* Angosto: la fila se envuelve y los campos pasan a ocupar su propio renglón.
+   Sin esto, `flex:1` los dejaba de unos 15 px y no se podía escribir nada. */
+.vote-opt-row { flex-wrap: wrap; }
+@media (max-width: 520px) {
+  .vote-opt-fields { flex-basis: 100%; order: 3; }
+  .vote-opt-count { margin-left: auto; }
+}
+
+.vote-pages { display: flex; flex-wrap: wrap; gap: .35rem 1rem; margin: .4rem 0 .2rem; }
+
+/* ---- Puntajes del evento en curso ---- */
+.ranking-scores { display: flex; flex-direction: column; gap: .35rem; max-height: 300px; overflow-y: auto; margin: .5rem 0; }
+.ranking-score-row {
+  display: flex; align-items: center; gap: .5rem;
+  padding: .4rem .55rem; border: 1px solid var(--line); border-radius: 8px; background: rgba(255,255,255,.03);
+}
+.ranking-score-rank { width: 1.5rem; flex-shrink: 0; font-weight: 800; color: var(--ink-mute); font-size: .8rem; }
+.ranking-score-name { flex: 1; min-width: 0; font-weight: 700; font-size: .85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ranking-score-input { width: 5.5rem; flex-shrink: 0; }
+.ranking-score-row .btn { padding: .25rem .6rem; font-size: .78rem; flex-shrink: 0; }
+
+.ranking-scores-add { display: flex; gap: .4rem; flex-wrap: wrap; align-items: center; margin-bottom: .5rem; }
+.ranking-scores-add input[type="text"] { flex: 1 1 140px; min-width: 120px; }
+.ranking-scores-add input[type="number"] { width: 6rem; }
+
+@media (max-width: 520px) {
+  .ranking-score-row { flex-wrap: wrap; }
+  .ranking-score-name { flex-basis: calc(100% - 2rem); }
+}
+
+/* ---- Lista de clientes en un recuadro ----
+   Alto fijo con desplazamiento adentro: con muchos clientes la pestaña se
+   volvía interminable y había que bajar medio panel para llegar a lo de
+   abajo. El alto va en rem y no en píxeles para que no se rompa si el
+   navegador tiene otro tamaño de letra. */
+.customers-list {
+  max-height: 26rem; overflow-y: auto; overscroll-behavior: contain;
+  display: flex; flex-direction: column; gap: .4rem;
+  padding: .35rem; border: 1px solid var(--line); border-radius: 10px;
+  background: rgba(0,0,0,.15);
+}
+/* Con un cliente abierto el recuadro se suelta y crece.
+   Si no, la ficha —que trae premios, giros y sellos— queda apretada dentro
+   de un recuadro de 26rem y hay que hacer scroll adentro del scroll, que es
+   de las cosas más incómodas que puede tener un panel en el celular.
+   Para recorrer la lista, compacto; para mirar a una persona, completo. */
+.customers-list.is-abierta { max-height: none; overflow-y: visible; }
+
+.customers-list::-webkit-scrollbar { width: 6px; }
+.customers-list::-webkit-scrollbar-thumb { background: var(--line); border-radius: 999px; }
+
+/* Flechas de lista, reutilizables. Se apagan en los extremos. */
+.lista-flecha {
+  display: block; width: 100%; padding: .15rem 0; margin: .2rem 0;
+  background: rgba(255,255,255,.04); border: 1px solid var(--line); border-radius: 8px;
+  color: var(--accent); cursor: pointer; line-height: 1;
+}
+.lista-flecha[hidden] { display: none; }
+.lista-flecha:disabled { opacity: .25; cursor: default; }
+.lista-flecha:not(:disabled):hover { background: rgba(255,212,0,.12); }
+/* la punta dibujada: un emoji de flecha se ve distinto en cada navegador */
+.lista-flecha::before {
+  content: ""; display: block; width: 8px; height: 8px; margin: .2rem auto;
+  border-left: 2px solid currentColor; border-top: 2px solid currentColor;
+  transform: rotate(45deg);
+}
+.lista-flecha.is-down::before { transform: rotate(-135deg); margin-top: .05rem; margin-bottom: .35rem; }
+
+/* ---- Ficha del cliente ---- */
+.ficha-barra { display: flex; flex-wrap: wrap; gap: .5rem; align-items: end; margin: .5rem 0 .75rem; }
+.ficha-barra label { display: flex; flex-direction: column; gap: .3rem; font-size: .78rem; color: var(--ink-soft); font-weight: 600; }
+.ficha-barra .btn { padding: .35rem .7rem; font-size: .78rem; }
+.btn.is-danger { color: var(--danger); border-color: rgba(255,77,77,.4); }
+.btn.is-danger:hover { background: rgba(255,77,77,.12); }
+
+.ficha-resumen {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(105px, 1fr));
+  gap: .4rem; margin-bottom: .75rem;
+}
+.ficha-dato {
+  display: flex; flex-direction: column; gap: .1rem;
+  padding: .45rem .6rem; border: 1px solid var(--line); border-radius: 8px; background: rgba(255,255,255,.03);
+}
+.ficha-dato span { font-size: .68rem; color: var(--ink-mute); text-transform: uppercase; letter-spacing: .03em; }
+.ficha-dato strong { font-size: 1.05rem; color: var(--accent); }
+.ficha-dato em { font-size: .7rem; font-style: normal; color: var(--ink-mute); font-weight: 400; }
+
+.ficha-premio {
+  display: flex; align-items: center; gap: .6rem;
+  padding: .45rem .6rem; border: 1px solid var(--line); border-radius: 8px;
+  background: rgba(255,255,255,.03); margin-bottom: .3rem;
+}
+/* Un premio vencido o anulado se atenúa en vez de esconderse: sigue siendo
+   parte de la historia del cliente y a veces es justo lo que se va a buscar. */
+.ficha-premio.is-vencido { opacity: .55; }
+.ficha-premio.is-anulado { opacity: .45; text-decoration: line-through; }
+.ficha-premio-icon { font-size: 1.1rem; flex-shrink: 0; }
+.ficha-premio-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .05rem; }
+.ficha-premio-txt strong { font-size: .85rem; }
+.ficha-premio-txt .hint { margin: 0; font-size: .7rem; }
+.ficha-premio .btn { padding: .2rem .55rem; font-size: .72rem; flex-shrink: 0; }
+
+@media (max-width: 520px) {
+  .customers-list { max-height: 20rem; }
+  .ficha-barra { gap: .35rem; }
+  .ficha-barra .btn { flex: 1 1 auto; }
+}
+
+/* ---- Un período manda sobre toda la pestaña ---- */
+.periodo-barra { display: flex; gap: .6rem; align-items: end; flex-wrap: wrap; margin: 0 0 1rem; }
+.periodo-barra label { display: flex; flex-direction: column; gap: .3rem; font-size: .78rem; color: var(--ink-soft); font-weight: 600; }
+
+/* ---- Tarjetas que se pueden tocar ----
+   Se distinguen de las que no con un borde que reacciona: si todas se vieran
+   igual, tocar la de "Premio más entregado" y que no pase nada se lee como
+   que el panel está roto. */
+.ruleta-stat.is-tocable, .ficha-dato.is-tocable {
+  cursor: pointer; text-align: left; width: 100%;
+  font: inherit; color: inherit;
+  transition: border-color .2s ease, background .2s ease, transform .2s ease;
+}
+.ruleta-stat.is-tocable:hover, .ficha-dato.is-tocable:hover {
+  border-color: var(--accent); transform: translateY(-1px);
+}
+.ruleta-stat.is-tocable.is-abierta, .ficha-dato.is-tocable.is-abierta {
+  border-color: var(--accent); background: rgba(255,212,0,.1);
+}
+/* la flechita que avisa que hay algo detrás */
+.ruleta-stat.is-tocable::after, .ficha-dato.is-tocable::after {
+  content: ""; position: absolute; right: .5rem; top: .55rem;
+  width: 5px; height: 5px;
+  border-right: 2px solid var(--ink-mute); border-bottom: 2px solid var(--ink-mute);
+  transform: rotate(45deg); transition: transform .2s ease, border-color .2s ease;
+}
+.ruleta-stat.is-tocable.is-abierta::after, .ficha-dato.is-tocable.is-abierta::after {
+  transform: rotate(-135deg); border-color: var(--accent);
+}
+.ruleta-stat, .ficha-dato { position: relative; }
+.ruleta-stat-nota, .ficha-dato-nota {
+  display: block; font-size: .62rem; font-style: normal; color: var(--ink-mute); line-height: 1.2; margin-top: .1rem;
+}
+
+/* ---- El detalle que se despliega debajo ---- */
+.stat-detalle {
+  border: 1px solid var(--accent); border-radius: 10px;
+  padding: .75rem .9rem; margin: .5rem 0 1.25rem;
+  background: rgba(255,212,0,.05);
+}
+.stat-detalle[hidden] { display: none; }
+.stat-detalle h4 { margin: 0 0 .5rem; color: var(--accent); }
+
+/* Alto tope con desplazamiento: una lista de 300 personas no puede empujar
+   todo el panel hacia abajo. */
+.stat-lista { display: flex; flex-direction: column; gap: .25rem; max-height: 20rem; overflow-y: auto; }
+.stat-fila {
+  display: flex; justify-content: space-between; gap: .75rem; align-items: baseline;
+  padding: .35rem .5rem; border-radius: 6px; background: rgba(255,255,255,.03);
+}
+.stat-fila-nombre { font-size: .85rem; font-weight: 700; }
+.stat-fila-nombre em { font-style: normal; font-weight: 400; color: var(--ink-mute); font-size: .78rem; }
+.stat-fila .hint { margin: 0; font-size: .72rem; text-align: right; flex-shrink: 0; }
+.stat-online { color: #6ee7a0; font-size: .68rem; font-weight: 700; }
+
+.ficha-extra { margin: 0 0 .75rem; }
+.ficha-extra[hidden] { display: none; }
+
+@media (max-width: 520px) {
+  .stat-fila { flex-direction: column; gap: .1rem; }
+  .stat-fila .hint { text-align: left; }
+}

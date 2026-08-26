@@ -46,7 +46,13 @@ $DATA_DIR = toppingsDataDir();
 $DATA_FILE = $DATA_DIR . '/run-leaderboard.json';
 $LOCK_FILE = $DATA_DIR . '/run-leaderboard.lock';
 $CONTENT_FILE = __DIR__ . '/../admin/content.json';
-$TOP_N = 5;
+/* Cuántas filas del ranking se le mandan al navegador.
+   Estaba en 5, y por eso quien quedaba de 11 veía el top 5 y después un salto
+   hasta su fila: los del medio no se veían porque nunca llegaban. Con 50 se
+   ven todos los que importan y son unos 3 KB, nada al lado de lo que ya pesa
+   la página. El corte existe igual porque este archivo se lee entero en cada
+   consulta — mismo criterio que puestosDelPeriodo(), que corta en 60. */
+$TOP_N = 50;
 $MAX_NAME_CHARS = 24;
 $MAX_NAMES = 3000;
 $CLAIM_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -405,6 +411,29 @@ function puestosDelPeriodo($state) {
   }
   usort($filas, function ($a, $b) { return $b['score'] - $a['score']; });
   return array_slice($filas, 0, 60);
+}
+
+/**
+ * La tabla del evento EN CURSO, para el panel.
+ *
+ * Va aparte de puestosDelPeriodo() a propósito: aquella arma la foto final
+ * que se guarda en el historial cuando el evento cierra; esta es la de ahora
+ * mismo, e incluye el deviceId porque el panel lo necesita para saber a quién
+ * le está cambiando el puntaje. Solo sale por admin-status, que ya exige
+ * sesión de administrador.
+ */
+function tablaDelEvento($state) {
+  $filas = array();
+  foreach ($state['scores'] as $deviceId => $info) {
+    if (!is_array($info)) continue;
+    $filas[] = array(
+      'deviceId' => (string) $deviceId,
+      'name' => isset($info['name']) ? $info['name'] : '',
+      'score' => (int) $info['score'],
+    );
+  }
+  usort($filas, function ($a, $b) { return $b['score'] - $a['score']; });
+  return $filas;
 }
 
 function appendHistory(&$state, $outcome) {
@@ -848,7 +877,64 @@ switch ($action) {
       'winner' => $state['winner'],
       'claim' => $state['claim'],
       'history' => array_slice($state['history'], 0, 20),
+      // La tabla del evento en curso. Antes no se mandaba, y por eso el panel
+      // no tenía con qué mostrar ni editar los puntajes.
+      'scores' => tablaDelEvento($state),
     )));
+  }
+
+  /**
+   * El administrador pone o cambia un puntaje a mano.
+   *
+   * Sirve para dos cosas: corregir un puntaje que quedó mal y ponerse uno
+   * mismo en la tabla. Se hace DENTRO del candado como todo lo que escribe
+   * este archivo, así no pisa un puntaje que esté entrando en ese instante.
+   *
+   * Ojo con lo que NO hace: no toca el nombre si no se manda uno nuevo, y no
+   * borra la fila de nadie. Y si al cerrar el evento el puntaje puesto a mano
+   * queda de primero, el premio sale igual que si se hubiera jugado — es a
+   * propósito, pero por eso el panel lo avisa por escrito.
+   */
+  case 'admin-set-score': {
+    requireAdminAuth();
+    if ($method !== 'POST') jsonOut(array('ok' => false, 'error' => 'Método no permitido.'), 405);
+
+    $body = json_decode(file_get_contents('php://input'), true);
+    if (!is_array($body)) $body = array();
+
+    $deviceId = isset($body['deviceId']) ? trim((string) $body['deviceId']) : '';
+    $nombre = isset($body['name']) ? trim((string) $body['name']) : '';
+    if (function_exists('mb_substr')) $nombre = mb_substr(strip_tags($nombre), 0, $MAX_NAME_CHARS);
+    $puntaje = isset($body['score']) ? (int) $body['score'] : 0;
+    if ($puntaje < 0) $puntaje = 0;
+    if ($puntaje > 99999999) $puntaje = 99999999;
+
+    if ($deviceId === '' && $nombre === '') {
+      jsonOut(array('ok' => false, 'error' => 'Falta el nombre del jugador.'), 400);
+    }
+
+    $final = withWriteLock(function ($state) use ($deviceId, $nombre, $puntaje) {
+      ensureRankingState($state);
+
+      $id = $deviceId;
+      if ($id === '' || !isset($state['scores'][$id])) {
+        /* Jugador nuevo puesto a mano. El prefijo deja claro en el archivo
+           que esa fila no vino de una partida — si mañana hay que auditar un
+           resultado raro, se distingue de un vistazo. */
+        if ($id === '') $id = 'adm_' . bin2hex(random_bytes(6));
+        $state['scores'][$id] = array('name' => $nombre !== '' ? $nombre : 'Invitado', 'score' => 0);
+      }
+
+      $state['scores'][$id]['score'] = $puntaje;
+      if ($nombre !== '') {
+        $state['scores'][$id]['name'] = $nombre;
+        // que el registro de nombres quede al día, igual que en una partida
+        rememberName($state, $id, $nombre);
+      }
+      return $state;
+    });
+
+    jsonOut(array('ok' => true, 'scores' => tablaDelEvento($final)));
   }
 
   case 'admin-reset': {

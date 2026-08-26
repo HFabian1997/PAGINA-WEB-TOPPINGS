@@ -19,6 +19,8 @@ require_once __DIR__ . '/ruleta-lib.php';
 require_once __DIR__ . '/redeem-lib.php';
 require_once __DIR__ . '/stoptime-lib.php';
 require_once __DIR__ . '/customers-lib.php';
+require_once __DIR__ . '/loyalty-lib.php';
+require_once __DIR__ . '/visits-lib.php';
 
 session_name('toppings_admin_sess');
 session_set_cookie_params(array(
@@ -398,6 +400,179 @@ switch ($action) {
   }
 
   /* ---------------- lista de clientes ---------------- */
+  /**
+   * Todo lo que se sabe de UN cliente, para la ficha del panel.
+   *
+   * Junta las cuatro fuentes que hoy viven separadas —premios, ruleta, canjes
+   * de código y sellos— porque cada una guarda lo suyo en su propio archivo y
+   * desde el panel no había forma de ver el conjunto: se veía cuántos premios
+   * tenía, pero no cuáles, ni de qué dinámica, ni si se le vencieron.
+   *
+   * El filtro por período aplica a la ACTIVIDAD (cuándo ganó, giró o canjeó),
+   * no a las visitas — que es lo que filtra la lista de afuera. Son dos
+   * preguntas distintas: "quién vino esta semana" y "qué hizo este cliente
+   * esta semana".
+   */
+  case 'customer-detail': {
+    hRequireAdmin();
+    $deviceId = isset($_GET['deviceId']) ? trim((string) $_GET['deviceId']) : '';
+    if ($deviceId === '') jsonOut(array('ok' => false, 'error' => 'Falta el cliente.'), 400);
+
+    $periodo = isset($_GET['periodo']) ? (string) $_GET['periodo'] : 'todos';
+    if (!in_array($periodo, array('hoy', 'semana', 'mes', 'todos'), true)) $periodo = 'todos';
+    $desde = 0;
+    if ($periodo === 'hoy')    $desde = strtotime('today') * 1000;
+    if ($periodo === 'semana') $desde = (time() - 7 * 24 * 3600) * 1000;
+    if ($periodo === 'mes')    $desde = strtotime('first day of this month 00:00') * 1000;
+
+    global $CATS, $ESTADOS, $PRESENCE_FILE;
+
+    $reg = customersRead();
+    $info = isset($reg['customers'][$deviceId]) && is_array($reg['customers'][$deviceId])
+      ? $reg['customers'][$deviceId] : array();
+
+    /* ---- premios ---- */
+    $codes = codesReadState();
+    $premios = array();
+    $porEstado = array('available' => 0, 'waiting' => 0, 'delivered' => 0, 'expired' => 0, 'void' => 0);
+    $porOrigen = array();
+    foreach ($codes['codes'] as $c) {
+      if (!is_array($c) || !isset($c['deviceId']) || $c['deviceId'] !== $deviceId) continue;
+      $cuando = isset($c['issuedAt']) ? (int) $c['issuedAt'] : 0;
+      if ($desde > 0 && $cuando < $desde) continue;
+
+      $estado = isset($c['status']) ? (string) $c['status'] : 'available';
+      if (isset($porEstado[$estado])) $porEstado[$estado]++;
+      $origen = isset($c['source']) ? (string) $c['source'] : '';
+      if ($origen !== '') $porOrigen[$origen] = (isset($porOrigen[$origen]) ? $porOrigen[$origen] : 0) + 1;
+
+      $premios[] = array(
+        'code' => isset($c['code']) ? $c['code'] : '',
+        'prizeName' => isset($c['prizeName']) ? $c['prizeName'] : '',
+        'prizeIcon' => isset($c['prizeIcon']) ? $c['prizeIcon'] : '🎁',
+        'source' => $origen,
+        'sourceLabel' => isset($CATS[$origen]) ? $CATS[$origen]['label'] : $origen,
+        'sourceIcon' => isset($CATS[$origen]) ? $CATS[$origen]['icon'] : '🎁',
+        'status' => $estado,
+        'statusLabel' => isset($ESTADOS[$estado]) ? $ESTADOS[$estado] : $estado,
+        'issuedAt' => $cuando,
+        'expiresAt' => isset($c['expiresAt']) ? (int) $c['expiresAt'] : 0,
+        'deliveredAt' => isset($c['deliveredAt']) ? (int) $c['deliveredAt'] : 0,
+      );
+    }
+    usort($premios, function ($a, $b) { return $b['issuedAt'] - $a['issuedAt']; });
+
+    /* ---- giros de ruleta ---- */
+    $giros = array('total' => 0, 'usados' => 0, 'disponibles' => 0, 'vencidos' => 0);
+    $rul = ruletaReadState();
+    if (isset($rul['tickets']) && is_array($rul['tickets'])) {
+      foreach ($rul['tickets'] as $t) {
+        if (!is_array($t) || !isset($t['deviceId']) || $t['deviceId'] !== $deviceId) continue;
+        $cuando = isset($t['grantedAt']) ? (int) $t['grantedAt'] : 0;
+        if ($desde > 0 && $cuando < $desde) continue;
+        $giros['total']++;
+        $est = isset($t['status']) ? $t['status'] : 'available';
+        if ($est === 'used' || !empty($t['result'])) $giros['usados']++;
+        elseif ($est === 'expired') $giros['vencidos']++;
+        else $giros['disponibles']++;
+      }
+    }
+
+    /* ---- canjes de códigos de premio ---- */
+    $canjes = 0;
+    $red = redeemReadState();
+    if (isset($red['redemptions']) && is_array($red['redemptions'])) {
+      foreach ($red['redemptions'] as $r) {
+        if (!is_array($r) || !isset($r['deviceId']) || $r['deviceId'] !== $deviceId) continue;
+        $cuando = isset($r['redeemedAt']) ? (int) $r['redeemedAt'] : 0;
+        if ($desde > 0 && $cuando < $desde) continue;
+        $canjes++;
+      }
+    }
+
+    /* ---- sellos de la tarjeta ----
+       No lleva filtro de período a propósito: una tarjeta es un estado de
+       ahora ("va por 3 de 5"), no una lista de cosas que pasaron. */
+    $sellos = null;
+    if (function_exists('loyaltyRead')) {
+      $lst = loyaltyRead();
+      $card = loyaltyCard($lst, $deviceId);
+      $sellos = array(
+        'stamps' => $card['stamps'],
+        'required' => loyaltySellosNecesarios(),
+        'claims' => $card['claims'],
+        'lastStampAt' => $card['lastStampAt'],
+      );
+    }
+
+    $pres = hReadJson($PRESENCE_FILE, array());
+    $seen = isset($pres['seen']) && is_array($pres['seen']) ? $pres['seen'] : array();
+
+    /* ---- visitas ----
+       La lista de HOY todavía vive en presence.json (no está archivada), así
+       que se le pasa aparte a visitsDiasDe(): sin eso, "hoy" daría siempre 0.
+
+       Esto empieza a contar desde el día que se subió el cambio — antes no se
+       guardaba qué días vino cada quien, solo cuándo fue la última vez. El
+       panel lo avisa para que no parezca un contador roto. */
+    $hoyClave = date('Y-m-d');
+    $hoyLista = isset($pres['dailyDevices'][$hoyClave]) && is_array($pres['dailyDevices'][$hoyClave])
+      ? $pres['dailyDevices'][$hoyClave] : array();
+    $vst = visitsRead();
+    $diasVisitados = visitsDiasDe($vst, $deviceId, visitsDesdeDia($periodo), $hoyLista);
+
+    jsonOut(array(
+      'ok' => true,
+      'periodo' => $periodo,
+      'visitas' => array(
+        'total' => count($diasVisitados),
+        'dias' => array_slice($diasVisitados, 0, 90),
+      ),
+      'customer' => array(
+        'deviceId' => $deviceId,
+        'name' => isset($info['name']) ? $info['name'] : '',
+        'lastSeen' => isset($info['lastSeenAt']) ? (int) $info['lastSeenAt'] : 0,
+        'updatedAt' => isset($info['updatedAt']) ? (int) $info['updatedAt'] : 0,
+        'online' => isset($seen[$deviceId]),
+      ),
+      'resumen' => array(
+        'premios' => count($premios),
+        'porEstado' => $porEstado,
+        'porOrigen' => $porOrigen,
+        'giros' => $giros,
+        'canjes' => $canjes,
+        'sellos' => $sellos,
+      ),
+      'premios' => array_slice($premios, 0, 200),
+    ));
+  }
+
+  /**
+   * Saca al cliente del registro.
+   *
+   * Es una limpieza de la lista, NO una expulsión: si vuelve a entrar con su
+   * nombre guardado, el latido de presencia lo vuelve a anotar y reaparece.
+   * Sus premios, sellos y puntajes NO se tocan — están en otros archivos y
+   * borrarlos sería destruir lo que la persona ganó.
+   */
+  case 'customer-delete': {
+    hRequireAdmin();
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonOut(array('ok' => false, 'error' => 'Método no permitido.'), 405);
+    $body = json_decode(file_get_contents('php://input'), true);
+    if (!is_array($body)) $body = array();
+    $deviceId = isset($body['deviceId']) ? trim((string) $body['deviceId']) : '';
+    if ($deviceId === '') jsonOut(array('ok' => false, 'error' => 'Falta el cliente.'), 400);
+
+    $habia = false;
+    customersWithWriteLock(function ($state) use ($deviceId, &$habia) {
+      if (!isset($state['customers'][$deviceId])) return null;
+      unset($state['customers'][$deviceId]);
+      $habia = true;
+      return $state;
+    });
+    jsonOut(array('ok' => $habia, 'error' => $habia ? null : 'Ese cliente ya no estaba en la lista.'));
+  }
+
   case 'customers': {
     hRequireAdmin();
     $q = isset($_GET['q']) ? trim((string) $_GET['q']) : '';

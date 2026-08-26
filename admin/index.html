@@ -55,6 +55,7 @@
     <button class="admin-tab" data-tab="historial">📊 Historial</button>
     <button class="admin-tab" data-tab="clientes">👥 Clientes</button>
     <button class="admin-tab" data-tab="bloqueado">🔒 Premio Bloqueado</button>
+    <button class="admin-tab" data-tab="votaciones">🗳️ Votaciones</button>
     <button class="admin-tab" data-tab="stikers">Stikers encontrados</button>
 
     <span class="admin-tab-group-label">⚙️ Configuración general</span>
@@ -439,11 +440,13 @@
 
     <details class="admin-collapsible" data-prize-config="loyalty">
       <summary>🎟️ Tarjeta de fidelidad</summary>
-      <p class="hint">El cliente escribe su nombre la primera vez, y luego suma un sello escaneando el código QR que tengas en el local (impreso o en una pantalla) — sin pedir código a nadie. Máximo un sello al día por cliente. Al completar los sellos, puede reclamar su premio — reclamar no bloquea a nadie más: cada cliente completa y reclama la suya, y solo su propia tarjeta se reinicia después.</p>
+      <p class="hint">El cliente escribe su nombre la primera vez, y luego suma un sello escaneando el código QR que tengas en el local (impreso o en una pantalla) — sin pedir código a nadie. <strong>Es siempre el mismo QR</strong>: sirve para todos y todas las veces. Lo que controla que nadie sume dos sellos seguidos es la espera de acá abajo. Al completar los sellos puede reclamar su premio, y solo su propia tarjeta se reinicia.</p>
+      <p class="hint">Los sellos se guardan <strong>en el servidor</strong>, no en el celular del cliente. Si alguien borra los datos de su navegador, su celular entra como cliente nuevo aunque sus sellos sigan guardados — en ese caso se los devuelves a mano abajo, en <em>Dar sellos a un cliente</em>.</p>
       <label class="switch"><input type="checkbox" data-field="dailyPrize.loyalty.active"> Activar esta forma de ganar</label>
       <div class="field-grid" data-form="dailyPrize.loyalty">
         <label>Nombre en el carrusel <textarea data-field="label" rows="2"></textarea></label>
         <label>Sellos necesarios <input type="number" min="1" data-field="stampsRequired"></label>
+        <label>Espera entre sellos (horas) <input type="number" min="0" max="720" step="0.5" data-field="stampCooldownHours"></label>
         <label>Código del QR (uno cualquiera, no lo ve el cliente) <input type="text" data-field="secretCode"></label>
         <label class="full">Premio (lo que ve el cliente al abrir el regalo) <textarea data-field="prizeText" rows="3"></textarea></label>
         <label>Nombre del premio <textarea data-field="prizeName" rows="2"></textarea></label>
@@ -465,6 +468,24 @@
         <div class="qr-generator-output" data-qr-output hidden>
           <div data-qr-canvas></div>
           <p class="hint">Muestra o imprime este código en el local. Al escanearlo con el celular, se abre la página y se suma el sello automáticamente.</p>
+        </div>
+      </div>
+
+      <!-- Dar sellos a mano. Es la red de seguridad de todo el sistema: el
+           cliente que borró el caché entra como nuevo y acá se le reponen. -->
+      <div class="loyalty-admin" data-loyalty-admin>
+        <h4>Dar sellos a un cliente</h4>
+        <p class="hint">Busca al cliente por su nombre y dale (o quítale) sellos. Sirve para reponer los de quien perdió su tarjeta al borrar el navegador, o para premiar sin que tenga que escanear. Un sello dado desde acá no arranca la espera: el cliente puede seguir escaneando cuando le toque.</p>
+        <div class="loyalty-admin-tools">
+          <input type="search" data-loyalty-search placeholder="Buscar por nombre…" autocomplete="off">
+          <button type="button" class="btn btn-ghost" data-loyalty-refresh>↻ Actualizar</button>
+        </div>
+        <div class="loyalty-admin-list" data-loyalty-list>
+          <p class="hint">Cargando tarjetas…</p>
+        </div>
+        <div class="loyalty-admin-danger">
+          <button type="button" class="btn btn-ghost" data-loyalty-reset>Poner todas las tarjetas en cero</button>
+          <span class="hint">Borra los sellos de todos los clientes. No se puede deshacer.</span>
         </div>
       </div>
     </details>
@@ -573,27 +594,105 @@
       <p class="hint">El mundo por el que corre el jugador. Cambia el cielo, el fondo, el piso y cómo aparece la marca.</p>
       <div class="field-grid" data-form="dailyPrize.toppingsRun">
         <label class="full">Escenario
+          <!-- Agrupado: con 21 mapas una lista plana es inservible. -->
           <select data-field="escenario">
-            <option value="ciudad">🌆 Ciudad TOPPINGS — rótulos de neón, noche urbana</option>
-            <option value="universidad">🎓 Zona Universitaria — grafiti, árboles, escaleras</option>
-            <option value="extrema">⚡ Noche Extrema — puente, relámpagos, todo en rojo</option>
-            <option value="amanecer">🌄 Amanecer en el Valle — el único de día, con neblina</option>
-            <option value="navidad">🎄 Navidad — nieve, luces de colores</option>
-            <option value="amor">💗 Amor — atardecer rosado, corazones cayendo</option>
-            <option value="halloween">🎃 Halloween — luna enorme, murciélagos, neblina</option>
-            <option value="fiesta">🎉 Fiesta — confeti y luces de colores</option>
-            <option value="rotar">🔀 Ir cambiando — uno distinto en cada partida</option>
-            <option value="auto">📅 Automático por fecha</option>
+            <optgroup label="Ir cambiando en cada partida">
+              <option value="rotar_todos">🔀 Entre TODOS los mapas</option>
+              <option value="rotar_normales">🔀 Solo los normales</option>
+              <option value="rotar_mecanicas">🔀 Solo los que tienen mecánica propia</option>
+              <option value="rotar_temporada">🔀 Solo los de temporada (los 12)</option>
+              <option value="rotar_halloween">🎃 Solo los 4 de Halloween</option>
+              <option value="rotar_navidad">🎄 Solo los 4 de Navidad</option>
+              <option value="rotar_amor">💗 Solo los 4 de Amor y Amistad</option>
+              <option value="rotar">🔀 Normales + los de mecánica (como antes)</option>
+            </optgroup>
+            <optgroup label="Automático">
+              <option value="auto">📅 Por fecha — usa el de la temporada que corresponda</option>
+            </optgroup>
+            <optgroup label="Normales">
+              <option value="ciudad">🌆 Ciudad TOPPINGS — rótulos de neón, noche urbana</option>
+              <option value="universidad">🎓 Zona Universitaria — grafiti, árboles, escaleras</option>
+              <option value="extrema">⚡ Noche Extrema — puente, relámpagos, todo en rojo</option>
+              <option value="amanecer">🌄 Amanecer en el Valle — el único de día, con neblina</option>
+              <option value="fiesta">🎉 Fiesta — confeti y luces de colores</option>
+            </optgroup>
+            <optgroup label="Con mecánica propia">
+              <option value="luna">🌕 La Luna — gravedad baja, saltos larguísimos, meteoritos</option>
+              <option value="tormenta">⛈️ Tormenta — lluvia, neblina y rayos que caen</option>
+              <option value="selva">🌿 Selva del Putumayo — lianas para columpiarse sobre los abismos</option>
+              <option value="rio">🌊 El Río — los abismos son cascadas: todo es saltar</option>
+            </optgroup>
+            <optgroup label="🎃 Halloween — salen sustos">
+              <option value="halloween">Pueblo de Calabazas</option>
+              <option value="halloween2">Cementerio</option>
+              <option value="halloween3">Casa Embrujada</option>
+              <option value="halloween4">Bosque Muerto</option>
+            </optgroup>
+            <optgroup label="🎄 Navidad — el suelo resbala">
+              <option value="navidad">Pueblo Nevado</option>
+              <option value="navidad2">Bosque de Pinos</option>
+              <option value="navidad3">Taller de Santa</option>
+              <option value="navidad4">Trineo en el Cielo</option>
+            </optgroup>
+            <optgroup label="💗 Amor y Amistad — muchos corazones">
+              <option value="amor">Atardecer Rosado</option>
+              <option value="amor2">Parque de Novios</option>
+              <option value="amor3">Cielo de Corazones</option>
+              <option value="amor4">Callejón de los Candados</option>
+            </optgroup>
           </select>
         </label>
         <label class="switch full">
           <input type="checkbox" data-field="escenarioTemporada">
           Cuando sea temporada, usar ese escenario aunque tenga otro elegido
         </label>
+        <p class="hint full">Ojo: esto solo pisa las opciones que <em>no</em> son de temporada. Si arriba elegiste una temporada a propósito —por ejemplo <strong>Solo los 4 de Navidad</strong>— sale esa, sin importar la fecha ni esta casilla.</p>
+
+        <p class="hint full">Cada temporada tiene <strong>cuatro mapas</strong>. Acá elegís cuál usar, o dejás que vayan cambiando en cada partida.</p>
+        <label>🎃 En Halloween usar
+          <select data-field="escenario_halloween">
+            <option value="rotar">🔀 Ir cambiando</option>
+            <option value="halloween">Pueblo de Calabazas</option>
+            <option value="halloween2">Cementerio</option>
+            <option value="halloween3">Casa Embrujada</option>
+            <option value="halloween4">Bosque Muerto</option>
+          </select>
+        </label>
+        <label>🎄 En Navidad usar
+          <select data-field="escenario_navidad">
+            <option value="rotar">🔀 Ir cambiando</option>
+            <option value="navidad">Pueblo Nevado</option>
+            <option value="navidad2">Bosque de Pinos</option>
+            <option value="navidad3">Taller de Santa</option>
+            <option value="navidad4">Trineo en el Cielo</option>
+          </select>
+        </label>
+        <label>💗 En Amor y Amistad usar
+          <select data-field="escenario_amor">
+            <option value="rotar">🔀 Ir cambiando</option>
+            <option value="amor">Atardecer Rosado</option>
+            <option value="amor2">Parque de Novios</option>
+            <option value="amor3">Cielo de Corazones</option>
+            <option value="amor4">Callejón de los Candados</option>
+          </select>
+        </label>
+
+
+        <label class="switch full">
+          <input type="checkbox" data-field="vallaGanador">
+          🏆 Mostrar una valla con el ganador del evento anterior al empezar cada partida
+        </label>
+        <p class="hint full">Es <strong>dentro del juego</strong>, en la primera valla que aparece. El ganador que se ve en la tarjeta del ranking es otra cosa y no se toca con esto.</p>
         <p class="hint full">Halloween del 20/10 al 2/11 · Navidad del 1/12 al 6/1 · Amor del 7 al 20/2. El de Fiesta no tiene fecha: ese lo pones vos cuando haya un evento en el local.</p>
       </div>
 
-      <h4>💬 Frases en las vallas</h4>
+      <h4>💬 Letreros y vallas del juego</h4>
+      <h4>Letreros grandes</h4>
+      <p class="hint">Los carteles <strong>grandes</strong> que se ven de lejos dentro del juego, repartidos por el mapa. Se ajustan solos al texto: uno corto sale bien grande y uno largo se achica para entrar. Si no pones ninguno, sale TOPPINGS — o el que traiga cada mapa de temporada (Navidad dice "FELIZ NAVIDAD" sin que toques nada).</p>
+      <div class="repeat-list" data-list="dailyPrize.toppingsRun.letreroGrande" data-item-fields="texto" data-item-labels="Letrero"></div>
+      <button class="btn btn-ghost" data-add="dailyPrize.toppingsRun.letreroGrande">+ Agregar letrero grande</button>
+
+      <h4>Vallas chicas</h4>
       <p class="hint">Carteles que van pasando dentro del juego. Escribe las tuyas — cortas se leen mejor, que pasan rápido. Sin frases, no aparece ninguna valla.</p>
       <div class="repeat-list" data-list="dailyPrize.toppingsRun.frases" data-item-fields="texto" data-item-labels="Frase"></div>
       <button class="btn btn-ghost" data-add="dailyPrize.toppingsRun.frases">+ Agregar frase</button>
@@ -619,6 +718,17 @@
         <p class="hint">Cargando estado del ranking…</p>
       </div>
       <button type="button" class="btn btn-ghost" data-ranking-reset>🔄 Reiniciar ranking</button>
+
+      <h4>Puntajes del evento en curso</h4>
+      <p class="hint">Podés corregir el puntaje de alguien o agregarte vos. <strong>Ojo:</strong> si al cerrar el evento quedás de primero con un puntaje puesto a mano, el premio sale a tu nombre y consume el cupo igual que si lo hubieras jugado.</p>
+      <div class="ranking-scores" data-ranking-scores>
+        <p class="hint">Cargando puntajes…</p>
+      </div>
+      <div class="ranking-scores-add">
+        <input type="text" data-ranking-new-name placeholder="Nombre" autocomplete="off">
+        <input type="number" min="0" data-ranking-new-score placeholder="Puntos">
+        <button type="button" class="btn btn-ghost" data-ranking-add>+ Agregar</button>
+      </div>
 
       <h4>Historial de ganadores</h4>
       <div class="ranking-history" data-ranking-history>
@@ -648,6 +758,11 @@
       </div>
       <div class="ruleta-search-results" data-codes-search-results></div>
       <p class="hint">Las estadísticas y el historial completo se mudaron a la pestaña <strong>📊 Historial</strong>, que tiene más espacio.</p>
+
+      <h4>Premios sin nombre</h4>
+      <p class="hint">Antes había premios que salían sin dueño, porque el canje de códigos no pedía el nombre. Ya se arregla solo de aquí en adelante — este botón repara los que quedaron de antes, buscando el nombre en tu registro de clientes. Se puede tocar las veces que quieras: los que ya tienen nombre no se tocan.</p>
+      <button type="button" class="btn btn-ghost" data-codes-fix-names>🏷️ Ponerle nombre a los premios viejos</button>
+      <p class="hint" data-codes-fix-result hidden></p>
     </details>
   </section>
 
@@ -696,13 +811,28 @@
 
   <section class="admin-panel" data-panel="historial" hidden>
     <h2>📊 Historial</h2>
-    <p class="hint">Todo lo que ha pasado, separado por dinámica. Tocá una para abrirla y elegir si querés ver lo de hoy, la semana, el mes o todo. Cada una se reinicia por separado: reiniciar el historial del juego no toca el de la ruleta.</p>
+    <p class="hint">Todo lo que ha pasado, separado por dinámica. <strong>Tocá cualquier número para ver qué hay detrás</strong> — quiénes están conectados, cuáles premios están vencidos, etc. Cada dinámica se reinicia por separado: reiniciar el historial del juego no toca el de la ruleta.</p>
+
+    <!-- Un solo período manda sobre todas las tarjetas de esta pestaña. -->
+    <div class="periodo-barra">
+      <label>Ver
+        <select data-historial-periodo>
+          <option value="hoy">Hoy</option>
+          <option value="semana">Últimos 7 días</option>
+          <option value="mes">Este mes</option>
+          <option value="todos" selected>Siempre</option>
+        </select>
+      </label>
+      <button type="button" class="btn btn-ghost" data-historial-refresh>🔄 Actualizar</button>
+    </div>
 
     <h3>📈 En vivo</h3>
     <div class="ruleta-stats-grid" data-presence-stats></div>
+    <div class="stat-detalle" data-presence-detalle hidden></div>
 
-    <h3>🎁 Premios en total</h3>
+    <h3>🎁 Premios</h3>
     <div class="ruleta-stats-grid" data-codes-stats></div>
+    <div class="stat-detalle" data-codes-detalle hidden></div>
 
     <h3>🗂️ Historial por dinámica</h3>
     <p class="hint" data-history-status></p>
@@ -731,7 +861,12 @@
     </div>
 
     <p class="hint" data-customers-status></p>
+    <!-- La lista va en un recuadro de alto fijo: con muchos clientes había que
+         bajar media pantalla para llegar a lo que sigue. Las flechas aparecen
+         solas cuando hay más de los que entran. -->
+    <button type="button" class="lista-flecha" data-customers-up hidden aria-label="Ver los de arriba"></button>
     <div class="customers-list" data-customers-list></div>
+    <button type="button" class="lista-flecha is-down" data-customers-down hidden aria-label="Ver los de abajo"></button>
 
     <h3>📣 Mensaje para todos</h3>
     <p class="hint">Le llega a todos los clientes: le sale en una ventana apenas esté en la página y le queda guardado en el botón 🎁, así que si le mandás un código de premio no se pierde. Si es solo un mensaje ("gracias por visitarnos"), al cliente le baja una notificación y ya — <strong>no le sale ninguna ventana de premio ni botón de reclamar</strong>. Si le pones un premio, le sale la misma notificación más un botón para verlo.</p>
@@ -786,6 +921,24 @@
       <input type="file" accept=".txt,.pdf,.docx" data-ai-doc-upload hidden>
     </label>
     <button type="button" class="btn btn-ghost" data-ai-doc-remove>Quitar documento</button>
+  </section>
+
+  <!-- 🗳️ Votaciones. La ubicación NO está fija en el código: cada votación
+       lleva adentro en qué páginas sale, porque un concurso va en el menú y
+       una encuesta del día va en el inicio. -->
+  <section class="admin-panel" data-panel="votaciones" hidden>
+    <h2>🗳️ Votaciones</h2>
+    <p class="hint">Sirve tanto para un <strong>concurso</strong> (opciones con foto: la mejor salchipapa) como para una <strong>encuesta</strong> (opciones de solo texto: ¿qué actividad hacemos mañana?). Es la misma herramienta; lo que cambia es dónde la pongas y con qué reglas.</p>
+    <p class="hint">Cada votación decide en qué páginas aparece. Podés tener varias a la vez, cada una en su lugar.</p>
+
+    <div class="votes-toolbar">
+      <button type="button" class="btn btn-primary" data-vote-new>+ Nueva votación</button>
+      <button type="button" class="btn btn-ghost" data-vote-refresh>↻ Actualizar</button>
+    </div>
+
+    <div class="votes-list" data-votes-list>
+      <p class="hint">Cargando votaciones…</p>
+    </div>
   </section>
 
   <section class="admin-panel" data-panel="bloqueado" hidden>

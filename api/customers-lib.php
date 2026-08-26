@@ -164,6 +164,28 @@ if (!function_exists('customersDataFile')) {
   }
 
   /** ¿Otro dispositivo ya usa este nombre? (para el aviso de nombre repetido) */
+  /**
+   * El nombre que dio este cliente, o '' si nunca dio ninguno.
+   *
+   * Existe para la red de seguridad de issuePrizeCode(): había premios
+   * saliendo sin nombre porque el navegador mandaba el campo vacío (el canje
+   * de códigos, por ejemplo, lo leía de su memoria y no lo pedía si faltaba).
+   * Con esto el servidor lo completa solo, sin depender de que cada pantalla
+   * se acuerde de preguntarlo.
+   *
+   * Se lee sin candado a propósito: las escrituras son atómicas, así que una
+   * lectura nunca ve el archivo a medio escribir, y esto corre en el camino
+   * de entregar un premio — no conviene ponerle un candado de más.
+   */
+  function customerName($deviceId) {
+    $deviceId = trim((string) $deviceId);
+    if ($deviceId === '') return '';
+    $state = customersRead();
+    if (!isset($state['customers'][$deviceId]) || !is_array($state['customers'][$deviceId])) return '';
+    $n = isset($state['customers'][$deviceId]['name']) ? trim((string) $state['customers'][$deviceId]['name']) : '';
+    return $n;
+  }
+
   function customerNameTaken($name, $deviceId) {
     $name = trim((string) $name);
     if ($name === '') return false;

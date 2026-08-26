@@ -197,7 +197,12 @@
                   <p class="run-overlay-score" data-run-final-score>Puntos: 0</p>
                   <div class="run-leaderboard" data-run-leaderboard hidden>
                     <p class="run-leaderboard-title">🏆 Top semanal</p>
+                    <!-- La lista tiene alto fijo y se desplaza por dentro: así se ven
+                         todos los jugadores sin que la tarjeta del juego crezca. Las
+                         flechas aparecen solas cuando hay más de los que entran. -->
+                    <button type="button" class="run-lb-arrow" data-run-lb-up hidden aria-label="Ver los de arriba"></button>
                     <ol class="run-leaderboard-list" data-run-leaderboard-list></ol>
+                    <button type="button" class="run-lb-arrow is-down" data-run-lb-down hidden aria-label="Ver los de abajo"></button>
                     <p class="run-leaderboard-countdown" data-run-leaderboard-countdown></p>
                   </div>
                   <div class="run-overlay-actions">

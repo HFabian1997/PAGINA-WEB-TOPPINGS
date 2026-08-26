@@ -1,5 +1,10 @@
 <?php
 require_once __DIR__ . '/data-path.php';
+/* Para completar el nombre de quien gana cuando el navegador lo manda
+   vacío. Se requiere acá y no en cada endpoint porque notifications.php no
+   lo cargaba, y ahí los premios habrían seguido saliendo anónimos.
+   customers-lib solo depende de data-path, así que no hay ciclo. */
+require_once __DIR__ . '/customers-lib.php';
 /**
  * Libro compartido de códigos de premio, usado por TODAS las dinámicas
  * (cronómetro, fidelidad, reto, Toppings Run y Ruleta) para que el cliente
@@ -106,6 +111,21 @@ if (!function_exists('codesDataFile')) {
   function issuePrizeCode($deviceId, $name, $source, $prizeName, $prizeIcon, $expiryHours, $yaAvisado = true) {
     $deviceId = trim((string) $deviceId);
     $name = trim((string) $name);
+
+    /* Red de seguridad del nombre.
+       Los ocho caminos que entregan premios ya mandaban un nombre, pero podía
+       llegar vacío: el navegador lo saca de su memoria y no todas las
+       pantallas lo pedían si faltaba (el canje de códigos, por ejemplo, no lo
+       pedía nunca). El resultado eran premios anónimos que después no se
+       sabía de quién eran.
+
+       Se completa acá, en el único punto por donde salen TODOS los premios,
+       en vez de en cada pantalla: así queda cubierto también cualquier
+       camino que se agregue más adelante. */
+    if ($name === "" && $deviceId !== "" && function_exists("customerName")) {
+      $name = customerName($deviceId);
+    }
+
     $expiryHours = $expiryHours > 0 ? (float) $expiryHours : 24;
     $yaAvisado = (bool) $yaAvisado;
     $issuedRecord = null;

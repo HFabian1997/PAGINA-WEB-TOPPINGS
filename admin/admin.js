@@ -9,6 +9,8 @@
   var RUN_API = "../api/run-leaderboard.php";
   var RULETA_API = "../api/ruleta.php";
   var CODES_API = "../api/codes.php";
+  var LOYALTY_API = "../api/loyalty.php";
+  var VOTES_API = "../api/votes.php";
   var escHTML = function (s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
@@ -21,6 +23,27 @@
   };
 
   /* ---------------- path get/set helpers ---------------- */
+  /**
+   * Devuelve SIEMPRE una lista, aunque lo guardado no lo sea.
+   *
+   * Hace falta porque un campo puede cambiar de forma entre versiones: el
+   * letrero grande del juego primero fue un campo de texto y después pasó a
+   * ser una lista. A quien ya había guardado le quedaba un texto, y el
+   * .forEach de más abajo reventaba — y al reventar se caía el pintado de
+   * TODAS las listas, así que el panel decía "no se pudo cargar el
+   * contenido" y no se podía editar nada, ni siquiera lo que sí estaba bien.
+   *
+   * Un texto que hubiera quedado guardado no se tira: pasa a ser el primer
+   * elemento de la lista.
+   */
+  function listaSegura(container, clave) {
+    var v = container[clave];
+    if (Array.isArray(v)) return v;
+    var texto = (typeof v === "string") ? v.trim() : "";
+    container[clave] = texto ? [{ texto: texto }] : [];
+    return container[clave];
+  }
+
   function getPath(obj, path) {
     return path.split(".").reduce(function (o, k) { return o == null ? undefined : o[k]; }, obj);
   }
@@ -577,6 +600,82 @@
     campo.hidden = sel.value !== "custom";
   }
 
+  /* ---------------- Puntajes del evento en curso ----------------
+     Sirve para corregir un puntaje que quedó mal y para que Fabián se ponga a
+     sí mismo en la tabla. El aviso de que eso le entrega el premio de verdad
+     está escrito en el panel, no acá. */
+  function renderRankingScores(scores) {
+    var box = $("[data-ranking-scores]");
+    if (!box) return;
+    scores = scores || [];
+    if (!scores.length) {
+      box.innerHTML = '<p class="hint">Todavía nadie jugó en este evento.</p>';
+      return;
+    }
+    box.innerHTML = scores.map(function (s, i) {
+      return '<div class="ranking-score-row" data-device="' + escHTML(s.deviceId) + '">' +
+        '<span class="ranking-score-rank">' + (i + 1) + "</span>" +
+        '<span class="ranking-score-name">' + escHTML(s.name || "Sin nombre") + "</span>" +
+        '<input type="number" min="0" class="ranking-score-input" data-ranking-score value="' + Number(s.score || 0) + '">' +
+        '<button type="button" class="btn btn-ghost" data-ranking-save>Guardar</button>' +
+      "</div>";
+    }).join("");
+  }
+
+  function guardarPuntaje(deviceId, name, score, done) {
+    fetch(RUN_API + "?action=admin-set-score", {
+      method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deviceId: deviceId || "", name: name || "", score: Number(score) || 0 })
+    }).then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res && res.ok) {
+          renderRankingScores(res.scores);
+          // el estado de arriba muestra al ganador parcial: hay que refrescarlo
+          renderRankingStatus();
+        } else {
+          alert((res && res.error) || "No se pudo guardar el puntaje.");
+        }
+        if (done) done();
+      })
+      .catch(function () {
+        alert("No se pudo conectar con el servidor.");
+        if (done) done();
+      });
+  }
+
+  function initRankingScores() {
+    var box = $("[data-ranking-scores]");
+    if (!box) return;
+
+    box.addEventListener("click", function (ev) {
+      var btn = ev.target.closest ? ev.target.closest("[data-ranking-save]") : null;
+      if (!btn) return;
+      var fila = btn.closest("[data-device]");
+      if (!fila) return;
+      btn.disabled = true;
+      guardarPuntaje(
+        fila.getAttribute("data-device"),
+        "",   // vacío = no se toca el nombre que ya tiene
+        ($("[data-ranking-score]", fila) || {}).value,
+        function () { btn.disabled = false; }
+      );
+    });
+
+    var addBtn = $("[data-ranking-add]");
+    if (addBtn) addBtn.addEventListener("click", function () {
+      var nombreEl = $("[data-ranking-new-name]");
+      var puntosEl = $("[data-ranking-new-score]");
+      var nombre = (nombreEl.value || "").trim();
+      if (!nombre) { alert("Escribe el nombre del jugador."); nombreEl.focus(); return; }
+      addBtn.disabled = true;
+      guardarPuntaje("", nombre, puntosEl.value, function () {
+        addBtn.disabled = false;
+        nombreEl.value = "";
+        puntosEl.value = "";
+      });
+    });
+  }
+
   function renderRankingStatus() {
     var box = $("[data-ranking-status]");
     var historyBox = $("[data-ranking-history]");
@@ -588,6 +687,7 @@
         if (!res || !res.ok) { box.innerHTML = '<p class="hint">No se pudo cargar el estado del ranking.</p>'; return; }
         var s = res.state;
         var clockOffset = Date.now() - s.serverNow;
+        renderRankingScores(s.scores);
 
         var paint = function () {
           var now = Date.now() - clockOffset;
@@ -663,6 +763,463 @@
         box.innerHTML = rows.join("");
       })
       .catch(function () { box.innerHTML = '<p class="hint">No se pudo conectar con el servidor.</p>'; });
+  }
+
+  /* ---------------- 🗳️ Votaciones ----------------
+     Cada votación guarda adentro dónde aparece, así que acá no hay ninguna
+     lista de "lugares posibles" cableada: se dibujan las casillas de las
+     páginas que informe el servidor. */
+  var votesPolls = [];
+  var votesPaginas = ["inicio", "comidas", "helados", "bebidas", "secreta"];
+  var VOTES_PAGINA_NOMBRE = {
+    inicio: "Inicio", comidas: "Comidas", helados: "Helados",
+    bebidas: "Bebidas", secreta: "Zona Secreta"
+  };
+
+  /* Los <input type="datetime-local"> hablan en texto local ("2026-08-20T18:00")
+     y el servidor guarda milisegundos. Estas dos traducen, y devuelven vacío
+     cuando no hay fecha — que es lo normal: una votación sin fechas se abre y
+     se cierra a mano. */
+  function voteMsAInput(ms) {
+    if (!ms) return "";
+    var d = new Date(Number(ms));
+    if (isNaN(d.getTime())) return "";
+    function dos(n) { return (n < 10 ? "0" : "") + n; }
+    return d.getFullYear() + "-" + dos(d.getMonth() + 1) + "-" + dos(d.getDate()) +
+      "T" + dos(d.getHours()) + ":" + dos(d.getMinutes());
+  }
+  function voteInputAMs(txt) {
+    txt = (txt || "").trim();
+    if (!txt) return null;
+    var t = new Date(txt).getTime();
+    return isNaN(t) ? null : t;
+  }
+
+  function votePollVacia() {
+    return {
+      id: "", title: "", text: "", active: true,
+      options: [{ id: "opt_1", name: "", image: null, note: "" },
+                { id: "opt_2", name: "", image: null, note: "" }],
+      rules: { repeat: "once", who: "name", results: "adminOnly", opensAt: null, closesAt: null },
+      placement: { pages: { inicio: true }, menuPosition: {}, fab: {} }
+    };
+  }
+
+  function voteOpcionHTML(o, i) {
+    /* La ruta de la foto vive en el atributo de la fila, no en una variable
+       aparte: así se puede reordenar o borrar opciones sin que las fotos se
+       crucen entre sí. */
+    return '<div class="vote-opt-row" data-vote-opt="' + i + '"' +
+        (o.image ? ' data-vote-opt-image="' + escHTML(o.image) + '"' : "") + ">" +
+      '<div class="vote-opt-thumb">' +
+        (o.image ? '<img src="' + escHTML(adminAssetUrl(o.image)) + '" alt="">' : '<span>sin foto</span>') +
+      "</div>" +
+      '<div class="vote-opt-fields">' +
+        '<input type="text" data-vote-opt-name placeholder="Nombre de la opción" value="' + escHTML(o.name || "") + '">' +
+        '<input type="text" data-vote-opt-note placeholder="Descripción corta (opcional)" value="' + escHTML(o.note || "") + '">' +
+      "</div>" +
+      '<div class="vote-opt-actions">' +
+        '<button type="button" class="btn btn-ghost" data-vote-opt-img title="Poner o cambiar la foto">📷</button>' +
+        '<button type="button" class="btn btn-ghost" data-vote-opt-del title="Quitar esta opción">✕</button>' +
+      "</div>" +
+      (typeof o.votes === "number" ? '<div class="vote-opt-count">' + o.votes + " voto" + (o.votes === 1 ? "" : "s") + "</div>" : "") +
+    "</div>";
+  }
+
+  function votePollHTML(p) {
+    var abierta = p.open !== false;
+    return '<details class="admin-collapsible vote-poll" data-vote-poll="' + escHTML(p.id) + '"' + (p.id ? "" : " open") + ">" +
+      "<summary>" + escHTML(p.title || "Votación sin título") +
+        ' <span class="vote-poll-tag">' + (p.active === false ? "apagada" : (abierta ? "abierta" : "cerrada")) +
+        (typeof p.totalVotes === "number" ? " · " + p.totalVotes + " voto" + (p.totalVotes === 1 ? "" : "s") : "") +
+      "</span></summary>" +
+
+      '<label class="switch"><input type="checkbox" data-vote-active' + (p.active === false ? "" : " checked") + "> Votación encendida</label>" +
+      '<label class="switch"><input type="checkbox" data-vote-collapsed' + (p.collapsed ? " checked" : "") + "> Empezar plegada (solo se ve el título y la flecha)</label>" +
+      '<p class="hint">Aunque la dejes desplegada, a quien ya votó le aparece plegada: el bloque ya cumplió y no tiene por qué seguir ocupando media pantalla.</p>' +
+
+      '<div class="field-grid">' +
+        '<label class="full">Pregunta o título <input type="text" data-vote-title value="' + escHTML(p.title || "") + '"></label>' +
+        '<label class="full">Texto de abajo <textarea data-vote-text rows="2">' + escHTML(p.text || "") + "</textarea></label>" +
+      "</div>" +
+
+      "<h4>Opciones</h4>" +
+      '<p class="hint">Con foto se ven como tarjetas (para un concurso); sin foto, como botones de texto (para una encuesta).</p>' +
+      '<div class="vote-opts" data-vote-opts>' + (p.options || []).map(voteOpcionHTML).join("") + "</div>" +
+      '<button type="button" class="btn btn-ghost" data-vote-opt-add>+ Agregar opción</button>' +
+
+      "<h4>Dónde aparece</h4>" +
+      '<p class="hint">Puede estar en varias páginas a la vez. El voto es el mismo: si vota en una, queda votado en todas.</p>' +
+      '<div class="vote-pages">' + votesPaginas.map(function (pag) {
+        var on = p.placement && p.placement.pages && p.placement.pages[pag];
+        return '<label class="switch"><input type="checkbox" data-vote-page="' + pag + '"' + (on ? " checked" : "") + "> " +
+          escHTML(VOTES_PAGINA_NOMBRE[pag]) + "</label>";
+      }).join("") + "</div>" +
+
+      '<div class="field-grid">' +
+        "<label>En el Inicio, ubicarla" +
+          '<select data-vote-home-after>' +
+            '<option value="start">Arriba del todo</option>' +
+            '<option value="afterHero">Después de la portada</option>' +
+            '<option value="afterPrizes">Después de las formas de ganar</option>' +
+            '<option value="end">Al final</option>' +
+          "</select></label>" +
+        ["comidas", "helados", "bebidas"].map(function (pag) {
+          var n = (p.placement && p.placement.menuPosition && p.placement.menuPosition[pag]) || 0;
+          return "<label>En " + escHTML(VOTES_PAGINA_NOMBRE[pag]) + ", antes de la imagen n.º" +
+            '<input type="number" min="0" data-vote-menu-pos="' + pag + '" value="' + n + '"></label>';
+        }).join("") +
+      "</div>" +
+      '<p class="hint">En las páginas de menú, <strong>0</strong> la pone antes de la primera imagen, <strong>1</strong> después de la primera, y así. Es el mismo número que usa el carrusel de la categoría.</p>' +
+
+      "<h4>Botón flotante 🗳️</h4>" +
+      '<p class="hint">Una burbuja que lleva a la votación. Puede salir en páginas donde la votación <em>no</em> se muestra: ahí el botón lleva hasta la página donde sí está.</p>' +
+      '<div class="vote-pages">' + votesPaginas.map(function (pag) {
+        var on = p.placement && p.placement.fab && p.placement.fab[pag];
+        return '<label class="switch"><input type="checkbox" data-vote-fab-page="' + pag + '"' + (on ? " checked" : "") + "> " +
+          escHTML(VOTES_PAGINA_NOMBRE[pag]) + "</label>";
+      }).join("") + "</div>" +
+      '<div class="field-grid"><label class="full">Texto del globo del botón (si lo dejas vacío usa el título)' +
+        '<input type="text" data-vote-fab-text value="' + escHTML((p.placement && p.placement.fabText) || "") + '"></label></div>' +
+
+      "<h4>Reglas</h4>" +
+      '<div class="field-grid">' +
+        "<label>Cuántas veces puede votar cada persona" +
+          '<select data-vote-repeat>' +
+            '<option value="once">Una sola vez</option>' +
+            '<option value="daily">Una vez por día</option>' +
+            '<option value="changeable">Una, pero puede cambiarla</option>' +
+          "</select></label>" +
+        "<label>Quién puede votar" +
+          '<select data-vote-who>' +
+            '<option value="name">Cualquiera, pidiéndole el nombre</option>' +
+            '<option value="anyone">Cualquiera, sin pedir nada</option>' +
+            '<option value="qr">Solo quien escaneó el QR del local</option>' +
+          "</select></label>" +
+        "<label>Los resultados" +
+          '<select data-vote-results>' +
+            '<option value="adminOnly">Solo los ves vos</option>' +
+            '<option value="public">A la vista de todos</option>' +
+            '<option value="hidden">Ocultos hasta que cierre</option>' +
+          "</select></label>" +
+      "</div>" +
+
+      '<div class="vote-poll-actions">' +
+        '<button type="button" class="btn btn-primary" data-vote-save>Guardar votación</button>' +
+        (p.id ? '<button type="button" class="btn btn-ghost" data-vote-reset>Borrar los votos</button>' +
+                '<button type="button" class="btn btn-ghost" data-vote-del>Eliminar votación</button>' : "") +
+      "</div>" +
+    "</details>";
+  }
+
+  function renderVotes() {
+    var box = $("[data-votes-list]");
+    if (!box) return;
+    if (!votesPolls.length) {
+      box.innerHTML = '<p class="hint">Todavía no hay ninguna votación. Toca <strong>+ Nueva votación</strong> para crear la primera.</p>';
+      return;
+    }
+    box.innerHTML = votesPolls.map(votePollHTML).join("");
+    // los <select> no se pueden preseleccionar con innerHTML sin repetir el
+    // atributo: se ponen acá, después de pintar
+    votesPolls.forEach(function (p) {
+      var el = $('[data-vote-poll="' + p.id + '"]', box);
+      if (!el) return;
+      var r = p.rules || {};
+      var rep = $("[data-vote-repeat]", el); if (rep) rep.value = r.repeat || "once";
+      var who = $("[data-vote-who]", el); if (who) who.value = r.who || "name";
+      var res = $("[data-vote-results]", el); if (res) res.value = r.results || "adminOnly";
+      var ha = $("[data-vote-home-after]", el);
+      if (ha) ha.value = (p.placement && p.placement.homeAfter) || "afterPrizes";
+    });
+  }
+
+  /** Lee del DOM la votación que está editando. */
+  function voteLeerDelDOM(el, original) {
+    var p = original ? JSON.parse(JSON.stringify(original)) : votePollVacia();
+    p.title = ($("[data-vote-title]", el) || {}).value || "";
+    p.text = ($("[data-vote-text]", el) || {}).value || "";
+    p.active = !!($("[data-vote-active]", el) || {}).checked;
+    p.collapsed = !!($("[data-vote-collapsed]", el) || {}).checked;
+
+    p.options = $$("[data-vote-opt]", el).map(function (row, i) {
+      var prev = (original && original.options && original.options[Number(row.getAttribute("data-vote-opt"))]) || {};
+      return {
+        id: prev.id || "opt_" + (i + 1) + "_" + Math.random().toString(36).slice(2, 6),
+        name: ($("[data-vote-opt-name]", row) || {}).value || "",
+        note: ($("[data-vote-opt-note]", row) || {}).value || "",
+        // la del atributo manda: es la recién subida; si no hay, la de antes
+        image: row.getAttribute("data-vote-opt-image") || prev.image || null
+      };
+    });
+
+    var pages = {};
+    $$("[data-vote-page]", el).forEach(function (c) { pages[c.getAttribute("data-vote-page")] = c.checked; });
+    p.placement = p.placement || {};
+    p.placement.pages = pages;
+
+    var fab = {};
+    $$("[data-vote-fab-page]", el).forEach(function (c) { fab[c.getAttribute("data-vote-fab-page")] = c.checked; });
+    p.placement.fab = fab;
+    p.placement.fabText = ($("[data-vote-fab-text]", el) || {}).value || "";
+    p.placement.homeAfter = ($("[data-vote-home-after]", el) || {}).value || "afterPrizes";
+
+    var pos = {};
+    $$("[data-vote-menu-pos]", el).forEach(function (c) {
+      pos[c.getAttribute("data-vote-menu-pos")] = Math.max(0, Number(c.value) || 0);
+    });
+    p.placement.menuPosition = pos;
+
+    p.rules = p.rules || {};
+    p.rules.repeat = ($("[data-vote-repeat]", el) || {}).value || "once";
+    p.rules.who = ($("[data-vote-who]", el) || {}).value || "name";
+    p.rules.results = ($("[data-vote-results]", el) || {}).value || "adminOnly";
+    return p;
+  }
+
+  function votesPost(accion, cuerpo, done) {
+    fetch(VOTES_API + "?action=" + accion, {
+      method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(cuerpo || {})
+    }).then(function (r) { return r.json(); })
+      .then(function (res) { done(res); })
+      .catch(function () { done({ ok: false, error: "No se pudo conectar con el servidor." }); });
+  }
+
+  function cargarVotes(cb) {
+    votesPost("admin-list", {}, function (res) {
+      if (res && res.ok) {
+        votesPolls = res.polls || [];
+        if (res.pages && res.pages.length) votesPaginas = res.pages;
+        renderVotes();
+      } else {
+        var box = $("[data-votes-list]");
+        if (box) box.innerHTML = '<p class="hint">' + escHTML((res && res.error) || "No se pudo cargar.") + "</p>";
+      }
+      if (cb) cb();
+    });
+  }
+
+  function initVotesTab() {
+    var panel = $('[data-panel="votaciones"]');
+    if (!panel) return;
+    cargarVotes();
+
+    var nueva = $("[data-vote-new]", panel);
+    if (nueva) nueva.addEventListener("click", function () {
+      votesPolls.push(votePollVacia());
+      renderVotes();
+    });
+
+    var refrescar = $("[data-vote-refresh]", panel);
+    if (refrescar) refrescar.addEventListener("click", function () { cargarVotes(); });
+
+    panel.addEventListener("click", function (ev) {
+      var el = ev.target.closest ? ev.target.closest("[data-vote-poll]") : null;
+      var t = ev.target;
+
+      if (t.closest && t.closest("[data-vote-opt-add]")) {
+        var cont = $("[data-vote-opts]", el);
+        var i = $$("[data-vote-opt]", cont).length;
+        cont.insertAdjacentHTML("beforeend", voteOpcionHTML({ name: "", note: "", image: null }, i));
+        return;
+      }
+      if (t.closest && t.closest("[data-vote-opt-del]")) {
+        var fila = t.closest("[data-vote-opt]");
+        if (fila && $$("[data-vote-opt]", el).length > 2) fila.remove();
+        else alert("Una votación necesita al menos dos opciones.");
+        return;
+      }
+      /* La foto se sube con el mismo camino que el resto de las imágenes del
+         sitio (se convierte a WebP en el servidor). La ruta se guarda en el
+         propio recuadro, así sobrevive a que se reordenen las opciones. */
+      if (t.closest && t.closest("[data-vote-opt-img]")) {
+        var filaImg = t.closest("[data-vote-opt]");
+        var input = document.createElement("input");
+        input.type = "file";
+        input.accept = "image/*";
+        input.onchange = function () {
+          var f = input.files && input.files[0];
+          if (!f) return;
+          var thumb = $(".vote-opt-thumb", filaImg);
+          if (thumb) thumb.innerHTML = "<span>subiendo…</span>";
+          uploadImage(f, function (path) {
+            if (!path) { if (thumb) thumb.innerHTML = "<span>sin foto</span>"; return; }
+            filaImg.setAttribute("data-vote-opt-image", path);
+            if (thumb) thumb.innerHTML = '<img src="' + escHTML(adminAssetUrl(path)) + '" alt="">';
+          });
+        };
+        input.click();
+        return;
+      }
+      if (!el) return;
+      var id = el.getAttribute("data-vote-poll");
+      var original = votesPolls.filter(function (p) { return p.id === id; })[0] || null;
+
+      if (t.closest("[data-vote-save]")) {
+        var poll = voteLeerDelDOM(el, original);
+        if (!poll.title.trim()) { alert("Ponle un título a la votación."); return; }
+        var conNombre = poll.options.filter(function (o) { return o.name.trim() || o.image; });
+        if (conNombre.length < 2) { alert("Necesita al menos dos opciones con nombre."); return; }
+        votesPost("admin-save", { poll: poll }, function (res) {
+          if (res && res.ok) cargarVotes();
+          else alert((res && res.error) || "No se pudo guardar.");
+        });
+        return;
+      }
+      if (t.closest("[data-vote-reset]")) {
+        if (!confirm("¿Borrar todos los votos de esta votación? La votación queda, los votos no.")) return;
+        votesPost("admin-reset", { pollId: id }, function (res) {
+          if (res && res.ok) cargarVotes();
+          else alert((res && res.error) || "No se pudo borrar los votos.");
+        });
+        return;
+      }
+      if (t.closest("[data-vote-del]")) {
+        if (!confirm("¿Eliminar esta votación y sus votos? No se puede deshacer.")) return;
+        votesPost("admin-delete", { pollId: id }, function (res) {
+          if (res && res.ok) cargarVotes();
+          else alert((res && res.error) || "No se pudo eliminar.");
+        });
+      }
+    });
+  }
+
+  /* ---------------- Tarjeta de fidelidad: dar sellos a mano ----------------
+     Existe porque el deviceId del cliente vive en su navegador: quien borra
+     los datos entra como cliente nuevo aunque sus sellos sigan guardados en
+     el servidor. Acá se los repone. También sirve para premiar sin escanear. */
+  var loyaltyCards = [];
+
+  function loyaltyFechaCorta(ms) {
+    if (!ms) return "—";
+    var d = new Date(Number(ms));
+    return d.toLocaleDateString("es-CO", { day: "2-digit", month: "short" }) + " " +
+      d.toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" });
+  }
+
+  function renderLoyaltyList() {
+    var box = $("[data-loyalty-list]");
+    if (!box) return;
+    var q = (($("[data-loyalty-search]") || {}).value || "").trim().toLowerCase();
+    var filas = loyaltyCards.filter(function (c) {
+      if (!q) return true;
+      return String(c.name || "").toLowerCase().indexOf(q) !== -1;
+    });
+
+    if (!filas.length) {
+      box.innerHTML = '<p class="hint">' +
+        (loyaltyCards.length ? "Ningún cliente coincide con esa búsqueda."
+                             : "Todavía no hay clientes registrados. Aparecen acá en cuanto alguien escriba su nombre en el sitio.") + "</p>";
+      return;
+    }
+
+    /* Con muchos clientes no se pintan todos de una: la lista se volvería
+       una pared y el panel iría lento. Se muestran los primeros (que son los
+       que tienen sellos y los que vinieron hace menos) y para el resto está
+       el buscador. */
+    var TOPE = 60;
+    var recortada = filas.length > TOPE && !q;
+    var aMostrar = recortada ? filas.slice(0, TOPE) : filas;
+
+    box.innerHTML = (recortada
+      ? '<p class="hint">Mostrando ' + TOPE + " de " + filas.length +
+        " clientes. Busca por nombre para encontrar a alguien que no esté en la lista.</p>"
+      : "") + aMostrar.map(function (c) {
+      var espera = c.nextStampAt && c.nextStampAt > Date.now()
+        ? ' · puede sellar el ' + escHTML(loyaltyFechaCorta(c.nextStampAt))
+        : "";
+      var llena = c.stamps >= c.required;
+      return '<div class="loyalty-row' + (llena ? " is-full" : "") + '" data-device="' + escHTML(c.deviceId) + '">' +
+        '<div class="loyalty-row-who">' +
+          '<strong>' + escHTML(c.name || "Cliente sin nombre") + "</strong>" +
+          '<span class="hint">' + c.stamps + " de " + c.required + " sellos" +
+            (c.claims ? " · " + c.claims + " premio" + (c.claims === 1 ? "" : "s") + " reclamado" + (c.claims === 1 ? "" : "s") : "") +
+            espera + "</span>" +
+        "</div>" +
+        '<div class="loyalty-row-actions">' +
+          '<button type="button" class="btn btn-ghost" data-loyalty-give="-1" title="Quitar un sello">−</button>' +
+          '<button type="button" class="btn btn-ghost" data-loyalty-give="1" title="Dar un sello">+</button>' +
+        "</div>" +
+      "</div>";
+    }).join("");
+  }
+
+  function cargarLoyaltyCards(cb) {
+    var box = $("[data-loyalty-list]");
+    fetch(LOYALTY_API + "?action=admin-list", {
+      method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+      body: "{}"
+    }).then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res && res.ok) {
+          loyaltyCards = res.cards || [];
+          renderLoyaltyList();
+        } else if (box) {
+          box.innerHTML = '<p class="hint">' + escHTML((res && res.error) || "No se pudo cargar la lista.") + "</p>";
+        }
+        if (cb) cb();
+      })
+      .catch(function () {
+        if (box) box.innerHTML = '<p class="hint">No se pudo conectar con el servidor.</p>';
+        if (cb) cb();
+      });
+  }
+
+  function initLoyaltyAdmin() {
+    var caja = $("[data-loyalty-admin]");
+    if (!caja) return;
+
+    cargarLoyaltyCards();
+
+    var buscar = $("[data-loyalty-search]", caja);
+    if (buscar) buscar.addEventListener("input", renderLoyaltyList);
+
+    var refrescar = $("[data-loyalty-refresh]", caja);
+    if (refrescar) refrescar.addEventListener("click", function () { cargarLoyaltyCards(); });
+
+    // un solo listener para toda la lista: las filas se repintan al filtrar
+    caja.addEventListener("click", function (ev) {
+      var btn = ev.target.closest ? ev.target.closest("[data-loyalty-give]") : null;
+      if (!btn) return;
+      var fila = btn.closest("[data-device]");
+      if (!fila) return;
+      var delta = Number(btn.getAttribute("data-loyalty-give")) || 0;
+      if (!delta) return;
+      btn.disabled = true;
+      fetch(LOYALTY_API + "?action=admin-stamp", {
+        method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetDeviceId: fila.getAttribute("data-device"), delta: delta })
+      }).then(function (r) { return r.json(); })
+        .then(function (res) {
+          btn.disabled = false;
+          if (res && res.ok) cargarLoyaltyCards();
+          else alert((res && res.error) || "No se pudo cambiar los sellos.");
+        })
+        .catch(function () {
+          btn.disabled = false;
+          alert("No se pudo conectar con el servidor.");
+        });
+    });
+
+    var reset = $("[data-loyalty-reset]", caja);
+    if (reset) reset.addEventListener("click", function () {
+      if (!confirm("¿Poner en cero los sellos de TODOS los clientes? No se puede deshacer.")) return;
+      reset.disabled = true;
+      fetch(LOYALTY_API + "?action=admin-reset", {
+        method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+        body: "{}"
+      }).then(function (r) { return r.json(); })
+        .then(function (res) {
+          reset.disabled = false;
+          if (res && res.ok) cargarLoyaltyCards();
+          else alert((res && res.error) || "No se pudo reiniciar.");
+        })
+        .catch(function () {
+          reset.disabled = false;
+          alert("No se pudo conectar con el servidor.");
+        });
+    });
   }
 
   function initChallengeReset() {
@@ -1102,7 +1659,7 @@
       var parts = path.split(".");
       var arrKey = parts.pop();
       var container = parts.length ? getPath(state.content, parts.join(".")) : state.content;
-      var items = container[arrKey] || (container[arrKey] = []);
+      var items = listaSegura(container, arrKey);
 
       // el arrastre se engancha al contenedor una sola vez: `list.innerHTML = ""`
       // borra las fotos pero no toca los escuchadores del contenedor
@@ -1234,7 +1791,7 @@
         var parts = path.split(".");
         var arrKey = parts.pop();
         var container = parts.length ? getPath(state.content, parts.join(".")) : state.content;
-        var items = container[arrKey] || (container[arrKey] = []);
+        var items = listaSegura(container, arrKey);
 
         uploadImage(file, function (rel) {
           input.value = "";
@@ -1257,7 +1814,7 @@
       var parts = path.split(".");
       var arrKey = parts.pop();
       var container = parts.length ? getPath(state.content, parts.join(".")) : state.content;
-      var items = container[arrKey] || (container[arrKey] = []);
+      var items = listaSegura(container, arrKey);
 
       if (!list.__sortable) {
         list.__sortable = true;
@@ -1319,7 +1876,7 @@
         var parts = path.split(".");
         var arrKey = parts.pop();
         var container = parts.length ? getPath(state.content, parts.join(".")) : state.content;
-        var items = container[arrKey] || (container[arrKey] = []);
+        var items = listaSegura(container, arrKey);
         var fields = document.querySelector('[data-list="' + path + '"]').getAttribute("data-item-fields").split(",");
         var blank = {};
         fields.forEach(function (f) { blank[f] = ""; });
@@ -2402,6 +2959,158 @@
     return new Date(Number(ms)).toLocaleString();
   }
 
+  /* ---------------- Tarjetas que se pueden tocar ----------------
+     Cada número del panel es una puerta: se toca y se abre debajo la lista de
+     lo que representa. Se despliega en lugar de abrir una ventana porque en
+     el celular una ventana tapa el contexto y hay que cerrarla para poder
+     comparar con la tarjeta de al lado. */
+
+  var historialPeriodo = "todos";
+  var statAbierta = null;   // solo una abierta a la vez
+
+  /** Desde qué milisegundo cuenta el período elegido. 0 = desde siempre. */
+  function periodoDesdeMs(periodo) {
+    var d = new Date();
+    if (periodo === "hoy") { d.setHours(0, 0, 0, 0); return d.getTime(); }
+    if (periodo === "semana") return Date.now() - 6 * 86400000;
+    if (periodo === "mes") { d.setDate(1); d.setHours(0, 0, 0, 0); return d.getTime(); }
+    return 0;
+  }
+
+  /** Una tarjeta. `clave` vacía = no se puede tocar (no hay detalle detrás). */
+  function statHtml(valor, etiqueta, clave, nota) {
+    if (!clave) {
+      return '<div class="ruleta-stat">' +
+        '<span class="ruleta-stat-value">' + escHTML(String(valor)) + "</span>" +
+        '<span class="ruleta-stat-label">' + escHTML(etiqueta) + "</span>" +
+        (nota ? '<span class="ruleta-stat-nota">' + escHTML(nota) + "</span>" : "") +
+      "</div>";
+    }
+    return '<button type="button" class="ruleta-stat is-tocable' + (statAbierta === clave ? " is-abierta" : "") +
+        '" data-stat="' + escHTML(clave) + '">' +
+      '<span class="ruleta-stat-value">' + escHTML(String(valor)) + "</span>" +
+      '<span class="ruleta-stat-label">' + escHTML(etiqueta) + "</span>" +
+      (nota ? '<span class="ruleta-stat-nota">' + escHTML(nota) + "</span>" : "") +
+    "</button>";
+  }
+
+  function pintarFilasPersonas(caja, titulo, filas) {
+    if (!filas.length) {
+      caja.innerHTML = "<h4>" + escHTML(titulo) + '</h4><p class="hint">No hay ninguno.</p>';
+      return;
+    }
+    caja.innerHTML = "<h4>" + escHTML(titulo) + " · " + filas.length + "</h4>" +
+      '<div class="stat-lista">' + filas.map(function (f) {
+        return '<div class="stat-fila">' +
+          '<span class="stat-fila-nombre">' + escHTML(f.name || "Cliente sin nombre") +
+            (f.online ? ' <em class="stat-online">en línea</em>' : "") + "</span>" +
+          '<span class="hint">' + escHTML(f.lastSeen ? fmtFecha(f.lastSeen) : "") + "</span>" +
+        "</div>";
+      }).join("") + "</div>";
+  }
+
+  function pintarFilasPremios(caja, titulo, filas) {
+    if (!filas.length) {
+      caja.innerHTML = "<h4>" + escHTML(titulo) + '</h4><p class="hint">No hay ninguno en este período.</p>';
+      return;
+    }
+    caja.innerHTML = "<h4>" + escHTML(titulo) + " · " + filas.length + "</h4>" +
+      '<div class="stat-lista">' + filas.map(function (p) {
+        return '<div class="stat-fila">' +
+          '<span class="stat-fila-nombre">' + escHTML(p.prizeName || "Premio") +
+            ' <em>' + escHTML(p.name || "sin nombre") + "</em></span>" +
+          '<span class="hint">' + escHTML(p.code) + " · " + escHTML(p.source || "") +
+            " · " + escHTML(fmtFecha(p.issuedAt)) + "</span>" +
+        "</div>";
+      }).join("") + "</div>";
+  }
+
+  /** Abre (o cierra) el detalle de una tarjeta. */
+  function abrirStat(clave, caja) {
+    if (statAbierta === clave) {      // segunda vez sobre la misma: se cierra
+      statAbierta = null;
+      caja.hidden = true;
+      refrescarTarjetas();
+      return;
+    }
+    statAbierta = clave;
+    // se cierran los dos contenedores: la abierta puede ser del otro grupo
+    var otros = [$("[data-presence-detalle]"), $("[data-codes-detalle]")];
+    otros.forEach(function (c) { if (c && c !== caja) c.hidden = true; });
+    caja.hidden = false;
+    caja.innerHTML = '<p class="hint">Cargando…</p>';
+    refrescarTarjetas();
+
+    var partes = clave.split(":");
+    var tipo = partes[0], valor = partes[1] || "";
+
+    if (tipo === "ahora" || tipo === "entraron") {
+      fetch(PRESENCE_API + "?action=who&que=" + (tipo === "ahora" ? "ahora" : "periodo") +
+            "&periodo=" + encodeURIComponent(historialPeriodo) + "&_=" + Date.now(),
+        { credentials: "same-origin", cache: "no-store" })
+        .then(function (r) { return r.json(); })
+        .then(function (res) {
+          if (!res || !res.ok) { caja.innerHTML = '<p class="hint">' + escHTML((res && res.error) || "No se pudo cargar.") + "</p>"; return; }
+          pintarFilasPersonas(caja, tipo === "ahora" ? "Conectados ahora" : "Entraron", res.rows || []);
+        })
+        .catch(function () { caja.innerHTML = '<p class="hint">No se pudo conectar.</p>'; });
+      return;
+    }
+
+    // premios: se reutiliza la búsqueda que ya existía, ahora con fecha y origen
+    var url = CODES_API + "?action=admin-search&desde=" + periodoDesdeMs(historialPeriodo);
+    if (tipo === "estado") url += "&status=" + encodeURIComponent(valor);
+    if (tipo === "origen") url += "&source=" + encodeURIComponent(valor);
+    fetch(url + "&_=" + Date.now(), { credentials: "same-origin", cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (!res || !res.ok) { caja.innerHTML = '<p class="hint">' + escHTML((res && res.error) || "No se pudo cargar.") + "</p>"; return; }
+        var titulo = tipo === "estado" ? (ESTADO_ETIQUETA[valor] || valor)
+                   : tipo === "origen" ? ("Emitidos por " + valor) : "Todos los premios";
+        pintarFilasPremios(caja, titulo, res.results || []);
+      })
+      .catch(function () { caja.innerHTML = '<p class="hint">No se pudo conectar.</p>'; });
+  }
+
+  var ESTADO_ETIQUETA = {
+    available: "Disponibles", waiting: "Esperando entrega", delivered: "Entregados",
+    expired: "Vencidos", "void": "Anulados",
+  };
+
+  function refrescarTarjetas() {
+    ["[data-presence-stats]", "[data-codes-stats]"].forEach(function (sel) {
+      var g = $(sel);
+      if (!g) return;
+      $$("[data-stat]", g).forEach(function (b) {
+        b.classList.toggle("is-abierta", b.getAttribute("data-stat") === statAbierta);
+      });
+    });
+  }
+
+  function initTarjetasHistorial() {
+    var sel = $("[data-historial-periodo]");
+    if (sel) sel.addEventListener("change", function () {
+      historialPeriodo = sel.value;
+      statAbierta = null;
+      [$("[data-presence-detalle]"), $("[data-codes-detalle]")].forEach(function (c) { if (c) c.hidden = true; });
+      fetchPresence();
+      fetchCodesStats();
+    });
+    var ref = $("[data-historial-refresh]");
+    if (ref) ref.addEventListener("click", function () { fetchPresence(); fetchCodesStats(); });
+
+    [["[data-presence-stats]", "[data-presence-detalle]"], ["[data-codes-stats]", "[data-codes-detalle]"]]
+      .forEach(function (par) {
+        var g = $(par[0]);
+        if (!g) return;
+        g.addEventListener("click", function (ev) {
+          var b = ev.target.closest ? ev.target.closest("[data-stat]") : null;
+          if (!b) return;
+          abrirStat(b.getAttribute("data-stat"), $(par[1]));
+        });
+      });
+  }
+
   /* ---- Presencia ---- */
   function fetchPresence() {
     var box = $("[data-presence-stats]");
@@ -2410,15 +3119,14 @@
       .then(function (r) { return r.json(); })
       .then(function (res) {
         if (!res || !res.ok) { box.innerHTML = '<p class="hint">No se pudo consultar.</p>'; return; }
-        var filas = [
-          ["Conectados ahora", res.online],
-          ["Entraron hoy", res.today],
-          ["Entraron ayer", res.yesterday]
-        ];
-        box.innerHTML = filas.map(function (f) {
-          return '<div class="ruleta-stat"><span class="ruleta-stat-value">' + escHTML(String(f[1])) +
-            '</span><span class="ruleta-stat-label">' + f[0] + "</span></div>";
-        }).join("");
+        /* "Entraron ayer" no se puede abrir todavía: hasta este cambio el
+           servidor solo guardaba la lista del día en curso y la de ayer ya se
+           descartó. Se deja sin tocar, con la nota que lo explica, en vez de
+           que parezca rota. */
+        box.innerHTML =
+          statHtml(res.online, "Conectados ahora", "ahora") +
+          statHtml(res.today, "Entraron hoy", "entraron") +
+          statHtml(res.yesterday, "Entraron ayer", "", "el detalle se guarda desde hoy");
       })
       .catch(function () { box.innerHTML = '<p class="hint">No se pudo conectar.</p>'; });
   }
@@ -2526,6 +3234,161 @@
       .catch(function () { cont.innerHTML = '<p class="hint">No se pudo conectar.</p>'; });
   }
 
+  /* ---- La lista de clientes en un recuadro que se desplaza ----
+     Con muchos clientes la página se hacía larguísima y había que bajar medio
+     panel para llegar a lo de abajo. Mismo patrón que el ranking del juego:
+     alto fijo, y flechas que solo salen si hay más de los que entran. */
+  function ajustarFlechasClientes() {
+    var lista = $("[data-customers-list]");
+    var up = $("[data-customers-up]"), down = $("[data-customers-down]");
+    if (!lista || !up || !down) return;
+    // con alguien abierto el recuadro se suelta: no hay nada que desplazar
+    lista.classList.toggle("is-abierta", !!lista.querySelector(".ruleta-prize-row.is-open"));
+    var hayDeMas = lista.scrollHeight > lista.clientHeight + 2;
+    up.hidden = !hayDeMas;
+    down.hidden = !hayDeMas;
+    if (!hayDeMas) return;
+    var tope = lista.scrollHeight - lista.clientHeight;
+    up.disabled = lista.scrollTop <= 1;
+    down.disabled = lista.scrollTop >= tope - 1;
+  }
+
+  function initCustomersScroll() {
+    var lista = $("[data-customers-list]");
+    var up = $("[data-customers-up]"), down = $("[data-customers-down]");
+    if (!lista) return;
+    function desplazar(abajo) {
+      var fila = lista.querySelector(".ruleta-prize-row");
+      var paso = (fila ? fila.offsetHeight + 6 : 60) * 2;
+      lista.scrollTop += abajo ? paso : -paso;
+      ajustarFlechasClientes();
+    }
+    if (up) up.addEventListener("click", function () { desplazar(false); });
+    if (down) down.addEventListener("click", function () { desplazar(true); });
+    lista.addEventListener("scroll", ajustarFlechasClientes);
+  }
+
+  /* ---- La ficha completa de un cliente ----
+     Junta lo que hasta ahora vivía en cuatro archivos separados: los premios
+     con su estado, los giros de ruleta, los canjes de código y los sellos.
+     El filtro de acá adentro es por ACTIVIDAD del cliente, distinto del de
+     arriba, que filtra por cuándo vino. */
+  var PERIODO_ETIQUETA = { hoy: "hoy", semana: "en los últimos 7 días", mes: "este mes", todos: "en total" };
+
+  /* La ficha guarda su última respuesta para poder filtrar sin volver a
+     preguntarle al servidor: los premios ya están todos en la pantalla, y
+     tocar "Vencidos" es quedarse con unos pocos, no una consulta nueva. */
+  var fichaDatos = {};      // deviceId -> última respuesta del servidor
+  var fichaFiltro = {};     // deviceId -> qué tarjeta está tocada
+
+  var FICHA_FILTROS = {
+    todos:     function () { return true; },
+    pendiente: function (p) { return p.status === "available" || p.status === "waiting"; },
+    delivered: function (p) { return p.status === "delivered"; },
+    expired:   function (p) { return p.status === "expired"; },
+  };
+
+  function pintarFichaCliente(caja, res, deviceId) {
+    if (!res || !res.ok) {
+      caja.innerHTML = '<p class="hint">' + escHTML((res && res.error) || "No se pudo cargar la ficha.") + "</p>";
+      return;
+    }
+    fichaDatos[deviceId] = res;
+    var filtro = fichaFiltro[deviceId] || "todos";
+    var r = res.resumen, e = r.porEstado, cuando = PERIODO_ETIQUETA[res.periodo] || "";
+
+    var origenes = Object.keys(r.porOrigen || {});
+    var vecesGano = 0;
+    origenes.forEach(function (k) { vecesGano += r.porOrigen[k]; });
+
+    var sellos = r.sellos
+      ? r.sellos.stamps + " de " + r.sellos.required + " sellos" +
+        (r.sellos.claims ? " · " + r.sellos.claims + " tarjeta(s) completada(s)" : "")
+      : "sin datos";
+
+    var visitas = res.visitas || { total: 0, dias: [] };
+
+    function tarjeta(valor, etiqueta, clave, nota) {
+      var activa = filtro === clave;
+      return '<button type="button" class="ficha-dato is-tocable' + (activa ? " is-abierta" : "") +
+          '" data-ficha-stat="' + escHTML(clave) + '">' +
+        "<span>" + escHTML(etiqueta) + "</span><strong>" + escHTML(String(valor)) + "</strong>" +
+        (nota ? '<em class="ficha-dato-nota">' + escHTML(nota) + "</em>" : "") +
+      "</button>";
+    }
+
+    /* Los premios que se ven abajo dependen de qué tarjeta esté tocada. */
+    var visibles = res.premios.filter(FICHA_FILTROS[filtro] || FICHA_FILTROS.todos);
+
+    var listaPremios = visibles.length
+      ? visibles.map(function (p) {
+          var vencido = p.status === "expired", anulado = p.status === "void";
+          return '<div class="ficha-premio' + (vencido ? " is-vencido" : "") + (anulado ? " is-anulado" : "") + '">' +
+            '<span class="ficha-premio-icon">' + escHTML(p.prizeIcon || "🎁") + "</span>" +
+            '<span class="ficha-premio-txt">' +
+              "<strong>" + escHTML(p.prizeName || "Premio") + "</strong>" +
+              '<span class="hint">' + escHTML(p.sourceIcon + " " + p.sourceLabel) + " · " + escHTML(p.statusLabel) +
+                " · " + escHTML(fmtFecha(p.issuedAt)) + "</span>" +
+            "</span>" +
+            (p.status === "available" || p.status === "waiting"
+              ? '<button type="button" class="btn btn-ghost" data-quitar-premio="' + escHTML(p.code) + '">Quitar</button>'
+              : "") +
+          "</div>";
+        }).join("")
+      : '<p class="hint">Ninguno con ese filtro.</p>';
+
+    caja.innerHTML =
+      '<div class="ficha-resumen">' +
+        tarjeta(r.premios, "Premios " + cuando, "todos") +
+        tarjeta(e.available + e.waiting, "Sin reclamar", "pendiente") +
+        tarjeta(e.delivered, "Entregados", "delivered") +
+        tarjeta(e.expired, "Vencidos", "expired") +
+        tarjeta(vecesGano, "Veces que ganó", "gano") +
+        tarjeta(visitas.total, "Veces que entró", "visitas", "desde hoy") +
+      "</div>" +
+      '<div class="ficha-extra" data-ficha-extra' + (filtro === "gano" || filtro === "visitas" ? "" : " hidden") + "></div>" +
+      '<p class="hint">🎟️ Tarjeta de fidelidad: <strong>' + escHTML(sellos) + "</strong>" +
+        " · 🎡 " + r.giros.total + " giro(s) de ruleta" +
+        " · 🎟️ " + r.canjes + " código(s) canjeado(s)</p>" +
+      '<h4>Premios ' + escHTML(cuando) + (filtro !== "todos" && FICHA_FILTROS[filtro] ? " · filtrados" : "") + "</h4>" +
+      listaPremios;
+
+    // el desglose de las dos tarjetas que no filtran premios sino que abren datos
+    var extra = caja.querySelector("[data-ficha-extra]");
+    if (filtro === "gano") {
+      /* El servidor manda la clave interna ("loyalty", "toppingsRun"); el
+         nombre bonito y el ícono vienen dentro de cada premio. Se arma el
+         diccionario desde ahí para no repetir la tabla de nombres acá. */
+      var nombreDe = {};
+      res.premios.forEach(function (p) {
+        if (p.source) nombreDe[p.source] = (p.sourceIcon ? p.sourceIcon + " " : "") + (p.sourceLabel || p.source);
+      });
+      extra.innerHTML = origenes.length
+        ? '<div class="stat-lista">' + origenes.map(function (k) {
+            var n = r.porOrigen[k];
+            return '<div class="stat-fila"><span class="stat-fila-nombre">' + escHTML(nombreDe[k] || k) +
+              '</span><span class="hint">' + n + (n === 1 ? " vez" : " veces") + "</span></div>";
+          }).join("") + "</div>"
+        : '<p class="hint">Todavía no ha ganado nada ' + escHTML(cuando) + ".</p>";
+    } else if (filtro === "visitas") {
+      extra.innerHTML = visitas.dias.length
+        ? '<div class="stat-lista">' + visitas.dias.map(function (d) {
+            return '<div class="stat-fila"><span class="stat-fila-nombre">' + escHTML(d) + "</span></div>";
+          }).join("") + "</div>"
+        : '<p class="hint">Sin visitas registradas. El detalle de qué días vino se empezó a guardar hoy: lo anterior no quedó registrado.</p>';
+    }
+  }
+
+  function cargarFichaCliente(deviceId, periodo, caja) {
+    caja.innerHTML = '<p class="hint">Cargando ficha…</p>';
+    fetch(HISTORY_API + "?action=customer-detail&deviceId=" + encodeURIComponent(deviceId) +
+          "&periodo=" + encodeURIComponent(periodo) + "&_=" + Date.now(),
+      { credentials: "same-origin", cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (res) { pintarFichaCliente(caja, res, deviceId); })
+      .catch(function () { caja.innerHTML = '<p class="hint">No se pudo conectar con el servidor.</p>'; });
+  }
+
   /* ---- Clientes ---- */
   function fetchCustomers() {
     var cont = $("[data-customers-list]");
@@ -2556,6 +3419,7 @@
         }
         cont.innerHTML = "";
         res.customers.forEach(function (c) { cont.appendChild(buildCustomerRow(c)); });
+        ajustarFlechasClientes();
       })
       .catch(function () { if (statusEl) statusEl.textContent = "No se pudo conectar con el servidor."; });
   }
@@ -2585,6 +3449,21 @@
         "</div>" +
         '<button type="button" class="btn btn-primary" data-c-send>Enviar mensaje</button>' +
         '<p class="hint" data-c-status></p>' +
+
+        '<h4>Ficha completa</h4>' +
+        '<div class="ficha-barra">' +
+          "<label>Ver actividad de " +
+            "<select data-c-periodo>" +
+              '<option value="hoy">Hoy</option>' +
+              '<option value="semana">Últimos 7 días</option>' +
+              '<option value="mes">Este mes</option>' +
+              '<option value="todos" selected>Siempre</option>' +
+            "</select></label>" +
+          '<button type="button" class="btn btn-ghost" data-c-sello="1">+1 sello</button>' +
+          '<button type="button" class="btn btn-ghost" data-c-sello="-1">−1 sello</button>' +
+          '<button type="button" class="btn btn-ghost is-danger" data-c-eliminar>Quitar de la lista</button>' +
+        "</div>" +
+        '<div class="ficha-cliente" data-c-ficha></div>' +
       "</div>";
 
     var body = row.querySelector(".rp-body");
@@ -2621,6 +3500,98 @@
         if (ok) { row.querySelector("[data-c-message]").value = ""; fetchNotifSent(); }
       });
     };
+
+    /* ---- La ficha y sus acciones ----
+       La ficha se pide al abrir la fila, no al pintar la lista: si se pidiera
+       para todos de una, abrir la pestaña con 200 clientes dispararía 200
+       consultas al servidor. */
+    var fichaEl = row.querySelector("[data-c-ficha]");
+    var periodoEl = row.querySelector("[data-c-periodo]");
+    var fichaCargada = false;
+
+    function recargarFicha() {
+      fichaCargada = true;
+      cargarFichaCliente(c.deviceId, periodoEl.value, fichaEl);
+    }
+    if (abierta) recargarFicha();
+    periodoEl.addEventListener("change", recargarFicha);
+
+    // se engancha al botón que ya abre y cierra la fila, sin reemplazarlo
+    var abrirOriginal = row.querySelector("[data-c-toggle]").onclick;
+    row.querySelector("[data-c-toggle]").onclick = function () {
+      abrirOriginal();
+      if (!body.hidden && !fichaCargada) recargarFicha();
+      ajustarFlechasClientes();
+    };
+
+    // dar o quitar un sello a mano
+    Array.prototype.forEach.call(row.querySelectorAll("[data-c-sello]"), function (b) {
+      b.onclick = function () {
+        var delta = Number(b.getAttribute("data-c-sello")) || 0;
+        b.disabled = true;
+        fetch(LOYALTY_API + "?action=admin-stamp", {
+          method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ targetDeviceId: c.deviceId, delta: delta })
+        }).then(function (r) { return r.json(); })
+          .then(function (res) {
+            b.disabled = false;
+            if (res && res.ok) recargarFicha();
+            else alert((res && res.error) || "No se pudo cambiar los sellos.");
+          })
+          .catch(function () { b.disabled = false; alert("No se pudo conectar con el servidor."); });
+      };
+    });
+
+    /* Quitar un premio. Solo aparece en los que todavía se pueden usar: un
+       premio ya entregado o vencido no se puede "quitar" sin reescribir la
+       historia, y anularlo no le devolvería nada a nadie. */
+    /* Tocar una tarjeta de la ficha filtra la lista de premios de abajo.
+       No se le pregunta nada al servidor: los premios ya están todos en la
+       pantalla y lo único que cambia es cuáles se muestran. Tocar la misma
+       otra vez vuelve a mostrarlos todos. */
+    fichaEl.addEventListener("click", function (ev) {
+      var t = ev.target.closest ? ev.target.closest("[data-ficha-stat]") : null;
+      if (t) {
+        var clave = t.getAttribute("data-ficha-stat");
+        fichaFiltro[c.deviceId] = (fichaFiltro[c.deviceId] === clave) ? "todos" : clave;
+        if (fichaDatos[c.deviceId]) pintarFichaCliente(fichaEl, fichaDatos[c.deviceId], c.deviceId);
+        return;
+      }
+      var b = ev.target.closest ? ev.target.closest("[data-quitar-premio]") : null;
+      if (!b) return;
+      var code = b.getAttribute("data-quitar-premio");
+      if (!confirm("¿Quitarle este premio a " + c.name + "? El código deja de servir.")) return;
+      b.disabled = true;
+      fetch(CODES_API + "?action=admin-void", {
+        method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: code })
+      }).then(function (r) { return r.json(); })
+        .then(function (res) {
+          b.disabled = false;
+          if (res && res.ok) { recargarFicha(); fetchCustomers(); }
+          else alert((res && res.error) || "No se pudo quitar el premio.");
+        })
+        .catch(function () { b.disabled = false; alert("No se pudo conectar con el servidor."); });
+    });
+
+    /* Sacarlo de la lista. Es una limpieza, no una expulsión: se le avisa por
+       escrito que si vuelve a entrar reaparece, para que nadie crea que lo
+       está bloqueando. Sus premios y sellos no se tocan. */
+    row.querySelector("[data-c-eliminar]").onclick = function () {
+      if (!confirm("¿Quitar a " + c.name + " de la lista de clientes?\n\n" +
+                   "Sus premios y sellos NO se borran. Y si vuelve a entrar a la página con su nombre guardado, " +
+                   "va a reaparecer solo en la lista.")) return;
+      fetch(HISTORY_API + "?action=customer-delete", {
+        method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deviceId: c.deviceId })
+      }).then(function (r) { return r.json(); })
+        .then(function (res) {
+          if (res && res.ok) { delete customerRowsOpen[c.deviceId]; fetchCustomers(); }
+          else alert((res && res.error) || "No se pudo quitar de la lista.");
+        })
+        .catch(function () { alert("No se pudo conectar con el servidor."); });
+    };
+
     return row;
   }
 
@@ -3227,20 +4198,60 @@
       .then(function (r) { return r.json(); })
       .then(function (res) {
         if (!res || !res.ok) { el.innerHTML = '<p class="hint">No se pudieron cargar las estadísticas.</p>'; return; }
-        var rows = [
-          ["Total de códigos", res.total],
-          ["Disponibles", res.byStatus.available], ["Esperando entrega", res.byStatus.waiting],
-          ["Entregados", res.byStatus.delivered], ["Vencidos", res.byStatus.expired], ["Anulados", res.byStatus.void],
-          ["Premio más entregado", res.mostDeliveredPrize || "—"],
-        ];
+        var html =
+          statHtml(res.total, "Total de premios", "todos") +
+          statHtml(res.byStatus.available, "Disponibles", "estado:available") +
+          statHtml(res.byStatus.waiting, "Esperando entrega", "estado:waiting") +
+          statHtml(res.byStatus.delivered, "Entregados", "estado:delivered") +
+          statHtml(res.byStatus.expired, "Vencidos", "estado:expired") +
+          statHtml(res.byStatus.void, "Anulados", "estado:void") +
+          // este no es un número: no hay lista que abrir detrás
+          statHtml(res.mostDeliveredPrize || "—", "Premio más entregado", "");
         Object.keys(res.bySource || {}).forEach(function (src) {
-          rows.push(["Emitidos por " + src, res.bySource[src]]);
+          html += statHtml(res.bySource[src], "Emitidos por " + src, "origen:" + src);
         });
-        el.innerHTML = rows.map(function (r) {
-          return '<div class="ruleta-stat"><span class="ruleta-stat-value">' + escHTML(String(r[1])) + '</span><span class="ruleta-stat-label">' + r[0] + '</span></div>';
-        }).join("");
+        el.innerHTML = html;
       })
       .catch(function () { el.innerHTML = '<p class="hint">No se pudo conectar con el servidor.</p>'; });
+  }
+
+  /* Repara los premios que salieron sin nombre antes de que el canje lo
+     pidiera. Informa las dos cuentas —los que arregló y los que no pudo—
+     porque de alguien que nunca dio su nombre no hay de dónde sacarlo. */
+  function initCodesFixNames() {
+    var btn = $("[data-codes-fix-names]");
+    var out = $("[data-codes-fix-result]");
+    if (!btn) return;
+    btn.addEventListener("click", function () {
+      btn.disabled = true;
+      var label = btn.textContent;
+      btn.textContent = "Revisando…";
+      fetch(CODES_API + "?action=admin-fix-names", { method: "POST", credentials: "same-origin" })
+        .then(function (r) { return r.json(); })
+        .then(function (res) {
+          btn.disabled = false;
+          btn.textContent = label;
+          if (!out) return;
+          out.hidden = false;
+          if (!res || !res.ok) { out.textContent = (res && res.error) || "No se pudo revisar."; return; }
+          if (!res.fixed && !res.unknown) { out.textContent = "Todos los premios ya tienen nombre."; return; }
+          /* Al segundo toque no queda nada por arreglar, y decir "se le puso
+             nombre a 0 premios" se lee como si algo hubiera fallado. */
+          var t = res.fixed
+            ? "Se le puso nombre a " + res.fixed + " premio" + (res.fixed === 1 ? "" : "s") + "."
+            : "No quedaba ninguno por arreglar.";
+          if (res.unknown) {
+            t += " Hay " + res.unknown + " que no se puede" + (res.unknown === 1 ? "" : "n") +
+                 ": esas personas nunca dieron su nombre en ninguna parte del sitio.";
+          }
+          out.textContent = t;
+        })
+        .catch(function () {
+          btn.disabled = false;
+          btn.textContent = label;
+          if (out) { out.hidden = false; out.textContent = "No se pudo conectar con el servidor."; }
+        });
+    });
   }
 
   function initCodesSearch() {
@@ -3778,14 +4789,20 @@
     initModalStyleToggle();
     initNameChangeModeToggle();
     initRewardTypeToggles();
+    initTarjetasHistorial();
+    initCustomersScroll();
+    initRankingScores();
     initRankingReset();
     initChallengeReset();
     initRuletaTab();
     initRedeemTab();
+    initVotesTab();
+    initLoyaltyAdmin();
     initLockedAdd();
     initLockedSave();
     initHistoryTabs();
     initCodesSearch();
+    initCodesFixNames();
     initCarouselPreviewModal();
     initSave();
   }

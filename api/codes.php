@@ -288,11 +288,20 @@ switch ($action) {
     requireAdminAuth();
     $q = isset($_GET['q']) ? trim((string) $_GET['q']) : '';
     $statusFilter = isset($_GET['status']) ? trim((string) $_GET['status']) : '';
+    /* De qué dinámica salió, y desde cuándo. Hacen falta para que las
+       tarjetas del panel ("Vencidos", "Emitidos por Ruleta") se puedan tocar
+       y muestren exactamente lo que dice su número, respetando el período
+       elegido arriba. */
+    $sourceFilter = isset($_GET['source']) ? trim((string) $_GET['source']) : '';
+    $desde = isset($_GET['desde']) ? (int) $_GET['desde'] : 0;
+
     $state = codesWithWriteLock(function ($s) { expireCodes($s); return $s; });
     $results = array();
     $qLower = mb_strtolower($q);
     foreach ($state['codes'] as $c) {
       if ($statusFilter !== '' && $c['status'] !== $statusFilter) continue;
+      if ($sourceFilter !== '' && (!isset($c['source']) || $c['source'] !== $sourceFilter)) continue;
+      if ($desde > 0 && (int) $c['issuedAt'] < $desde) continue;
       if ($q !== '') {
         $nameMatch = strpos(mb_strtolower((string) $c['name']), $qLower) !== false;
         $codeMatch = strcasecmp((string) $c['code'], $q) === 0;
@@ -327,6 +336,44 @@ switch ($action) {
 
     if ($errorMsg) jsonOut(array('ok' => false, 'error' => $errorMsg), 400);
     jsonOut(array('ok' => true));
+  }
+
+  /**
+   * Le pone nombre a los premios que ya salieron sin él.
+   *
+   * La red de seguridad de issuePrizeCode() solo actúa sobre premios NUEVOS;
+   * los que ya se emitieron anónimos se quedan así. Esto los recorre una vez
+   * y les completa el nombre desde el registro de clientes.
+   *
+   * Se puede tocar las veces que sea: los que ya tienen nombre no se tocan, y
+   * los de alguien que nunca dio su nombre en ningún lado se quedan como
+   * están porque no hay de dónde sacarlo. Por eso devuelve las dos cuentas.
+   */
+  case 'admin-fix-names': {
+    requireAdminAuth();
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') jsonOut(array('ok' => false, 'error' => 'Método no permitido.'), 405);
+
+    $arreglados = 0;
+    $sinDatos = 0;
+    codesWithWriteLock(function ($state) use (&$arreglados, &$sinDatos) {
+      $cambio = false;
+      foreach ($state['codes'] as &$c) {
+        if (!is_array($c)) continue;
+        $actual = isset($c['name']) ? trim((string) $c['name']) : '';
+        if ($actual !== '') continue;
+        $dev = isset($c['deviceId']) ? (string) $c['deviceId'] : '';
+        $nombre = $dev !== '' ? customerName($dev) : '';
+        if ($nombre === '') { $sinDatos++; continue; }
+        $c['name'] = $nombre;
+        $arreglados++;
+        $cambio = true;
+      }
+      unset($c);
+      // si no cambió nada no se reescribe el archivo
+      return $cambio ? $state : null;
+    });
+
+    jsonOut(array('ok' => true, 'fixed' => $arreglados, 'unknown' => $sinDatos));
   }
 
   case 'admin-stats': {

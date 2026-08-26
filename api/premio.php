@@ -10,6 +10,7 @@ require_once __DIR__ . '/customers-lib.php';
 require_once __DIR__ . '/ruleta-lib.php';
 require_once __DIR__ . '/codes-lib.php';
 require_once __DIR__ . '/rename-lib.php';
+require_once __DIR__ . '/loyalty-lib.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -360,12 +361,43 @@ if ($method === 'POST') {
         return $state;
       }
 
-      // La tarjeta de fidelidad nunca se bloquea: cada cliente reclama la
-      // suya sin afectar a los demás. El reto del día sí tiene un límite de
+      // La tarjeta de fidelidad no se bloquea entre clientes: cada uno reclama
+      // la suya sin afectar a los demás. El reto del día sí tiene un límite de
       // ganadores por día (admin-configurable, por defecto 1).
       if ($claimMethod === 'challenge' && count($state['challenge']['claims']) >= challengeDailyLimit()) {
         $outcome = array('ok' => false, 'alreadyClaimed' => true, 'state' => publicState($state));
         return null;
+      }
+
+      /* La tarjeta SÍ se comprueba, aunque sea la de cada quien: hasta acá no
+         se miraba nada y el botón entregaba un premio cada vez que se tocaba
+         — con una sola tarjeta llena se sacaban cuatro premios seguidos.
+         Ahora manda el servidor: sin los sellos completos no hay premio, y al
+         reclamar la tarjeta se vacía, así que el segundo toque ya no califica.
+         Todo dentro del candado de loyalty.json, o sea que dos toques a la vez
+         entran en fila y solo el primero gana. */
+      if ($claimMethod === 'loyalty') {
+        $reclamo = array('ok' => false, 'reason' => 'error');
+        loyaltyWithWriteLock(function ($lstate) use ($deviceId, $name, &$reclamo) {
+          $reclamo = loyaltyReclamar($lstate, $deviceId, $name);
+          return !empty($reclamo['ok']) ? $lstate : null;
+        });
+        if (empty($reclamo['ok'])) {
+          $motivos = array(
+            'no-device'  => 'No pudimos identificar tu tarjeta en este dispositivo.',
+            'incomplete' => 'Todavía te faltan sellos para reclamar.',
+          );
+          $razon = isset($reclamo['reason']) ? $reclamo['reason'] : 'error';
+          $outcome = array(
+            'ok' => false,
+            'alreadyClaimed' => true,
+            'error' => isset($motivos[$razon]) ? $motivos[$razon] : 'No se pudo reclamar la tarjeta.',
+            'loyaltyCard' => isset($reclamo['card']) ? $reclamo['card'] : null,
+            'state' => publicState($state),
+          );
+          return null;
+        }
+        $outcomeLoyaltyCard = isset($reclamo['card']) ? $reclamo['card'] : null;
       }
 
       $photoRel = null;
@@ -417,6 +449,7 @@ if ($method === 'POST') {
       }
 
       $outcome = array('ok' => true, 'state' => publicState($state));
+      if (isset($outcomeLoyaltyCard)) $outcome['loyaltyCard'] = $outcomeLoyaltyCard;
       $wheelGranted = maybeGrantWheelReward($claimMethod, $deviceId, $name);
       if ($wheelGranted) $outcome['wheelGranted'] = $wheelGranted;
       $codeGranted = maybeGrantDirectCode($claimMethod, $deviceId, $name);

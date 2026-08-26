@@ -2012,10 +2012,52 @@
     setTimeout(function () { try { ctx.close(); } catch (e) {} }, 900);
   }
 
-  /* ---- Método 2: Tarjeta de fidelidad (sellada escaneando un QR en el local) ---- */
-  var LOYALTY_STAMPS_KEY = "toppings_loyalty_stamps";
-  var LOYALTY_LAST_DAY_KEY = "toppings_loyalty_last_day";
+  /* ---- Método 2: Tarjeta de fidelidad (sellada escaneando un QR en el local) ----
+
+     Los sellos los guarda el SERVIDOR, no el celular. Antes vivían en
+     localStorage y eso fallaba de tres formas en el local: si el QR le abría
+     otro navegador el cliente aparecía con cero sellos, si borraba datos
+     perdía la tarjeta, y como el servidor no sabía cuántos sellos tenía
+     nadie, el botón de reclamar entregaba un premio cada vez que se tocaba.
+
+     Acá solo queda el nombre en localStorage (para el saludo) y una copia de
+     la tarjeta que manda el servidor, que es la que manda. */
+  var LOYALTY_API = "api/loyalty.php";
   var LOYALTY_NAME_KEY = "toppings_loyalty_name";
+  var loyaltyCard = null;      // lo último que dijo el servidor
+  var loyaltyCardPedida = false;
+  var loyaltyEsperaTimer = null;
+
+  /** "3 h 20 min", "45 min", "1 min" — para la espera entre sellos. */
+  function esperaEnTexto(ms) {
+    var min = Math.max(1, Math.ceil(ms / 60000));
+    if (min < 60) return min + " min";
+    var h = Math.floor(min / 60), m = min % 60;
+    return m ? h + " h " + m + " min" : h + " h";
+  }
+
+  function loyaltyAplicarTarjeta(card) {
+    if (!card || typeof card !== "object") return;
+    loyaltyCard = card;
+    if (typeof card.serverNow === "number") clockSkewMs = card.serverNow - Date.now();
+    if (card.name && !localStorage.getItem(LOYALTY_NAME_KEY)) {
+      try { localStorage.setItem(LOYALTY_NAME_KEY, card.name); } catch (e) {}
+    }
+  }
+
+  /** Consulta la tarjeta. `cb` recibe la tarjeta, o null si no se pudo. */
+  function fetchLoyaltyCard(cb) {
+    fetch(LOYALTY_API + "?action=status&deviceId=" + encodeURIComponent(getDeviceId()) + "&_=" + Date.now(), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res && res.ok && res.card) loyaltyAplicarTarjeta(res.card);
+        if (cb) cb(loyaltyCard);
+      })
+      .catch(function (e) {
+        console.warn("[fidelidad] no se pudo consultar la tarjeta:", e);
+        if (cb) cb(null);
+      });
+  }
 
   function mountPrizeLoyalty(section, info) {
     var card = $('[data-prize-method="loyalty"]', section);
@@ -2037,7 +2079,21 @@
     if (scanHintEl) scanHintEl.textContent = info.scanHintText || "Escanea el código QR que está en el local para sumar tu sello de hoy 📱";
     // el texto del botón lo pone render(), que es quien sabe cuántos sellos faltan
 
-    function getStamps() { return Math.min(required, Number(localStorage.getItem(LOYALTY_STAMPS_KEY) || 0)); }
+    /* El servidor manda: si su tarjeta dice otra cantidad de sellos
+       necesarios que el panel, gana la del servidor — es la que usó para
+       decidir si puede reclamar. */
+    if (loyaltyCard && loyaltyCard.required) required = Number(loyaltyCard.required) || required;
+
+    function getStamps() { return loyaltyCard ? Math.min(required, Number(loyaltyCard.stamps) || 0) : 0; }
+    function puedeReclamar() { return !!(loyaltyCard && loyaltyCard.canClaim); }
+
+    /* La primera vez se pide la tarjeta y se vuelve a pintar cuando llega.
+       Mientras tanto se ven cero sellos, que es lo correcto: no sabemos
+       cuántos tiene hasta que conteste el servidor. */
+    if (!loyaltyCardPedida) {
+      loyaltyCardPedida = true;
+      fetchLoyaltyCard(function () { renderPremioSection(); });
+    }
 
     function render() {
       var name = localStorage.getItem(LOYALTY_NAME_KEY) || "";
@@ -2046,7 +2102,7 @@
         else greetingEl.hidden = true;
       }
       var stamps = getStamps();
-      var full = stamps >= required;
+      var full = puedeReclamar();
       if (stampsEl) {
         stampsEl.innerHTML = "";
         for (var i = 0; i < required; i++) {
@@ -2083,25 +2139,41 @@
         if (scanBtn) scanBtn.hidden = false;
         if (statusEl) {
           statusEl.hidden = false;
-          statusEl.textContent = stamps + " de " + required + " sellos";
+          /* Si ya selló hoy, se le dice CUÁNDO puede volver en vez de dejarlo
+             escanear para que no pase nada — que es lo que confundía a los
+             clientes: creían que el QR estaba dañado. */
+          var faltaMs = loyaltyCard && loyaltyCard.nextStampAt
+            ? loyaltyCard.nextStampAt - serverAdjustedNow() : 0;
+          statusEl.textContent = faltaMs > 0
+            ? stamps + " de " + required + " sellos · próximo en " + esperaEnTexto(faltaMs)
+            : stamps + " de " + required + " sellos";
         }
       }
     }
     render();
+
+    /* Se repinta cada minuto solo mientras haya una espera en curso, para que
+       el "próximo en 3 h" no se quede congelado. */
+    if (loyaltyCard && loyaltyCard.nextStampAt > serverAdjustedNow()) {
+      clearTimeout(loyaltyEsperaTimer);
+      loyaltyEsperaTimer = setTimeout(function () { renderPremioSection(); }, 60000);
+    }
 
     if (claimBtn) {
       claimBtn.onclick = function () {
         claimBtn.disabled = true;
         var name = localStorage.getItem(LOYALTY_NAME_KEY) || "";
         attemptClaim("loyalty", { name: name }, function (res) {
+          /* La tarjeta que devuelve el servidor es la buena: al reclamar
+             queda en cero y el botón se apaga solo. Antes esto se guardaba en
+             el celular y por eso se podía reclamar varias veces seguidas. */
+          if (res && res.loyaltyCard) loyaltyAplicarTarjeta(res.loyaltyCard);
           if (res && res.ok) {
-            claimBtn.disabled = false;
-            localStorage.setItem(LOYALTY_STAMPS_KEY, "0");
             openClaimResult(res, info.prizeText, "Hola TOPPINGS! Completé mi tarjeta de fidelidad 🎟️ Mi nombre es " + name, { icon: info.prizeIcon });
           } else {
-            claimBtn.disabled = false;
-            alert("No se pudo reclamar el premio. Revisa tu conexión e intenta de nuevo.");
+            alert(res && res.error ? res.error : "No se pudo reclamar el premio. Revisa tu conexión e intenta de nuevo.");
           }
+          renderPremioSection();
         });
       };
     }
@@ -2124,40 +2196,46 @@
   }
 
   /* Intenta sumar un sello con el código dado (venga de la URL o de la
-     cámara) — devuelve por qué falló para poder avisarle al cliente. */
-  function tryRedeemLoyaltyCode(rawCode) {
+     cámara). Quien decide es el servidor: el navegador solo transmite lo que
+     leyó y muestra la respuesta. `done` recibe {ok, error, reason}. */
+  function tryRedeemLoyaltyCode(rawCode, done) {
+    done = done || function () {};
     var info = data.dailyPrize && data.dailyPrize.loyalty;
-    if (!info || !info.active) return { ok: false, reason: "inactive" };
-    var expected = (info.secretCode || "").trim();
+    if (!info || !info.active) return done({ ok: false, reason: "inactive", error: "La tarjeta de fidelidad no está activa." });
     var scanned = extractLoyaltyCode(rawCode);
-    if (!expected || !scanned || scanned.toLowerCase() !== expected.toLowerCase()) {
-      return { ok: false, reason: "mismatch" };
-    }
-    if (localStorage.getItem(LOYALTY_LAST_DAY_KEY) === todayKey()) {
-      return { ok: false, reason: "already-today" };
+    if (!scanned) return done({ ok: false, reason: "mismatch", error: "Ese código no es el del local." });
+
+    function enviar(nombre) {
+      fetch(LOYALTY_API + "?action=stamp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: scanned, deviceId: getDeviceId(), name: nombre || "" })
+      }).then(function (r) { return r.json(); })
+        .then(function (res) {
+          if (res && res.card) loyaltyAplicarTarjeta(res.card);
+          var section = $("[data-daily-prize]");
+          renderPremioSection();
+          if (res && res.ok && section) {
+            section.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
+          }
+          done(res || { ok: false, error: "No se pudo sumar el sello." });
+        })
+        .catch(function (e) {
+          console.warn("[fidelidad] no se pudo sellar:", e);
+          done({ ok: false, reason: "network", error: "No hay conexión. Intenta de nuevo." });
+        });
     }
 
-    function addStamp() {
-      var required = Number(info.stampsRequired) || 8;
-      var stamps = Math.min(required, Number(localStorage.getItem(LOYALTY_STAMPS_KEY) || 0) + 1);
-      localStorage.setItem(LOYALTY_STAMPS_KEY, String(stamps));
-      localStorage.setItem(LOYALTY_LAST_DAY_KEY, todayKey());
-      var section = $("[data-daily-prize]");
-      if (section) {
-        renderPremioSection();
-        section.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
-      }
-    }
-
-    if (localStorage.getItem(LOYALTY_NAME_KEY)) {
-      addStamp();
+    var guardado = localStorage.getItem(LOYALTY_NAME_KEY);
+    if (guardado) {
+      enviar(guardado);
     } else {
-      askNameWithCheck(function (name) {
-        setCustomerName(name || "Cliente");
-        addStamp();
-      });
+      /* Si cierra el cuadro del nombre sin ponerlo, el sello se perdía y el
+         parámetro de la URL ya estaba borrado, así que reintentar no servía.
+         Ahora se manda igual: el sello queda guardado en el servidor y el
+         nombre se le pregunta en otro momento. */
+      askNameWithCheck(function (name) { enviar(name || ""); });
     }
-    return { ok: true };
   }
 
   /* Escanea el QR del local desde un enlace (ej. si el celular lo abre con
@@ -2169,7 +2247,14 @@
     // limpia el parámetro de la URL para que no se vuelva a procesar al recargar
     var cleanUrl = location.pathname + location.hash;
     if (window.history && history.replaceState) history.replaceState(null, "", cleanUrl);
-    tryRedeemLoyaltyCode(scanned);
+    /* Por este camino (el QR abierto con la cámara del celular) antes no se
+       avisaba NADA cuando el sello no entraba: la página se quedaba igual y
+       el cliente creía que el código estaba dañado. */
+    tryRedeemLoyaltyCode(scanned, function (res) {
+      if (!res || res.ok) return;
+      if (res.reason === "mismatch" || res.reason === "inactive") return;
+      alert(res.error || "No se pudo sumar el sello.");
+    });
   }
 
   /* Escanea el QR sin salir de la página: abre la cámara del celular dentro
@@ -2226,17 +2311,26 @@
     }
 
     function handleScan(raw) {
-      var res = tryRedeemLoyaltyCode(raw);
-      if (res.ok) {
-        if (statusEl) statusEl.textContent = "¡Sello agregado! 🎉";
-        setTimeout(stopLoyaltyScan, 700);
-      } else if (res.reason === "already-today") {
-        if (statusEl) statusEl.textContent = "Ya sumaste tu sello de hoy — vuelve mañana.";
-        setTimeout(stopLoyaltyScan, 1600);
-      } else {
-        if (statusEl) statusEl.textContent = "Ese código no es válido — sigue apuntando…";
-        loyaltyScanRafId = requestAnimationFrame(scanFrame);
-      }
+      /* Ahora contesta el servidor, o sea que tarda un momento. Se avisa que
+         está comprobando para que no parezca que se colgó, y no se sigue
+         escaneando mientras tanto para no mandar el mismo código dos veces. */
+      if (statusEl) statusEl.textContent = "Comprobando…";
+      tryRedeemLoyaltyCode(raw, function (res) {
+        if (res && res.ok) {
+          if (statusEl) statusEl.textContent = "¡Sello agregado! 🎉";
+          setTimeout(stopLoyaltyScan, 900);
+          return;
+        }
+        var razon = res ? res.reason : "";
+        if (razon === "mismatch") {
+          // no es el QR del local: probablemente apuntó a otra cosa, sigue leyendo
+          if (statusEl) statusEl.textContent = "Ese código no es válido — sigue apuntando…";
+          loyaltyScanRafId = requestAnimationFrame(scanFrame);
+          return;
+        }
+        if (statusEl) statusEl.textContent = (res && res.error) || "No se pudo sumar el sello.";
+        setTimeout(stopLoyaltyScan, 2200);
+      });
     }
 
     navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
@@ -3366,9 +3460,15 @@
 
   function initPresencePing() {
     function ping() {
+      /* Va el nombre además del identificador: si el panel borró a este
+         cliente de la lista, el servidor lo vuelve a anotar apenas entra.
+         Antes el nombre solo se reenviaba una vez por semana, así que un
+         cliente borrado podía tardar días en reaparecer. */
+      var nombre = "";
+      try { nombre = localStorage.getItem(LOYALTY_NAME_KEY) || ""; } catch (e) {}
       fetch(PRESENCE_API + "?action=ping", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "ping", deviceId: getDeviceId() })
+        body: JSON.stringify({ action: "ping", deviceId: getDeviceId(), name: nombre })
       }).catch(function () {});
     }
     ping();
@@ -3827,14 +3927,26 @@
       var code = (input.value || "").trim();
       if (!code) { setMsg("Escribe el código que te dieron.", "error"); input.focus(); return; }
 
+      var name = "";
+      try { name = localStorage.getItem(LOYALTY_NAME_KEY) || ""; } catch (e) {}
+
+      /* Si nunca dio su nombre, se le pide ANTES de canjear.
+         Antes se mandaba vacío y el premio quedaba sin dueño: era la única
+         forma de ganar algo del sitio que no preguntaba el nombre en ningún
+         momento. Las demás dinámicas ya lo pedían así. */
+      if (!name) {
+        askNameWithCheck(function (n) { canjear(code, n || ""); });
+        return;
+      }
+      canjear(code, name);
+    }
+
+    function canjear(code, name) {
       busy = true;
       btn.disabled = true;
       var originalLabel = btn.textContent;
       btn.textContent = "Canjeando…";
       setMsg("", "");
-
-      var name = "";
-      try { name = localStorage.getItem(LOYALTY_NAME_KEY) || ""; } catch (e) {}
 
       fetch(REDEEM_API + "?action=redeem", {
         method: "POST",
@@ -4007,6 +4119,245 @@
     main.appendChild(frag);
   }
 
+  /* ---------------- 🗳️ Votaciones ----------------
+
+     Una votación no tiene un lugar fijo en el código: cada una trae adentro
+     en qué páginas sale. Por eso acá no se pregunta "¿es la del concurso?"
+     sino "¿qué votaciones le tocan a ESTA página?", y el servidor contesta.
+
+     Los números de los resultados no viajan cuando la votación los tiene
+     ocultos — se quitan en el servidor (votes-lib.php), no acá. Esconderlos
+     con CSS sería mentira: cualquiera los vería abriendo el navegador. */
+  var VOTES_API = "api/votes.php";
+
+  function pintarOpcionesVotacion(poll) {
+    var conFoto = poll.options.some(function (o) { return !!o.image; });
+    var yaVoto = !!poll.myVote;
+
+    return '<div class="vote-options' + (conFoto ? " is-cards" : " is-list") + '">' +
+      poll.options.map(function (o) {
+        var mio = poll.myVote === o.id;
+        /* Se muestran las barras solo si la votación es de resultados
+           públicos Y la persona ya votó: verlas antes empuja a votar por el
+           que va ganando. */
+        var barra = (poll.showResults && yaVoto && typeof o.percent === "number")
+          ? '<div class="vote-bar"><span style="width:' + o.percent + '%"></span></div>' +
+            '<span class="vote-count">' + o.percent + "% · " + o.votes +
+              (o.votes === 1 ? " voto" : " votos") + "</span>"
+          : "";
+        return '<button type="button" class="vote-option' + (mio ? " is-mine" : "") + '"' +
+            ' data-vote-option="' + escHTML(o.id) + '"' +
+            (poll.canVote ? "" : " disabled") + ">" +
+          (o.image ? '<img src="' + escHTML(o.image) + '" alt="' + escHTML(o.name) + '" loading="lazy" decoding="async">' : "") +
+          '<span class="vote-option-name">' + escHTML(o.name) + "</span>" +
+          (o.note ? '<span class="vote-option-note">' + escHTML(o.note) + "</span>" : "") +
+          (mio ? '<span class="vote-mine-tag">Tu voto</span>' : "") +
+          barra +
+        "</button>";
+      }).join("") +
+    "</div>";
+  }
+
+  function cuentaVotos(n) {
+    return n === 1 ? "Va 1 voto." : "Van " + n + " votos.";
+  }
+
+  /** El renglón de abajo: cambia según si ya votó, si está cerrada, etc. */
+  function pieDeVotacion(poll) {
+    if (!poll.open) return "Esta votación ya cerró.";
+    if (poll.myVote) {
+      if (poll.repeat === "daily") return "Ya votaste hoy. Puedes volver a votar mañana.";
+      if (poll.repeat === "changeable") return "Ya votaste — puedes cambiar tu voto tocando otra opción.";
+      return "¡Gracias por votar! " + cuentaVotos(poll.totalVotes);
+    }
+    if (!poll.canVote && poll.reason === "already-today") return "Ya votaste hoy. Vuelve mañana.";
+    if (!poll.canVote) return "";
+    return poll.totalVotes ? cuentaVotos(poll.totalVotes) : "Sé el primero en votar.";
+  }
+
+  /** El renglón que se ve cuando está plegada: tiene que decir en qué anda
+   *  sin obligar a abrirla. */
+  function resumenVotacion(poll) {
+    if (!poll.open) return "Cerrada";
+    if (poll.myVote) return "Ya votaste";
+    return "Toca para votar";
+  }
+
+  /* `abrir` fuerza que quede desplegada aunque las reglas dijeran lo
+     contrario. Se usa al repintar después de votar: si se plegara sola justo
+     ahí, la persona no vería el voto que acaba de dar. */
+  function pintarVotacion(section, poll, abrir) {
+    /* Plegada si el panel lo pide, o si esta persona ya votó: ahí el bloque
+       ya cumplió y no tiene por qué seguir ocupando media pantalla. */
+    var desplegada = abrir === true ? true : !(poll.collapsed || poll.myVote);
+
+    section.innerHTML =
+      '<details class="container vote-card' + (poll.open ? "" : " is-closed") + '"' + (desplegada ? " open" : "") + ">" +
+        '<summary class="vote-head">' +
+          '<span class="vote-head-texts">' +
+            '<span class="vote-title">' + escHTML(poll.title || "Votación") + "</span>" +
+            '<span class="vote-head-sub">' + escHTML(resumenVotacion(poll)) + "</span>" +
+          "</span>" +
+          '<span class="vote-chevron" aria-hidden="true"></span>' +
+        "</summary>" +
+        '<div class="vote-body">' +
+          (poll.text ? '<p class="vote-text">' + escHTML(poll.text) + "</p>" : "") +
+          pintarOpcionesVotacion(poll) +
+          '<p class="vote-foot" data-vote-foot>' + escHTML(pieDeVotacion(poll)) + "</p>" +
+        "</div>" +
+      "</details>";
+
+    $$("[data-vote-option]", section).forEach(function (btn) {
+      btn.onclick = function () {
+        if (!poll.canVote) return;
+        var optionId = btn.getAttribute("data-vote-option");
+        var nombre = localStorage.getItem(LOYALTY_NAME_KEY) || "";
+
+        function enviar(n) {
+          $$("[data-vote-option]", section).forEach(function (b) { b.disabled = true; });
+          fetch(VOTES_API + "?action=vote", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ pollId: poll.id, optionId: optionId, deviceId: getDeviceId(), name: n || "" })
+          }).then(function (r) { return r.json(); })
+            .then(function (res) {
+              // el servidor devuelve la votación al día, así que se repinta
+              // con lo que él dice — no con lo que el navegador supone
+              // se repinta ABIERTA a propósito: acaba de votar y tiene que
+              // ver en qué quedó, no que el bloque se le cierre en la cara
+              if (res && res.poll) pintarVotacion(section, res.poll, true);
+              else if (res && res.error) alert(res.error);
+            })
+            .catch(function (e) {
+              console.warn("[votacion] no se pudo votar:", e);
+              $$("[data-vote-option]", section).forEach(function (b) { b.disabled = false; });
+              alert("No hay conexión. Intenta de nuevo.");
+            });
+        }
+
+        // "con nombre obligatorio" se pide una sola vez, como en el resto del sitio
+        if (poll.who === "name" && !nombre) askNameWithCheck(function (n) { enviar(n || ""); });
+        else enviar(nombre);
+      };
+    });
+  }
+
+  /* ---- dónde se mete el bloque ----
+     La votación no tiene un lugar fijo: cada una trae su ubicación. Acá solo
+     se traduce esa ubicación a un punto del DOM.
+
+     Ojo con el orden: el menú y la portada ya están pintados cuando llega la
+     respuesta del servidor, así que se inserta sobre lo que ya existe en vez
+     de participar del pintado original. */
+
+  var VOTE_PAGINAS_ARCHIVO = {
+    inicio: "index.html", comidas: "comidas.html", helados: "helados.html",
+    bebidas: "bebidas.html", secreta: "misterio.html"
+  };
+
+  function colocarEnPortada(sec, donde) {
+    var main = document.getElementById("main");
+    if (!main) return;
+    var hero = $('[data-home-block="hero"]', main);
+    var premios = $('[data-home-block="prizes"]', main);
+
+    if (donde === "start" && main.firstChild) { main.insertBefore(sec, main.firstChild); return; }
+    if (donde === "afterHero" && hero && hero.parentNode) { hero.parentNode.insertBefore(sec, hero.nextSibling); return; }
+    /* Los premios pueden estar escondidos desde el panel; si no están, se cae
+       al hero, que siempre existe — nunca se pierde la votación. */
+    if (donde === "afterPrizes") {
+      var ancla = (premios && !premios.hidden) ? premios : hero;
+      if (ancla && ancla.parentNode) { ancla.parentNode.insertBefore(sec, ancla.nextSibling); return; }
+    }
+    main.appendChild(sec);
+  }
+
+  function colocarEnMenu(sec, antesDeLaImagen) {
+    var frame = $("[data-menu-image]");
+    if (!frame) { var m = document.getElementById("main"); if (m) m.appendChild(sec); return; }
+    sec.classList.add("is-in-menu");
+
+    /* Solo las imágenes que son HIJAS DIRECTAS de la tira. Buscarlas con
+       querySelectorAll("img") traía también las de adentro del carrusel, y
+       entonces el número de la posición no correspondía con lo que se ve —
+       insertBefore fallaba porque esa imagen no era hija de la tira. */
+    var imgs = Array.prototype.filter.call(frame.children, function (c) {
+      return c.tagName === "IMG";
+    });
+    var n = Math.max(0, Math.min(imgs.length, Number(antesDeLaImagen) || 0));
+    if (n < imgs.length) frame.insertBefore(sec, imgs[n]);
+    else frame.appendChild(sec);
+  }
+
+  function colocarVotacion(sec, poll) {
+    var pag = paginaActual();
+    var col = poll.placement || {};
+    if (pag === "comidas" || pag === "helados" || pag === "bebidas") {
+      colocarEnMenu(sec, (col.menuPosition || {})[pag]);
+    } else {
+      colocarEnPortada(sec, col.homeAfter || "afterPrizes");
+    }
+  }
+
+  /* ---- el botón flotante 🗳️ ----
+     Puede estar en páginas donde la votación NO se muestra: ahí lleva hasta
+     la página donde sí está. Si está en esta misma, solo baja hasta ella. */
+  function montarBotonVotacion(poll) {
+    var stack = $("[data-fab-stack]");
+    if (!stack || $('[data-vote-fab="' + poll.id + '"]')) return;
+
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "fab fab-vote";
+    btn.setAttribute("data-vote-fab", poll.id);
+    btn.setAttribute("aria-label", poll.title || "Ir a la votación");
+    btn.textContent = "🗳️";
+
+    var texto = (poll.placement && poll.placement.fabText) || poll.title || "";
+    if (texto) {
+      var globo = document.createElement("span");
+      globo.className = "fab-vote-label";
+      globo.textContent = texto;
+      btn.appendChild(globo);
+    }
+
+    btn.onclick = function () {
+      var aqui = $('[data-vote-poll="' + poll.id + '"]');
+      if (aqui) { aqui.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "center" }); return; }
+      var destino = VOTE_PAGINAS_ARCHIVO[poll.goTo];
+      if (destino) location.href = destino + "#votacion-" + poll.id;
+    };
+    stack.insertBefore(btn, stack.firstChild);
+  }
+
+  function mountVotaciones() {
+    var main = document.getElementById("main");
+    if (!main) return;
+    fetch(VOTES_API + "?action=status&page=" + encodeURIComponent(paginaActual()) +
+          "&deviceId=" + encodeURIComponent(getDeviceId()) + "&_=" + Date.now(), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (!res || !res.ok || !res.polls || !res.polls.length) return;
+        res.polls.forEach(function (poll) {
+          if (poll.showHere !== false) {
+            var sec = document.createElement("section");
+            sec.className = "vote-section";
+            sec.id = "votacion-" + poll.id;
+            sec.setAttribute("data-vote-poll", poll.id);
+            colocarVotacion(sec, poll);
+            pintarVotacion(sec, poll);
+          }
+          if (poll.fabHere) montarBotonVotacion(poll);
+        });
+        // si se llegó con #votacion-xxx desde el botón de otra página
+        if (location.hash.indexOf("#votacion-") === 0) {
+          var destino = document.getElementById(location.hash.slice(1));
+          if (destino) destino.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "center" });
+        }
+      })
+      .catch(function (e) { console.warn("[votacion] no se pudo consultar:", e); });
+  }
+
   /* ---------------- Boot ---------------- */
   function boot() {
     safe(applyHomeBlocks, "applyHomeBlocks");
@@ -4042,6 +4393,7 @@
     safe(initRedeemCode, "initRedeemCode");
     safe(aplicarFlotantes, "aplicarFlotantes");
     safe(initPremioBloqueado, "initPremioBloqueado");
+    safe(mountVotaciones, "mountVotaciones");
     safe(initPresencePing, "initPresencePing");
     safe(limpiarPushViejo, "limpiarPushViejo");
     safe(refreshGiftFab, "refreshGiftFab");

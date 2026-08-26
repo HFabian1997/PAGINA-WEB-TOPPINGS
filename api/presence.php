@@ -14,6 +14,7 @@
 date_default_timezone_set('America/Bogota');
 require_once __DIR__ . '/data-path.php';
 require_once __DIR__ . '/customers-lib.php';
+require_once __DIR__ . '/visits-lib.php';
 
 session_name('toppings_admin_sess');
 session_set_cookie_params(array(
@@ -111,7 +112,19 @@ switch ($action) {
       /* Cuántos entraron hoy: se guarda la lista de dispositivos del día para
          no contar dos veces a la misma persona, y solo la del día en curso —
          al cambiar el día se queda únicamente el número. */
-      if (!isset($state['dailyDevices'][$hoy])) $state['dailyDevices'] = array($hoy => array());
+      /* Cambió el día: antes de tirar la lista del día que terminó, se
+         archiva en visits.json. Ese archivo lo lee solo el panel, así que
+         presence.json —que se escribe en cada latido de cada visitante— se
+         queda igual de chico que siempre. Es la razón por la que el historial
+         de visitas no vive acá. */
+      if (!isset($state['dailyDevices'][$hoy])) {
+        foreach ($state['dailyDevices'] as $diaViejo => $listaVieja) {
+          if ($diaViejo !== $hoy && is_array($listaVieja) && count($listaVieja)) {
+            visitsArchivarDia($diaViejo, $listaVieja);
+          }
+        }
+        $state['dailyDevices'] = array($hoy => array());
+      }
       if (!in_array($deviceId, $state['dailyDevices'][$hoy], true)) {
         $state['dailyDevices'][$hoy][] = $deviceId;
       }
@@ -130,7 +143,83 @@ switch ($action) {
        escribe si pasaron 10 minutos desde la última vez. */
     customersTouch($deviceId);
 
+    /* Si el panel borró a este cliente de la lista pero su celular todavía
+       tiene el nombre guardado, acá vuelve a entrar. Borrar un cliente es una
+       limpieza de la lista, no una expulsión: quien vuelve, reaparece.
+
+       customersTouch() no alcanza para esto porque solo actualiza a quien YA
+       está en el registro — a propósito, para no llenarlo de anónimos. Por eso
+       se reinscribe solo cuando el latido trae un nombre. */
+    $nombre = isset($body['name']) ? trim((string) $body['name']) : '';
+    if ($nombre !== '' && customerName($deviceId) === '') {
+      if (function_exists('mb_substr')) $nombre = mb_substr(strip_tags($nombre), 0, 60);
+      rememberCustomer($deviceId, $nombre);
+    }
+
     jsonOut(array('ok' => true));
+  }
+
+  /**
+   * Quiénes, no cuántos.
+   *
+   * Es lo que hace que las tarjetas del panel se puedan tocar: hasta ahora
+   * decían "Conectados ahora: 3" y no había forma de saber quiénes eran.
+   *
+   * `que=ahora`  -> los que están en la página en este momento
+   * `que=periodo`-> los que entraron dentro del período pedido
+   */
+  case 'who': {
+    if (empty($_SESSION['authed'])) jsonOut(array('ok' => false, 'error' => 'No has iniciado sesión.'), 401);
+    global $VIVO_MS;
+    $state = pRead();
+    $now = pNowMs();
+    $hoy = date('Y-m-d');
+    $que = isset($_GET['que']) ? (string) $_GET['que'] : 'ahora';
+    $periodo = isset($_GET['periodo']) ? (string) $_GET['periodo'] : 'hoy';
+    if (!in_array($periodo, array('hoy', 'semana', 'mes', 'todos'), true)) $periodo = 'hoy';
+
+    $hoyLista = isset($state['dailyDevices'][$hoy]) && is_array($state['dailyDevices'][$hoy])
+      ? $state['dailyDevices'][$hoy] : array();
+
+    if ($que === 'ahora') {
+      $ids = array();
+      foreach ($state['seen'] as $id => $ts) {
+        if ($now - (int) $ts <= $VIVO_MS) $ids[] = (string) $id;
+      }
+    } else {
+      $vst = visitsRead();
+      $ids = visitsDispositivosDesde($vst, visitsDesdeDia($periodo), $hoyLista);
+    }
+
+    /* Se le pone nombre a cada uno. Quien nunca dio el suyo sale como
+       "Cliente sin nombre": esconderlo haría que la lista no cuadre con el
+       número de la tarjeta, y eso se lee como un error. */
+    $reg = customersRead();
+    $filas = array();
+    foreach ($ids as $id) {
+      $nombre = isset($reg['customers'][$id]['name']) ? trim((string) $reg['customers'][$id]['name']) : '';
+      $filas[] = array(
+        'deviceId' => $id,
+        'name' => $nombre !== '' ? $nombre : null,
+        'lastSeen' => isset($state['seen'][$id]) ? (int) $state['seen'][$id] : 0,
+        'online' => isset($state['seen'][$id]) && ($now - (int) $state['seen'][$id]) <= $VIVO_MS,
+      );
+    }
+    /* Primero los que tienen nombre y más recientes: los anónimos no aportan
+       nada mirándolos y no tiene sentido que encabecen la lista. */
+    usort($filas, function ($a, $b) {
+      if (($a['name'] === null) !== ($b['name'] === null)) return $a['name'] === null ? 1 : -1;
+      return $b['lastSeen'] - $a['lastSeen'];
+    });
+
+    jsonOut(array(
+      'ok' => true,
+      'que' => $que,
+      'periodo' => $periodo,
+      'total' => count($filas),
+      'rows' => array_slice($filas, 0, 300),
+      'serverNow' => $now,
+    ));
   }
 
   case 'count': {
