@@ -2,7 +2,8 @@
   "hooks": {
     "PostToolUse": [
       {
-        "matcher": "Edit|Write|NotebookEdit",
+        "_comentario": "Bash va incluido a proposito: la mayoria de los cambios se hacen con scripts, no con la herramienta de editar. Sin Bash el guardado automatico se saltea casi todo. El script sale enseguida si no hay nada que guardar, asi que no molesta.",
+        "matcher": "Edit|Write|NotebookEdit|Bash",
         "hooks": [
           {
             "type": "command",

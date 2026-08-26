@@ -2354,6 +2354,61 @@
           };
         },
 
+        /** Busca el "fantasma": letras duplicadas asomando detrás del texto.
+         *
+         *  Se pinta el letrero en un lienzo aparte y se recorre una línea
+         *  horizontal por el medio de las letras contando los BORDES (saltos
+         *  de claro a oscuro). Un texto limpio tiene dos bordes por trazo:
+         *  entra y sale. Si hay una segunda copia corrida, aparecen bordes
+         *  de más, y eso es lo que el ojo lee como "hay algo atrás". */
+        buscarFantasma: function (texto) {
+          var m = medirLetrero(texto);
+          var lienzo = document.createElement("canvas");
+          lienzo.width = Math.ceil(m.cajaW) + 200;
+          lienzo.height = H;
+          var real = ctx;
+          ctx = lienzo.getContext("2d");
+          var px;
+          try { dibujarUnLetrero(lienzo.width / 2, texto, state.esc, state.esc.acento); }
+          finally { px = ctx.getImageData(0, 0, lienzo.width, lienzo.height).data; ctx = real; }
+
+          /* La fila que cruza las letras. Se calcula desde groundY(), no
+             desde H: el letrero se apoya en el piso, que está GROUND_H más
+             arriba del borde del lienzo. Y se prueban varias filas del
+             centro quedándose con la que más bordes cruza, porque el alto
+             de las mayúsculas no llega hasta el borde de la caja. */
+          var medio = Math.round(H - GROUND_H - LETRERO_ALTURA + m.cajaH / 2);
+          var perfil = [], bordes = 0, picos = 0;
+          for (var d = -6; d <= 6; d += 2) {
+            var fila = medio + d, tmp = [];
+            for (var x = 0; x < lienzo.width; x++) {
+              var i = (fila * lienzo.width + x) * 4;
+              tmp.push(px[i] * 0.3 + px[i + 1] * 0.59 + px[i + 2] * 0.11);
+            }
+            var mx = Math.max.apply(null, tmp), mn = Math.min.apply(null, tmp);
+            var u = mn + (mx - mn) * 0.5, b = 0;
+            for (var k = 1; k < tmp.length; k++) if ((tmp[k-1] >= u) !== (tmp[k] >= u)) b++;
+            if (b > bordes) { bordes = b; perfil = tmp; }
+          }
+          // se cuentan los cruces por la mitad entre lo más claro y lo más oscuro
+          var max = Math.max.apply(null, perfil), min = Math.min.apply(null, perfil);
+          var umbral = min + (max - min) * 0.5;
+          for (var k2 = 1; k2 < perfil.length; k2++) {
+            var antes = perfil[k2 - 1] >= umbral, ahora = perfil[k2] >= umbral;
+            if (ahora && !antes) picos++;
+          }
+          /* Los escalones intermedios son la marca del fantasma: una copia
+             corrida deja un nivel de gris entre el fondo y la letra. */
+          var escalones = 0;
+          var bajo = min + (max - min) * 0.22, alto = min + (max - min) * 0.72;
+          for (var j = 0; j < perfil.length; j++) {
+            if (perfil[j] > bajo && perfil[j] < alto) escalones++;
+          }
+          return { texto: texto, trazos: picos, bordes: bordes,
+                   pixelesEnGrisIntermedio: escalones,
+                   porcentajeGris: Math.round(escalones / perfil.length * 100) };
+        },
+
         /** La lista de mundos, para recorrerlos todos en una prueba. */
         mundos: function () { return Object.keys(ESCENARIOS); },
       };
@@ -6200,7 +6255,6 @@
        aun así cada mundo conserva lo suyo. */
 
     var LETRERO_ALTURA = 132;    // del piso al borde de abajo del rótulo
-    var LETRERO_TUBO = 3;        // grosor del tubo de neón
 
     /** Rectángulo con las esquinas redondeadas. El canvas viejo de algunos
      *  teléfonos no trae ctx.roundRect, así que se arma a mano. */
@@ -6217,31 +6271,6 @@
       ctx.lineTo(x, y + r);
       ctx.quadraticCurveTo(x, y, x + r, y);
       ctx.closePath();
-    }
-
-    /* ---- El parpadeo ----
-
-       Un neón de verdad no late parejo: respira, y de vez en cuando pega un
-       tirón y se apaga una fracción de segundo. Eso es lo que lo hace leer
-       como un tubo encendido y no como un texto de colores.
-
-       El tirón sale de un hash y no de Math.random(), para que cada letrero
-       parpadee en su propio momento y no todos a la vez. */
-    function brilloNeon(semilla) {
-      var t = state.elapsed;
-      var respira = 0.80 + 0.20 * Math.sin(t * 2.2 + semilla);
-
-      // cada ~3,4 s hay una ventana corta donde puede dar el tirón
-      var ciclo = Math.floor(t / 3.4 + semilla);
-      if (az(ciclo, semilla + 7) < 0.45) {
-        var dentro = (t / 3.4 + semilla) % 1;
-        if (dentro > 0.90) {
-          // el tirón: dos apagones muy cortos seguidos
-          var golpe = Math.sin((dentro - 0.90) * 190);
-          if (golpe > 0) return respira * 0.18;
-        }
-      }
-      return respira;
     }
 
     /** Los dos postes que lo sostienen, con su base y su refuerzo. */
@@ -6297,84 +6326,99 @@
       ctx.restore();
     }
 
+    /* ---- El letrero grande ----
+
+       El neón se sacó: el tubo, el halo y el parpadeo hacían que el texto
+       compitiera con su propio brillo y se leyera peor, sobre todo en los
+       mapas claros.
+
+       Queda un cartel de verdad: chapa, marco, texto sólido, y los dos
+       postes clavados en el piso. Sigue en los 21 mapas, y sigue tomando el
+       color del mundo — pero para el marco y los detalles, no para hacerlo
+       brillar. */
+
+    /* ---- El letrero grande ----
+
+       LO QUE ESTABA MAL
+
+       El brillo se armaba con tres pasadas de texto, pero la última usaba
+       una letra MÁS CHICA (m.tam - 2) y medio píxel más arriba. Al ser más
+       angosta no tapaba a las de abajo, y por los bordes asomaba un segundo
+       juego de letras: se veía como si atrás hubiera otro texto.
+
+       Eso no era brillo, era desalineación.
+
+       CÓMO SE HACE BIEN
+
+       Todas las pasadas con la MISMA letra y en el MISMO lugar. Lo único que
+       cambia entre una y otra es el desenfoque:
+
+         1. dos pasadas desenfocadas en el color del mapa  -> el resplandor
+         2. una pasada nítida, casi blanca, encima         -> el tubo
+
+       Así se lee igual de nítido que sin brillo, porque el texto de arriba
+       es exactamente el mismo que el de abajo. El resplandor queda alrededor
+       de las letras, nunca encima.
+
+       Y el latido es suave —entre 0,88 y 1— sin el tirón que tenía antes:
+       un parpadeo brusco molesta para leer, que es justo lo que no se quiere
+       en un cartel. */
+
     function dibujarUnLetrero(cx, texto, esc, acento) {
       var m = medirLetrero(texto);
       var base = groundY();
       var an = m.cajaW, al = m.cajaH;
-      var top = base - LETRERO_ALTURA;          // borde de arriba del rótulo
-      var pie = top + al;                        // donde arrancan los postes
+      var top = base - LETRERO_ALTURA;
+      var pie = top + al;
+      var mediaY = top + al / 2;
 
-      /* Semilla propia de cada letrero: depende del texto, así dos carteles
-         distintos nunca parpadean al mismo tiempo. */
+      // respira, sin tirones: cada cartel con su ritmo según su texto
       var semilla = texto.length + texto.charCodeAt(0) % 17;
-      var luz = brilloNeon(semilla);
+      var luz = 0.88 + 0.12 * Math.sin(state.elapsed * 1.6 + semilla);
 
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
 
       postesLetrero(cx, an, pie, base);
-      resplandorEnElPiso(cx, an, acento, luz);
 
-      // el halo que el rótulo tira sobre lo que tiene detrás
-      ctx.save();
-      ctx.globalCompositeOperation = "lighter";
-      var halo = ctx.createRadialGradient(cx, top + al / 2, 0, cx, top + al / 2, an * 0.8);
-      halo.addColorStop(0, "rgba(" + acento + "," + (0.16 * luz).toFixed(3) + ")");
-      halo.addColorStop(1, "rgba(" + acento + ",0)");
-      ctx.fillStyle = halo;
-      ctx.fillRect(cx - an, top - al, an * 2, al * 3);
-      ctx.restore();
-
-      // ---- la chapa: oscura, con un poco de brillo arriba ----
+      // ---- la chapa oscura: es lo que hace que el neón resalte ----
       var chapa = ctx.createLinearGradient(0, top, 0, pie);
       chapa.addColorStop(0, "rgba(30,26,38,.97)");
-      chapa.addColorStop(0.5, "rgba(16,13,22,.97)");
-      chapa.addColorStop(1, "rgba(24,20,31,.97)");
-      cajaRedonda(cx - an / 2, top, an, al, 7);
+      chapa.addColorStop(0.55, "rgba(17,14,23,.97)");
+      chapa.addColorStop(1, "rgba(25,21,32,.97)");
+      cajaRedonda(cx - an / 2, top, an, al, 6);
       ctx.fillStyle = chapa;
       ctx.fill();
 
-      // el marco metálico
-      cajaRedonda(cx - an / 2 + 0.5, top + 0.5, an - 1, al - 1, 6.5);
-      ctx.strokeStyle = "rgba(72,66,84,.9)";
-      ctx.lineWidth = 1.5;
+      // el marco, encendido apenas
+      cajaRedonda(cx - an / 2 + 1, top + 1, an - 2, al - 2, 5);
+      ctx.strokeStyle = "rgba(" + acento + "," + (0.5 * luz).toFixed(2) + ")";
+      ctx.lineWidth = 1.8;
       ctx.stroke();
+      ctx.lineWidth = 1;
 
-      // ---- el tubo de neón que bordea el rótulo ----
-      var margen = 6;
-      ctx.save();
-      ctx.shadowColor = "rgba(" + acento + ",.95)";
-      ctx.shadowBlur = 14 * luz;
-      // primero un trazo ancho y tenue: es el vidrio encendido
-      cajaRedonda(cx - an / 2 + margen, top + margen, an - margen * 2, al - margen * 2, 4);
-      ctx.strokeStyle = "rgba(" + acento + "," + (0.35 * luz).toFixed(2) + ")";
-      ctx.lineWidth = LETRERO_TUBO + 3;
-      ctx.stroke();
-      // y encima el hilo brillante del centro del tubo
-      ctx.strokeStyle = "rgba(255,255,255," + (0.55 * luz).toFixed(2) + ")";
-      ctx.lineWidth = 1.2;
-      ctx.stroke();
-      ctx.restore();
-
-      // ---- el texto, en tres pasadas: halo, color, y el centro caliente ----
+      /* ---- el texto ----
+         Una sola llamada a la fuente, un solo par de coordenadas. Si esto se
+         toca y una pasada queda con otro tamaño, vuelve el fantasma. */
       ctx.font = "900 " + m.tam + "px system-ui, -apple-system, sans-serif";
 
       ctx.save();
       ctx.shadowColor = "rgba(" + acento + ",1)";
-      ctx.shadowBlur = 22 * luz;
-      ctx.fillStyle = "rgba(" + acento + "," + (0.30 * luz).toFixed(2) + ")";
-      ctx.fillText(texto, cx, top + al / 2);
 
-      ctx.shadowBlur = 9 * luz;
-      ctx.fillStyle = "rgba(" + acento + "," + (0.95 * luz).toFixed(2) + ")";
-      ctx.fillText(texto, cx, top + al / 2);
+      // 1. el resplandor: ancho y tenue
+      ctx.shadowBlur = 12 * luz;
+      ctx.fillStyle = "rgba(" + acento + "," + (0.5 * luz).toFixed(2) + ")";
+      ctx.fillText(texto, cx, mediaY);
 
-      /* El corazón del tubo se ve casi blanco. Es el detalle que separa un
-         neón de un texto de color con sombra. */
+      // 2. otra vez más cerrado: acumula intensidad pegada a la letra
+      ctx.shadowBlur = 5 * luz;
+      ctx.fillText(texto, cx, mediaY);
+
+      // 3. el tubo: nítido, sin desenfoque, y casi blanco como el gas encendido
       ctx.shadowBlur = 0;
-      ctx.fillStyle = "rgba(255,255,255," + (0.42 * luz).toFixed(2) + ")";
-      ctx.font = "900 " + Math.max(9, m.tam - 2) + "px system-ui, -apple-system, sans-serif";
-      ctx.fillText(texto, cx, top + al / 2 - 0.5);
+      ctx.fillStyle = "rgba(255,251,242," + (0.92 + 0.08 * luz).toFixed(2) + ")";
+      ctx.fillText(texto, cx, mediaY);
+
       ctx.restore();
     }
 
