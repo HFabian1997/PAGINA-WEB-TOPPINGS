@@ -929,7 +929,6 @@
       canvas.height = Math.round(H * DPR);
       ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
       olvidarDegradados();   // los que dependen del tamaño hay que rehacerlos
-      olvidarTiras();        // y las tiras guardadas, que se dibujaron a este tamaño
     }
 
     /* ---- degradados guardados ----
@@ -1512,7 +1511,6 @@
       var prevRecord = state ? state.record : Number(localStorage.getItem(RECORD_KEY) || 0);
       var esc = elegirEscenario();
       olvidarDegradados();   // el mundo cambió: los degradados viejos ya no sirven
-      olvidarTiras();
       state = {
         charY: groundY() - CHAR_SIZE,
         velocityY: 0,
@@ -3232,7 +3230,7 @@
         var dt = ahora - fpsDatos.ultimo;
         /* Un salto de más de medio segundo no es un tirón del juego: es que
            el celular se bloqueó, cambiaste de app o el navegador congeló la
-           pestaña. Contarlo ensucia el numero justo cuando más se lo mira. */
+           pestaña. Contarlo ensucia el número justo cuando más se lo mira. */
         if (dt < 500) {
           fpsDatos.cuadros++;
           if (dt > fpsDatos.peor) fpsDatos.peor = dt;
@@ -3927,28 +3925,17 @@
     /** Las ventanas de un edificio, con algunas encendidas. `respira` hace
      *  que unas pocas se prendan y apaguen: es lo que hace que el fondo se
      *  vea habitado en vez de dibujado. */
-    /* `cuales` decide qué se dibuja:
-         "fijas"    las que están siempre igual  -> van a la tira guardada
-         "latientes" las que se prenden y apagan -> se dibujan en vivo
-         (nada)     todas, como antes
-
-       Se separan porque las fijas son la enorme mayoría y no hace falta
-       redibujarlas nunca; las que laten son una de cada cinco encendidas.
-       Antes se redibujaban todas en cada cuadro por culpa de esa minoría. */
-    function ventanas(x, top, w, h, luz, densidad, semilla, respira, cuales) {
+    function ventanas(x, top, w, h, luz, densidad, semilla, respira) {
       var pasoX = 9, pasoY = 13;
       var cols = Math.max(1, Math.floor((w - 6) / pasoX));
       var filas = Math.max(1, Math.floor((h - 12) / pasoY));
-      var umbralLatido = densidad * 0.22;
       for (var c = 0; c < cols; c++) {
         for (var f = 0; f < filas; f++) {
           var d = az(semilla * 31 + c * 7, f * 11 + 3);
           if (d > densidad) continue;
-          var late = respira && d < umbralLatido;
-          if (cuales === "fijas" && late) continue;
-          if (cuales === "latientes" && !late) continue;
           var a = 1;
-          if (late) {
+          if (respira && d < densidad * 0.22) {
+            // esta ventana es de las que se apagan de a ratos
             a = 0.25 + 0.75 * (0.5 + 0.5 * Math.sin(state.elapsed * 0.7 + semilla + c + f * 2));
           }
           ctx.globalAlpha = a;
@@ -4024,123 +4011,36 @@
       }
     }
 
-    /* ---- Capas guardadas en una tira ----
-
-       Una cordillera o una fila de edificios NO cambia nunca: solo se
-       corre de lado. Aun así se estaba redibujando entera en cada cuadro —
-       en la Ciudad son cientos de ventanitas, 60 veces por segundo.
-
-       Acá se dibuja UNA vez en una tira del ancho de un ciclo completo, y
-       después cada cuadro son dos estampados. Cientos de órdenes pasan a
-       ser dos, y en pantalla se ve exactamente igual.
-
-       Solo sirve para lo que no se mueve por su cuenta. Lo que ondea, late
-       o parpadea se sigue dibujando en vivo.
-
-       La tira se guarda recortada al alto que ocupa la capa, no al alto de
-       la pantalla: en vertical el lienzo mide más de mil píxeles y guardar
-       todo eso por capa sería demasiada memoria para un celular. */
-    var tiras = {};
-    var TIRA_MAX_PIXELES = 2200000;   // por tira; más que esto no compensa
-
-    function capaEnTira(clave, sep, vel, cuantos, desdeArriba, alto, dibujar) {
-      cuantos = cuantos || 14;
-      var total = sep * cuantos;
-      var t = tiras[clave];
-
-      if (!t || t.total !== total || t.alto !== alto || t.W !== W || t.H !== H) {
-        if (total * alto > TIRA_MAX_PIXELES) {
-          // demasiado grande: se dibuja en vivo, como antes
-          capa(sep, vel, dibujar, cuantos);
-          return;
-        }
-        var l = document.createElement("canvas");
-        l.width = Math.ceil(total);
-        l.height = Math.ceil(alto);
-        var real = ctx;
-        ctx = l.getContext("2d");
-        /* Se corre el origen para que el dibujo pueda seguir usando las
-           mismas coordenadas de pantalla que usaba antes. */
-        ctx.translate(0, -desdeArriba);
-        try {
-          for (var i = 0; i < cuantos; i++) dibujar(i * sep, i, az(i, sep));
-          /* Los que caen sobre el corte se dibujan otra vez del otro lado,
-             si no la tira tendría una costura visible al repetirse. */
-          for (var j = 0; j < cuantos; j++) {
-            dibujar(j * sep - total, j, az(j, sep));
-            dibujar(j * sep + total, j, az(j, sep));
-          }
-        } finally { ctx = real; }
-        t = tiras[clave] = { img: l, total: total, alto: alto, arriba: desdeArriba, W: W, H: H };
-      }
-
-      var off = (state.bgScroll * vel) % total;
-      for (var v = 0; v < 2; v++) {
-        var x = -off + v * total;
-        if (x > W || x + total < 0) continue;
-        ctx.drawImage(t.img, x, t.arriba);
-      }
-    }
-
-    /** Se olvidan al cambiar de mapa o de tamaño: si no, quedaría la tira
-     *  del mundo anterior. */
-    function olvidarTiras() { tiras = {}; }
     /** Una cordillera, en UN SOLO trazo.
      *
      *  En un solo trazo a propósito: si cada cerro se pintara por separado,
      *  donde se cruzan el color se acumularía y se verían los bordes de cada
      *  triángulo en vez de una silueta. */
-    /* La cordillera no cambia nunca, así que se guarda en una tira y cada
-       cuadro son dos estampados en vez de cien líneas. */
     function cordillera(sep, vel, alto, variacion, color, cuantos) {
       var base = groundY();
-      var altoTira = alto + variacion + 12;
-      capaEnTira("cordillera:" + color + ":" + sep + ":" + alto + ":" + variacion,
-                 sep, vel, cuantos, base - altoTira, altoTira + 2,
-                 function (x, i, s) {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(-240, base);
+      capa(sep, vel, function (x, i, s) {
         var h = alto + s * variacion;
-        ctx.fillStyle = color;
-        ctx.beginPath();
-        ctx.moveTo(x, base);
+        ctx.lineTo(x, base);
         /* Cuatro vértices y no uno: un cerro con la arista quebrada se lee
            como roca; con una sola punta se lee como un triángulo. */
         ctx.lineTo(x + sep * (0.22 + s * 0.16), base - h * (0.62 + s * 0.2));
         ctx.lineTo(x + sep * (0.42 + s * 0.22), base - h);
         ctx.lineTo(x + sep * (0.72 - s * 0.14), base - h * (0.5 + s * 0.26));
         ctx.lineTo(x + sep, base);
-        ctx.lineTo(x + sep, base + 2);
-        ctx.lineTo(x, base + 2);
-        ctx.closePath();
-        ctx.fill();
-      });
+      }, cuantos);
+      ctx.lineTo(W + 240, base);
+      ctx.closePath();
+      ctx.fill();
     }
 
     /** Una fila de edificios con ventanas encendidas. `luz` es el color de
      *  las ventanas; `densidad` cuántas están prendidas (0 a 1). */
-    /* El edificio y la mayoría de sus ventanas no cambian nunca: van a una
-       tira guardada. Solo las ventanas que se prenden y apagan se dibujan
-       en vivo encima. En la Ciudad eran cientos de rectangulitos por cuadro
-       y pasan a ser dos estampados más un puñado. */
     function manzana(sep, vel, alto, variacion, color, luz, densidad, remates, cuantos) {
       var base = groundY();
-      var altoTira = alto + variacion + 40;
-
-      capaEnTira("manzana:" + color + ":" + luz + ":" + sep + ":" + alto + ":" + variacion + ":" + densidad + ":" + (remates ? 1 : 0),
-                 sep, vel, cuantos, base - altoTira, altoTira,
-                 function (x, i, s) { dibujarEdificio(x, i, s, sep, alto, variacion, color, luz, densidad, remates, base, "fijas"); });
-
-      // y las que laten, en vivo
       capa(sep, vel, function (x, i, s) {
-        var w = sep * (0.46 + s * 0.34);
-        var h = alto + s * variacion;
-        ventanas(x, base - h, w, h, luz, densidad, i + sep, true, "latientes");
-      }, cuantos);
-    }
-
-    /** Un edificio suelto. Sale de `manzana` para poder dibujarlo tanto en
-     *  la tira guardada como en vivo, sin repetir el código. */
-    function dibujarEdificio(x, i, s, sep, alto, variacion, color, luz, densidad, remates, base, cuales) {
-      (function (x, i, s) {
         var w = sep * (0.46 + s * 0.34);
         var h = alto + s * variacion;
         var top = base - h;
@@ -4160,8 +4060,8 @@
           }
         }
 
-        ventanas(x, top, w, h, luz, densidad, i + sep, true, cuales);
-      })(x, i, s);
+        ventanas(x, top, w, h, luz, densidad, i + sep, true);
+      }, cuantos);
     }
 
     /** Una arboleda. `pino` cambia la copa redonda por un triángulo. */
