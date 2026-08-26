@@ -1,0 +1,43 @@
+# ============================================================
+# Fin de línea — para que git no cambie los archivos por su cuenta
+# ============================================================
+#
+# El proyecto tiene DOS convenciones distintas, y las dos son a propósito:
+#
+#   CRLF  el sitio (.js .css .html) — así se editan en Windows
+#   LF    el servidor (.php .htaccess) y lib/manifest.js
+#
+# Sin este archivo, `core.autocrlf = true` le pone CRLF a TODO al clonar,
+# incluidos los PHP. No rompe PHP, pero ensucia cada diff y hace que un
+# archivo se vea "modificado entero" sin haberlo tocado.
+#
+# `working-tree-encoding` no hace falta: todo el proyecto es UTF-8.
+
+# Por defecto, que git decida si es texto pero sin convertir nada
+*                 -text
+
+# ----- el sitio: CRLF -----
+*.js              text eol=crlf
+*.css             text eol=crlf
+*.html            text eol=crlf
+*.md              text eol=crlf
+
+# ----- el servidor: LF -----
+*.php             text eol=lf
+.htaccess         text eol=lf
+*.json            text eol=lf
+
+# manifest.js es la copia pública del contenido, la escribe el PHP: LF
+lib/manifest.js   text eol=lf
+
+# ----- binarios: que no los toque -----
+*.png             binary
+*.jpg             binary
+*.jpeg            binary
+*.webp            binary
+*.gif             binary
+*.ico             binary
+*.mp3             binary
+*.woff            binary
+*.woff2           binary
+*.zip             binary
