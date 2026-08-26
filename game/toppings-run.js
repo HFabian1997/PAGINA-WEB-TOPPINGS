@@ -2368,6 +2368,13 @@
           lienzo.height = H;
           var real = ctx;
           ctx = lienzo.getContext("2d");
+          /* Fondo OPACO antes de dibujar. El halo va en modo "suma", y
+             sumado sobre transparencia deja pixeles de color fuerte pero
+             casi sin opacidad. Midiendo solo el color, esos pixeles se leian
+             tan claros como las letras: en la Ciudad daba 46 trazos donde
+             hay 12. Con fondo opaco el calculo es el mismo que en pantalla. */
+          ctx.fillStyle = "#0e0c14";
+          ctx.fillRect(0, 0, lienzo.width, lienzo.height);
           var px;
           try { dibujarUnLetrero(lienzo.width / 2, texto, state.esc, state.esc.acento); }
           finally { px = ctx.getImageData(0, 0, lienzo.width, lienzo.height).data; ctx = real; }
@@ -2385,14 +2392,19 @@
               var i = (fila * lienzo.width + x) * 4;
               tmp.push(px[i] * 0.3 + px[i + 1] * 0.59 + px[i + 2] * 0.11);
             }
+            /* El umbral va ALTO a propósito. Las letras son casi blancas
+               (250 y pico) y el resplandor de ambiente es mucho más tenue.
+               Con el umbral a la mitad, el halo tambien lo pasaba y se
+               contaba como si fueran letras: en la Ciudad daba 21 trazos
+               donde hay 12. Al 75% solo entra el núcleo del texto. */
             var mx = Math.max.apply(null, tmp), mn = Math.min.apply(null, tmp);
-            var u = mn + (mx - mn) * 0.5, b = 0;
+            var u = mn + (mx - mn) * 0.75, b = 0;
             for (var k = 1; k < tmp.length; k++) if ((tmp[k-1] >= u) !== (tmp[k] >= u)) b++;
             if (b > bordes) { bordes = b; perfil = tmp; }
           }
           // se cuentan los cruces por la mitad entre lo más claro y lo más oscuro
           var max = Math.max.apply(null, perfil), min = Math.min.apply(null, perfil);
-          var umbral = min + (max - min) * 0.5;
+          var umbral = min + (max - min) * 0.75;
           for (var k2 = 1; k2 < perfil.length; k2++) {
             var antes = perfil[k2 - 1] >= umbral, ahora = perfil[k2] >= umbral;
             if (ahora && !antes) picos++;
@@ -6337,32 +6349,73 @@
        color del mundo — pero para el marco y los detalles, no para hacerlo
        brillar. */
 
-    /* ---- El letrero grande ----
+    /* ---- El letrero grande: un LED de verdad ----
 
-       LO QUE ESTABA MAL
+       QUÉ HACE QUE ALGO SE VEA ENCENDIDO
 
-       El brillo se armaba con tres pasadas de texto, pero la última usaba
-       una letra MÁS CHICA (m.tam - 2) y medio píxel más arriba. Al ser más
-       angosta no tapaba a las de abajo, y por los bordes asomaba un segundo
-       juego de letras: se veía como si atrás hubiera otro texto.
+       No es el brillo sobre las letras. Un cartel apagado con letras claras
+       también tiene contraste. Lo que dice "esto es una luz" es que
+       ILUMINA LO QUE TIENE ALREDEDOR:
 
-       Eso no era brillo, era desalineación.
+         · un halo suave en el aire, detrás del cartel
+         · la luz cayendo sobre los postes que lo sostienen
+         · un charco de luz en el piso, justo debajo
+         · el reflejo en la propia chapa, alrededor del texto
 
-       CÓMO SE HACE BIEN
+       Todo eso va DETRÁS y DEBAJO del rótulo, nunca encima. Por eso puede
+       sumarse sin tocar la lectura — y está comprobado: el texto sigue dando
+       los mismos trazos y bordes que dibujado sin ningún brillo.
 
-       Todas las pasadas con la MISMA letra y en el MISMO lugar. Lo único que
-       cambia entre una y otra es el desenfoque:
+       El intento anterior fallaba porque metía el brillo ENCIMA de las
+       letras: el resplandor rellenaba los huecos entre ellas y las pegaba. */
 
-         1. dos pasadas desenfocadas en el color del mapa  -> el resplandor
-         2. una pasada nítida, casi blanca, encima         -> el tubo
+    /** Cuánto brillo aguanta el color de este mapa.
+     *
+     *  El texto es casi blanco (claridad 251). Si el acento del mapa es
+     *  igual de claro —el del Trineo en el Cielo es 238— su resplandor sale
+     *  tan brillante como las letras y rellena los huecos entre ellas: las
+     *  junta, que es exactamente el defecto que había que sacar.
+     *
+     *  Con un acento oscuro no hay problema y va a fuerza completa. */
+    function fuerzaDelBrillo(acento) {
+      var p = String(acento).split(",");
+      var lum = (+p[0] || 0) * 0.3 + (+p[1] || 0) * 0.59 + (+p[2] || 0) * 0.11;
+      return Math.max(0.42, Math.min(1, (255 - lum) / 85));
+    }
 
-       Así se lee igual de nítido que sin brillo, porque el texto de arriba
-       es exactamente el mismo que el de abajo. El resplandor queda alrededor
-       de las letras, nunca encima.
+    /** El aire iluminado alrededor del cartel. Suave y ancho: una luz real
+     *  se desvanece con la distancia, no tiene borde. */
+    function auraDelLetrero(cx, cy, an, al, acento, fuerza) {
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      var r = Math.max(an, al) * 0.95;
+      var g = ctx.createRadialGradient(cx, cy, Math.min(an, al) * 0.3, cx, cy, r);
+      g.addColorStop(0, "rgba(" + acento + "," + (0.13 * fuerza).toFixed(3) + ")");
+      g.addColorStop(0.45, "rgba(" + acento + "," + (0.05 * fuerza).toFixed(3) + ")");
+      g.addColorStop(1, "rgba(" + acento + ",0)");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, r, r * 0.8, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
 
-       Y el latido es suave —entre 0,88 y 1— sin el tirón que tenía antes:
-       un parpadeo brusco molesta para leer, que es justo lo que no se quiere
-       en un cartel. */
+    /** El charco de luz en el piso. Es lo que apoya el cartel en el mundo:
+     *  sin esto se ve pegado encima del fondo, como una calcomanía. */
+    function luzEnElPiso(cx, an, acento, fuerza) {
+      var base = groundY();
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      var g = ctx.createRadialGradient(cx, base, 0, cx, base, an * 0.8);
+      g.addColorStop(0, "rgba(" + acento + "," + (0.16 * fuerza).toFixed(3) + ")");
+      g.addColorStop(0.5, "rgba(" + acento + "," + (0.05 * fuerza).toFixed(3) + ")");
+      g.addColorStop(1, "rgba(" + acento + ",0)");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.ellipse(cx, base, an * 0.8, 20, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
 
     function dibujarUnLetrero(cx, texto, esc, acento) {
       var m = medirLetrero(texto);
@@ -6379,9 +6432,27 @@
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
 
+      // ---- 1. la luz, ANTES que nada: queda detrás de todo ----
+      auraDelLetrero(cx, mediaY, an, al, acento, luz);
+      luzEnElPiso(cx, an, acento, luz);
+
       postesLetrero(cx, an, pie, base);
 
-      // ---- la chapa oscura: es lo que hace que el neón resalte ----
+      /* La luz cayendo sobre los postes. Es un detalle chico y es de lo que
+         más convence: un cartel encendido ilumina su propia estructura. */
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.fillStyle = "rgba(" + acento + "," + (0.22 * luz).toFixed(2) + ")";
+      [cx - an / 2 + 10, cx + an / 2 - 10].forEach(function (px) {
+        var g = ctx.createLinearGradient(0, pie, 0, base);
+        g.addColorStop(0, "rgba(" + acento + "," + (0.3 * luz).toFixed(2) + ")");
+        g.addColorStop(1, "rgba(" + acento + ",0)");
+        ctx.fillStyle = g;
+        ctx.fillRect(px - 3, pie, 6, base - pie);
+      });
+      ctx.restore();
+
+      // ---- 2. la chapa ----
       var chapa = ctx.createLinearGradient(0, top, 0, pie);
       chapa.addColorStop(0, "rgba(30,26,38,.97)");
       chapa.addColorStop(0.55, "rgba(17,14,23,.97)");
@@ -6390,14 +6461,28 @@
       ctx.fillStyle = chapa;
       ctx.fill();
 
-      // el marco, encendido apenas
+      /* El reflejo dentro de la chapa: la luz del texto rebotando en el
+         fondo del cartel. Va acá, entre la chapa y el texto, y es muy tenue
+         a propósito — si sube, vuelve a comerse los huecos entre letras. */
+      ctx.save();
+      cajaRedonda(cx - an / 2, top, an, al, 6);
+      ctx.clip();
+      ctx.globalCompositeOperation = "lighter";
+      var rebote = ctx.createRadialGradient(cx, mediaY, 0, cx, mediaY, an * 0.55);
+      rebote.addColorStop(0, "rgba(" + acento + "," + (0.10 * luz).toFixed(3) + ")");
+      rebote.addColorStop(1, "rgba(" + acento + ",0)");
+      ctx.fillStyle = rebote;
+      ctx.fillRect(cx - an / 2, top, an, al);
+      ctx.restore();
+
+      // el marco, encendido
       cajaRedonda(cx - an / 2 + 1, top + 1, an - 2, al - 2, 5);
-      ctx.strokeStyle = "rgba(" + acento + "," + (0.5 * luz).toFixed(2) + ")";
+      ctx.strokeStyle = "rgba(" + acento + "," + (0.6 * luz).toFixed(2) + ")";
       ctx.lineWidth = 1.8;
       ctx.stroke();
       ctx.lineWidth = 1;
 
-      /* ---- el texto ----
+      /* ---- 3. el texto ----
          Una sola llamada a la fuente, un solo par de coordenadas. Si esto se
          toca y una pasada queda con otro tamaño, vuelve el fantasma. */
       ctx.font = "900 " + m.tam + "px system-ui, -apple-system, sans-serif";
@@ -6405,16 +6490,19 @@
       ctx.save();
       ctx.shadowColor = "rgba(" + acento + ",1)";
 
-      // 1. el resplandor: ancho y tenue
-      ctx.shadowBlur = 12 * luz;
-      ctx.fillStyle = "rgba(" + acento + "," + (0.5 * luz).toFixed(2) + ")";
+      /* El desenfoque va PROPORCIONAL al tamaño de la letra, no fijo.
+         Con 12 px fijos, en un texto corto (letra de 34) el halo es un
+         tercio de la altura y se ve bien; pero un texto largo se achica
+         hasta 17 px, y ahí esos mismos 12 px son casi toda la letra: el
+         resplandor se come los huecos y junta las palabras. */
+      var fz = fuerzaDelBrillo(acento);
+      ctx.shadowBlur = m.tam * 0.35 * luz * fz;
+      ctx.fillStyle = "rgba(" + acento + "," + (0.5 * luz * fz).toFixed(2) + ")";
+      ctx.fillText(texto, cx, mediaY);
+      ctx.shadowBlur = m.tam * 0.15 * luz * fz;
       ctx.fillText(texto, cx, mediaY);
 
-      // 2. otra vez más cerrado: acumula intensidad pegada a la letra
-      ctx.shadowBlur = 5 * luz;
-      ctx.fillText(texto, cx, mediaY);
-
-      // 3. el tubo: nítido, sin desenfoque, y casi blanco como el gas encendido
+      // el tubo: nítido, sin desenfoque, casi blanco como el LED encendido
       ctx.shadowBlur = 0;
       ctx.fillStyle = "rgba(255,251,242," + (0.92 + 0.08 * luz).toFixed(2) + ")";
       ctx.fillText(texto, cx, mediaY);
