@@ -30,7 +30,9 @@ if git diff --cached --quiet; then
 fi
 
 CUANTOS=$(git diff --cached --name-only | wc -l | tr -d ' ')
-LISTA=$(git diff --cached --name-only | head -4 | sed 's|.*/||' | paste -sd ", " -)
+# `paste -sd ", "` NO sirve acá: toma la cadena como una LISTA de separadores
+# y los va rotando (coma, espacio, coma...), así que la lista sale despareja.
+LISTA=$(git diff --cached --name-only | head -4 | sed 's|.*/||' | tr '\n' '\a' | sed 's/\a$//; s/\a/, /g')
 [ "$CUANTOS" -gt 4 ] && LISTA="$LISTA y $((CUANTOS - 4)) más"
 
 git commit -q -m "Guardado automático: $LISTA" -m "Commit hecho solo al editar. Se pueden juntar después con un squash." 2>/dev/null
