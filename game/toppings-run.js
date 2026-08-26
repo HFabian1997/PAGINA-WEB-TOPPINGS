@@ -3205,8 +3205,24 @@
          · los milisegundos del cuadro más lento del último segundo, que es
            lo que se siente como tirón (el promedio los esconde)
          · cuántos cuadros del último segundo pasaron de 20 ms */
-    var MEDIR_FPS = /[?&]fps=1/.test(location.search);
-    var fpsDatos = { marcas: [], ultimo: 0, cuadros: 0, peor: 0, lentos: 0, texto: "" };
+    /* Se enciende con ?fps=1 y QUEDA encendido en ese celular hasta que se
+       apague con ?fps=0. Antes dependía de que la dirección llevara el
+       parámetro siempre: si se entraba desde un acceso directo o un enlace
+       de WhatsApp, se perdía y el medidor no salía. */
+    var MEDIR_FPS = (function () {
+      try {
+        if (/[?&]fps=1/.test(location.search)) { localStorage.setItem("toppings_fps", "1"); return true; }
+        if (/[?&]fps=0/.test(location.search)) { localStorage.removeItem("toppings_fps"); return false; }
+        return localStorage.getItem("toppings_fps") === "1";
+      } catch (e) {
+        return /[?&]fps=1/.test(location.search);
+      }
+    })();
+
+    /* Arranca con un texto puesto: antes esperaba a completar el primer
+       segundo para mostrar algo, y en ese rato la pantalla se veía igual
+       que sin medidor — parecía que no funcionaba. */
+    var fpsDatos = { ultimo: 0, cuadros: 0, peor: 0, lentos: 0, texto: "midiendo..." };
 
     function anotarCuadro(ahora) {
       if (!MEDIR_FPS) return;
@@ -3219,8 +3235,10 @@
       fpsDatos.ultimo = ahora;
       if (!fpsDatos.desde) fpsDatos.desde = ahora;
       if (ahora - fpsDatos.desde >= 1000) {
+        if (fpsDatos.peor > (fpsDatos.peorDeTodo || 0)) fpsDatos.peorDeTodo = fpsDatos.peor;
         fpsDatos.texto = fpsDatos.cuadros + " fps · peor " + fpsDatos.peor.toFixed(0) +
-                         " ms · " + fpsDatos.lentos + " tirones";
+                         " ms · " + fpsDatos.lentos + " tirones · max " +
+                         (fpsDatos.peorDeTodo || 0).toFixed(0);
         fpsDatos.cuadros = 0; fpsDatos.peor = 0; fpsDatos.lentos = 0; fpsDatos.desde = ahora;
       }
     }
@@ -3228,13 +3246,17 @@
     function dibujarMedidor() {
       if (!MEDIR_FPS || !fpsDatos.texto) return;
       ctx.save();
-      ctx.font = "700 11px system-ui, -apple-system, sans-serif";
-      var an = ctx.measureText(fpsDatos.texto).width + 14;
-      ctx.fillStyle = "rgba(0,0,0,.72)";
-      ctx.fillRect(6, 6, an, 20);
+      ctx.font = "800 13px system-ui, -apple-system, sans-serif";
+      var an = ctx.measureText(fpsDatos.texto).width + 18;
+      ctx.fillStyle = "rgba(0,0,0,.9)";
+      ctx.fillRect(6, 6, an, 26);
+      ctx.strokeStyle = "#7CFF9B";
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(6.5, 6.5, an - 1, 25);
+      ctx.lineWidth = 1;
       ctx.fillStyle = "#7CFF9B";
       ctx.textAlign = "left"; ctx.textBaseline = "middle";
-      ctx.fillText(fpsDatos.texto, 13, 17);
+      ctx.fillText(fpsDatos.texto, 15, 20);
       ctx.restore();
     }
 
