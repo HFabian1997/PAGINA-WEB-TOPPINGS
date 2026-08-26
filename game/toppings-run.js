@@ -3125,7 +3125,7 @@
       var esc = state.esc;
       var base = groundY();
       var colorLejos = esc.cielo[esc.cielo.length - 1][1];
-      ctx.fillStyle = degradado("aire:" + esc.nombre, function () {
+      ctx.fillStyle = degradado("aire:" + esc.nombre + ":" + W + "x" + H, function () {
         var g = ctx.createLinearGradient(0, base - 165, 0, base);
         g.addColorStop(0, conAlfa(colorLejos, 0));
         g.addColorStop(1, conAlfa(colorLejos, 0.11));
@@ -3134,27 +3134,50 @@
       ctx.fillRect(0, base - 165, W, 165);
     }
 
+    /* ---- La pasada de luz final ----
+
+       El tinte del mundo y la viñeta no cambian NUNCA mientras dure la
+       partida: dependen del mapa y del tamaño del lienzo, y nada más. Aun
+       así se estaban pintando de cero en cada cuadro, dos veces la pantalla
+       entera, una de ellas cambiando el modo de composición.
+
+       En un celular eso es de lo más caro que hay: la GPU trabaja por
+       baldosas, y cada cambio de composición la obliga a cortar lo que está
+       haciendo y empezar de nuevo.
+
+       Ahora las dos se dibujan UNA vez en una imagen aparte y después se
+       estampa esa imagen. Una sola orden, sin cambios de modo. */
+    var capaDeLuz = null, capaDeLuzClave = "";
+
+    function prepararCapaDeLuz(esc) {
+      var clave = esc.nombre + ":" + W + "x" + H;
+      if (capaDeLuz && capaDeLuzClave === clave) return capaDeLuz;
+
+      var lienzo = document.createElement("canvas");
+      lienzo.width = Math.max(1, Math.round(W));
+      lienzo.height = Math.max(1, Math.round(H));
+      var c = lienzo.getContext("2d");
+
+      // el tinte del mundo
+      c.fillStyle = "rgba(" + esc.acento + ",.045)";
+      c.fillRect(0, 0, W, H);
+
+      // la viñeta encima
+      var g = c.createRadialGradient(W * 0.5, H * 0.46, Math.min(W, H) * 0.30,
+                                     W * 0.5, H * 0.46, Math.max(W, H) * 0.78);
+      g.addColorStop(0, "rgba(0,0,0,0)");
+      g.addColorStop(0.62, "rgba(0,0,0,.10)");
+      g.addColorStop(1, "rgba(0,0,0,.40)");
+      c.fillStyle = g;
+      c.fillRect(0, 0, W, H);
+
+      capaDeLuz = lienzo;
+      capaDeLuzClave = clave;
+      return capaDeLuz;
+    }
+
     function luzDeAmbiente() {
-      var esc = state.esc;
-
-      // 1. El tinte del mundo: poquísimo, pero es lo que emparenta los colores
-      ctx.save();
-      ctx.globalCompositeOperation = "lighter";
-      ctx.fillStyle = "rgba(" + esc.acento + ",.035)";
-      ctx.fillRect(0, 0, W, H);
-      ctx.restore();
-
-      /* 2. La viñeta. Cierra los cuatro bordes y de paso disimula el corte
-            del lienzo, que en pantalla chica se nota. */
-      ctx.fillStyle = degradado("vineta:" + W + "x" + H, function () {
-        var g = ctx.createRadialGradient(W * 0.5, H * 0.46, Math.min(W, H) * 0.30,
-                                         W * 0.5, H * 0.46, Math.max(W, H) * 0.78);
-        g.addColorStop(0, "rgba(0,0,0,0)");
-        g.addColorStop(0.62, "rgba(0,0,0,.10)");
-        g.addColorStop(1, "rgba(0,0,0,.40)");
-        return g;
-      });
-      ctx.fillRect(0, 0, W, H);
+      ctx.drawImage(prepararCapaDeLuz(state.esc), 0, 0, W, H);
     }
 
     /** Pasa un "#rrggbb" a "rgba(r,g,b,a)". Hace falta porque los cielos
@@ -3165,6 +3188,54 @@
       var n = parseInt(h, 16);
       if (isNaN(n)) return "rgba(0,0,0," + alfa + ")";
       return "rgba(" + ((n >> 16) & 255) + "," + ((n >> 8) & 255) + "," + (n & 255) + "," + alfa + ")";
+    }
+
+
+    /* ---- Medidor de rendimiento ----
+
+       Se enciende agregando ?fps=1 a la dirección. Sin eso no existe: ni
+       se dibuja ni se calcula nada.
+
+       Hace falta porque el rendimiento SOLO se puede medir en el aparato
+       de verdad. Desde una computadora con GPU todo da bien y no se
+       aprende nada del celular de un cliente.
+
+       Muestra tres cosas:
+         · los cuadros por segundo
+         · los milisegundos del cuadro más lento del último segundo, que es
+           lo que se siente como tirón (el promedio los esconde)
+         · cuántos cuadros del último segundo pasaron de 20 ms */
+    var MEDIR_FPS = /[?&]fps=1/.test(location.search);
+    var fpsDatos = { marcas: [], ultimo: 0, cuadros: 0, peor: 0, lentos: 0, texto: "" };
+
+    function anotarCuadro(ahora) {
+      if (!MEDIR_FPS) return;
+      if (fpsDatos.ultimo) {
+        var dt = ahora - fpsDatos.ultimo;
+        fpsDatos.cuadros++;
+        if (dt > fpsDatos.peor) fpsDatos.peor = dt;
+        if (dt > 20) fpsDatos.lentos++;
+      }
+      fpsDatos.ultimo = ahora;
+      if (!fpsDatos.desde) fpsDatos.desde = ahora;
+      if (ahora - fpsDatos.desde >= 1000) {
+        fpsDatos.texto = fpsDatos.cuadros + " fps · peor " + fpsDatos.peor.toFixed(0) +
+                         " ms · " + fpsDatos.lentos + " tirones";
+        fpsDatos.cuadros = 0; fpsDatos.peor = 0; fpsDatos.lentos = 0; fpsDatos.desde = ahora;
+      }
+    }
+
+    function dibujarMedidor() {
+      if (!MEDIR_FPS || !fpsDatos.texto) return;
+      ctx.save();
+      ctx.font = "700 11px system-ui, -apple-system, sans-serif";
+      var an = ctx.measureText(fpsDatos.texto).width + 14;
+      ctx.fillStyle = "rgba(0,0,0,.72)";
+      ctx.fillRect(6, 6, an, 20);
+      ctx.fillStyle = "#7CFF9B";
+      ctx.textAlign = "left"; ctx.textBaseline = "middle";
+      ctx.fillText(fpsDatos.texto, 13, 17);
+      ctx.restore();
     }
 
     function drawBackground() {
@@ -3230,6 +3301,7 @@
         drawSkylineLayer(state.bgFar, state.bgScrollFar, "rgba(18,12,22,.55)", tinte + ".35)");
         drawSkylineLayer(state.bgNear, state.bgScrollNear, "rgba(14,9,16,.8)", tinte + ".55)");
       }
+      volcarLuces();         // todas las luces del fondo, de una sola vez
       nieblaDeDistancia();   // el aire entre el fondo y el frente
       drawCarteles();
 
@@ -3728,16 +3800,66 @@
 
     /** Un foco de luz que ilumina lo que tiene alrededor. Va en modo suma,
      *  que es lo que hace que se vea como luz y no como una mancha clara. */
+    /* Un foco de luz.
+
+       Antes armaba un degradado nuevo en CADA llamada, y se llama muchas
+       veces por cuadro (faroles, ventanas, calabazas). Construir la rampa
+       de color no es gratis y encima deja basura que después hay que
+       recoger; en un celular flojo eso se siente como tirones.
+
+       Ahora el degradado se dibuja una vez en una imagen chica, centrada en
+       el cero, y se reusa estirándola. La imagen se guarda por color, que
+       es lo único que la cambia de verdad. */
+    var focos = {};
+    var FOCO_TAM = 128;
+
+    function imagenDeFoco(color) {
+      if (focos[color]) return focos[color];
+      var l = document.createElement("canvas");
+      l.width = l.height = FOCO_TAM;
+      var c = l.getContext("2d");
+      var r = FOCO_TAM / 2;
+      var g = c.createRadialGradient(r, r, 0, r, r, r);
+      g.addColorStop(0, "rgba(" + color + ",1)");
+      g.addColorStop(0.45, "rgba(" + color + ",.31)");
+      g.addColorStop(1, "rgba(" + color + ",0)");
+      c.fillStyle = g;
+      c.fillRect(0, 0, FOCO_TAM, FOCO_TAM);
+      focos[color] = l;
+      return l;
+    }
+
+    /* Los focos NO se dibujan en el momento: se anotan y se pintan todos
+       juntos al final, en un solo bloque.
+
+       Cada foco cambiaba el modo de composición y lo devolvía. Con doce
+       faroles eso son doce idas y vueltas por cuadro, y la GPU de un
+       celular trabaja por baldosas: cada cambio la obliga a cortar lo que
+       estaba haciendo, guardar la baldosa y volver a cargarla. Es de lo más
+       caro que se puede hacer.
+
+       Juntándolos, el cambio de modo ocurre UNA vez por tanda. */
+    var lucesPendientes = [];
+
     function luzPuntual(x, y, radio, color, fuerza) {
+      var a = 0.42 * fuerza;
+      if (a <= 0.004 || radio <= 0) return;          // no se vería: no se dibuja
+      if (x + radio < 0 || x - radio > W) return;    // fuera de pantalla
+      lucesPendientes.push([x, y, radio, color, a > 1 ? 1 : a]);
+    }
+
+    /** Pinta de una vez todas las luces anotadas. */
+    function volcarLuces() {
+      if (!lucesPendientes.length) return;
       ctx.save();
       ctx.globalCompositeOperation = "lighter";
-      var g = ctx.createRadialGradient(x, y, 0, x, y, radio);
-      g.addColorStop(0, "rgba(" + color + "," + (0.42 * fuerza).toFixed(3) + ")");
-      g.addColorStop(0.45, "rgba(" + color + "," + (0.13 * fuerza).toFixed(3) + ")");
-      g.addColorStop(1, "rgba(" + color + ",0)");
-      ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(x, y, radio, 0, Math.PI * 2); ctx.fill();
+      for (var i = 0; i < lucesPendientes.length; i++) {
+        var l = lucesPendientes[i];
+        ctx.globalAlpha = l[4];
+        ctx.drawImage(imagenDeFoco(l[3]), l[0] - l[2], l[1] - l[2], l[2] * 2, l[2] * 2);
+      }
       ctx.restore();
+      lucesPendientes.length = 0;
     }
 
     /** Una nube con volumen: varios bultos de distinto tamaño y una panza
@@ -7117,8 +7239,10 @@
       drawLineasDeVelocidad();
       /* Va acá y no antes: es una pasada sobre TODO lo dibujado. Si fuera
          más arriba, sería una capa más de fondo. */
+      volcarLuces();         // las que anotaron los carteles
       luzDeAmbiente();
       drawDestello();
+      dibujarMedidor();
     }
 
     /* Rayas horizontales que cruzan la pantalla cuando el escenario ya va
@@ -7618,6 +7742,7 @@
       if (lastTs == null) lastTs = ts;
       var dt = Math.min(0.05, (ts - lastTs) / 1000);
       lastTs = ts;
+      anotarCuadro(ts);       // solo hace algo con ?fps=1
       update(dt);
       draw();
       if (state && !state.over) rafId = requestAnimationFrame(loop);
