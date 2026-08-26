@@ -919,7 +919,22 @@
        En vez de bajarle la nitidez a todo el mundo, el juego se mide solo
        y baja un escalón únicamente si no llega. Un celular que anda bien
        se queda siempre en el mejor. */
-    var CALIDADES = [2, 1.6, 1.3];
+    /* Cuatro escalones. Los tres primeros solo bajan resolución y no se
+       nota casi nada. El cuarto ADEMÁS apaga los efectos caros, y ahí sí
+       se ve más simple.
+
+       Hace falta porque hay celulares para los que la resolución sola no
+       alcanza: un Redmi 12 da 22 cuadros por segundo —45 ms por cuadro—
+       incluso ya bajado a 1,3x. Para llegar a 16 ms hay que sacarle
+       bastante más que píxeles.
+
+       En ese escalón la elección no es entre lindo y lindo: es entre un
+       juego más simple que se puede jugar, o uno lindo que se traba. */
+    var CALIDADES = [2, 1.6, 1.3, 1];
+    var NIVEL_LIVIANO = 3;   // desde acá se apagan los adornos
+
+    /** ¿Está en el escalón donde se apagan los efectos? */
+    function modoLiviano() { return nivelCalidad >= NIVEL_LIVIANO; }
     var nivelCalidad = (function () {
       try {
         /* ?calidad=alta borra lo guardado y vuelve a empezar en el máximo.
@@ -3174,6 +3189,7 @@
        Va DETRÁS del piso y del personaje. Encima de ellos los borronearía,
        que es lo contrario de lo que se busca. */
     function nieblaDeDistancia() {
+      if (modoLiviano()) return;
       var esc = state.esc;
       var base = groundY();
       var colorLejos = esc.cielo[esc.cielo.length - 1][1];
@@ -3229,6 +3245,9 @@
     }
 
     function luzDeAmbiente() {
+      /* Es una pantalla entera por cuadro. Es lo primero que se apaga:
+         cuesta mucho y es lo que menos se extraña. */
+      if (modoLiviano()) return;
       ctx.drawImage(prepararCapaDeLuz(state.esc), 0, 0, W, H);
     }
 
@@ -3336,7 +3355,7 @@
     var vigia = { desde: 0, cuadros: 0, lentos: 0, bajadas: 0 };
 
     function vigilarRendimiento(ahora, dt) {
-      if (nivelCalidad >= CALIDADES.length - 1 || vigia.bajadas >= 2) return;
+      if (nivelCalidad >= CALIDADES.length - 1 || vigia.bajadas >= 3) return;
       if (!vigia.desde) { vigia.desde = ahora; return; }
       if (ahora - vigia.desde < 2000) {
         if (dt > 0 && dt < 500) { vigia.cuadros++; if (dt > 20) vigia.lentos++; }
@@ -3967,6 +3986,7 @@
     var lucesPendientes = [];
 
     function luzPuntual(x, y, radio, color, fuerza) {
+      if (modoLiviano()) return;   // cambian el modo de composición: son de lo más caro
       var a = 0.42 * fuerza;
       if (a <= 0.004 || radio <= 0) return;          // no se vería: no se dibuja
       if (x + radio < 0 || x - radio > W) return;    // fuera de pantalla
@@ -4047,6 +4067,7 @@
     /** Una bandada cruzando el cielo. Cada bicho lleva su altura, su
      *  velocidad y su aleteo, para que no parezcan un grupo pegado. */
     function bandada(cuantos, color, altoMin, altoAlto, velocidad, tipo) {
+      if (modoLiviano()) return;
       var base = groundY();
       ctx.fillStyle = color;
       ctx.strokeStyle = color;
@@ -4078,6 +4099,7 @@
     /** Pasto o matorral del primer plano, meciéndose. Va bajito, pegado al
      *  piso: es lo que le da un borde vivo al camino. */
     function maleza(sep, vel, alto, color, cuantos) {
+      if (modoLiviano()) return;   // tres trazos por mata, y hay muchas
       var base = groundY();
       ctx.strokeStyle = color;
       ctx.lineWidth = 1.8;
@@ -4098,6 +4120,7 @@
     /** Polvo, ceniza, polen: motas que flotan a contraluz. Cuesta cuatro
      *  líneas y es lo que le saca el aire de vacío a un fondo. */
     function motas(cuantas, color, velocidad, tam) {
+      if (modoLiviano()) return;   // adorno puro
       var base = groundY();
       ctx.fillStyle = color;
       for (var m = 0; m < cuantas; m++) {
@@ -6633,6 +6656,7 @@
     /** El aire iluminado alrededor del cartel. Suave y ancho: una luz real
      *  se desvanece con la distancia, no tiene borde. */
     function auraDelLetrero(cx, cy, an, al, acento, fuerza) {
+      if (modoLiviano()) return;
       ctx.save();
       ctx.globalCompositeOperation = "lighter";
       var r = Math.max(an, al) * 0.95;
@@ -6650,6 +6674,7 @@
     /** El charco de luz en el piso. Es lo que apoya el cartel en el mundo:
      *  sin esto se ve pegado encima del fondo, como una calcomanía. */
     function luzEnElPiso(cx, an, acento, fuerza) {
+      if (modoLiviano()) return;
       var base = groundY();
       ctx.save();
       ctx.globalCompositeOperation = "lighter";
@@ -6743,11 +6768,16 @@
          hasta 17 px, y ahí esos mismos 12 px son casi toda la letra: el
          resplandor se come los huecos y junta las palabras. */
       var fz = fuerzaDelBrillo(acento);
-      ctx.shadowBlur = m.tam * 0.35 * luz * fz;
-      ctx.fillStyle = "rgba(" + acento + "," + (0.5 * luz * fz).toFixed(2) + ")";
-      ctx.fillText(texto, cx, mediaY);
-      ctx.shadowBlur = m.tam * 0.15 * luz * fz;
-      ctx.fillText(texto, cx, mediaY);
+      /* El desenfoque es lo más caro que tiene el canvas en un celular. En
+         modo liviano el letrero queda encendido igual —la letra clara sobre
+         chapa oscura— pero sin el halo alrededor. */
+      if (!modoLiviano()) {
+        ctx.shadowBlur = m.tam * 0.35 * luz * fz;
+        ctx.fillStyle = "rgba(" + acento + "," + (0.5 * luz * fz).toFixed(2) + ")";
+        ctx.fillText(texto, cx, mediaY);
+        ctx.shadowBlur = m.tam * 0.15 * luz * fz;
+        ctx.fillText(texto, cx, mediaY);
+      }
 
       // el tubo: nítido, sin desenfoque, casi blanco como el LED encendido
       ctx.shadowBlur = 0;
