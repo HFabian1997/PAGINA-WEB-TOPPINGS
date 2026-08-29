@@ -1925,6 +1925,24 @@
     return c;
   }
 
+  /* Cuáles están desplegados, por categoría y posición.
+
+     Tiene que vivir FUERA del dibujo: el bloque se vuelve a dibujar entero
+     cada vez que se toca una flecha, se sube una imagen o se cambia un
+     campo. Si el estado viviera en el HTML, todo se cerraría de golpe a
+     cada cambio y sería peor que no poder plegar. */
+  var carruselAbierto = {};
+
+  function llaveCarrusel(cat, idx) { return cat + ":" + idx; }
+
+  /** Por defecto: si hay uno solo se muestra abierto —no tiene sentido
+   *  esconder lo único que hay—; con varios, todos cerrados. */
+  function estaAbierto(cat, idx, cuantos) {
+    var k = llaveCarrusel(cat, idx);
+    if (carruselAbierto[k] === undefined) return cuantos === 1;
+    return !!carruselAbierto[k];
+  }
+
   /** La lista de carruseles de una categoría, creándola si hace falta. */
   function carouselesDe(cat) {
     var info = state.content[cat] || (state.content[cat] = {});
@@ -1979,8 +1997,16 @@
       var caja = document.createElement("div");
       caja.className = "cc-bloque";
 
+      var abierto = estaAbierto(cat, idx, lista.length);
+
       var cabecera = document.createElement("div");
-      cabecera.className = "cc-bloque-cab";
+      cabecera.className = "cc-bloque-cab" + (abierto ? " is-abierto" : "");
+
+      var flecha = document.createElement("span");
+      flecha.className = "cc-flecha";
+      flecha.textContent = abierto ? "▾" : "▸";
+      cabecera.appendChild(flecha);
+
       var titulo = document.createElement("strong");
       titulo.textContent = "Carrusel " + (idx + 1) +
         (c.active ? "" : "  ·  apagado") +
@@ -1991,18 +2017,33 @@
       borrar.type = "button";
       borrar.className = "btn btn-ghost cc-borrar";
       borrar.textContent = "Quitar";
-      borrar.onclick = function () {
+      borrar.onclick = function (ev) {
+        ev.stopPropagation();   // si no, además de borrar plegaría
         if (!confirm("¿Quitar el carrusel " + (idx + 1) + " de esta página? Se pierden sus imágenes y su configuración.")) return;
         lista.splice(idx, 1);
+        /* Los que estaban abiertos corren un lugar al borrar uno del medio.
+           Sin esto quedaría abierto el que no era. */
+        for (var j = idx; j < lista.length + 1; j++) {
+          carruselAbierto[llaveCarrusel(cat, j)] = carruselAbierto[llaveCarrusel(cat, j + 1)];
+        }
         markDirty();
         renderListaCarruseles(host, cat);
       };
       cabecera.appendChild(borrar);
+
+      cabecera.onclick = function () {
+        carruselAbierto[llaveCarrusel(cat, idx)] = !abierto;
+        renderListaCarruseles(host, cat);
+      };
       caja.appendChild(cabecera);
 
       var cuerpo = document.createElement("div");
+      cuerpo.hidden = !abierto;
       caja.appendChild(cuerpo);
       host.appendChild(caja);
+      /* El cuerpo se dibuja aunque esté plegado: es lo que hace que los
+         campos guarden lo suyo desde el primer momento, sin depender de que
+         alguien lo haya abierto. */
       renderCarouselAdmin(cuerpo, cat, idx);
     });
 
@@ -2016,7 +2057,17 @@
       /* Al final del menú: es donde menos estorba y donde se ve enseguida
          que se agregó, en vez de aparecer entre medio sin avisar. */
       nuevo.position = ((state.content[cat] && state.content[cat].images) || []).length;
+      /* Antes de que cambie la cuenta, se fija cómo estaban los que ya
+         había. Si no, el que era el único —y por eso se mostraba abierto—
+         se plegaba solo al aparecer el segundo, justo mientras alguien lo
+         estaba configurando. */
+      lista.forEach(function (_, j) {
+        var k = llaveCarrusel(cat, j);
+        if (carruselAbierto[k] === undefined) carruselAbierto[k] = estaAbierto(cat, j, lista.length);
+      });
       lista.push(nuevo);
+      // recién agregado: se abre, que es lo que uno quiere hacer enseguida
+      carruselAbierto[llaveCarrusel(cat, lista.length - 1)] = true;
       markDirty();
       renderListaCarruseles(host, cat);
     };

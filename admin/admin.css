@@ -938,11 +938,26 @@ body.is-sorting-active { user-select: none; }
   padding: .9rem 1rem 1.1rem;
   margin: 0 0 1rem;
 }
+/* La cabecera es el interruptor: se toca en cualquier parte para plegar o
+   desplegar. Por eso el cursor de mano en TODA la fila y no solo en la
+   flecha — si no, hay que apuntar a un triangulito de ocho pixeles. */
 .cc-bloque-cab {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: .75rem; margin-bottom: .6rem;
+  display: flex; align-items: center;
+  gap: .6rem;
   padding-bottom: .5rem;
+  cursor: pointer;
+  user-select: none;
+}
+.cc-bloque-cab strong { flex: 1; }
+/* La raya de abajo solo cuando está abierto: cerrado no separa nada. */
+.cc-bloque-cab.is-abierto {
+  margin-bottom: .6rem;
   border-bottom: 1px solid rgba(255,255,255,.10);
+}
+.cc-bloque-cab:hover { color: var(--brand, #ffd400); }
+.cc-flecha {
+  display: inline-block; width: 1em;
+  font-size: .85rem; opacity: .75;
 }
 .cc-bloque-cab strong { font-size: .95rem; }
 .cc-borrar { padding: .25rem .7rem; font-size: .8rem; }
