@@ -17,6 +17,9 @@
 date_default_timezone_set('America/Bogota');
 require_once __DIR__ . '/data-path.php';
 require_once __DIR__ . '/customers-lib.php';
+/* La regla de "un nombre, una persona". Vive aparte porque la usan dos
+   endpoints distintos y un endpoint no se puede incluir desde otro. */
+require_once __DIR__ . '/nombres-lib.php';
 require_once __DIR__ . '/ruleta-lib.php';
 require_once __DIR__ . '/codes-lib.php';
 
@@ -709,8 +712,10 @@ switch ($action) {
 
   // Solo lectura: ¿algún otro dispositivo ya usa este nombre en el ranking?
   // Se usa para el aviso "ESE NOMBRE YA ESTÁ EN USO" antes de guardar un
-  // nombre nuevo — es solo una advertencia, no una restricción real (dos
-  // personas pueden terminar con el mismo nombre si así lo deciden).
+  /* Consulta rápida para avisar ANTES de guardar, y así el cliente no
+     escribe todo un formulario para que se lo rechacen al final. No es la
+     defensa: la defensa es nombreNoDisponible() en cada puerta, porque
+     esta consulta se puede saltear cortando internet. */
   case 'check-name': {
     $name = isset($_GET['name']) ? trim((string) $_GET['name']) : '';
     if (function_exists('mb_substr')) $name = mb_substr($name, 0, $MAX_NAME_CHARS);
@@ -737,6 +742,9 @@ switch ($action) {
     if (function_exists('mb_substr')) $name = mb_substr($name, 0, $MAX_NAME_CHARS);
     else $name = substr($name, 0, $MAX_NAME_CHARS);
 
+    $ocupado = nombreNoDisponible($name, $deviceId);
+    if ($ocupado !== null) jsonOut(array('ok' => false, 'taken' => true, 'error' => $ocupado), 409);
+
     withWriteLock(function ($state) use ($deviceId, $name) {
       rememberName($state, $deviceId, $name);
       return $state;
@@ -756,6 +764,17 @@ switch ($action) {
     else $name = substr($name, 0, $MAX_NAME_CHARS);
     $score = min($score, 999999);
     if (function_exists('mb_substr')) $deviceId = mb_substr($deviceId, 0, 64);
+
+    /* Mandar puntaje no es elegir nombre, y tiene su propia regla (ver
+       puedeUsarNombreAlPuntuar). Si el nombre es de otro, NO se rechaza la
+       partida: se guarda el puntaje con el nombre que este dispositivo ya
+       tenía. Rechazarla dejaría sin jugar a los repetidos que ya existían
+       de antes; aceptar el nombre ajeno dejaría crear repetidos nuevos. */
+    if (!puedeUsarNombreAlPuntuar($name, $deviceId)) {
+      $suyo = nombreYaAnotado($deviceId);
+      if ($suyo === '') jsonOut(array('ok' => false, 'taken' => true, 'error' => 'Ese nombre ya está en uso.'), 409);
+      $name = $suyo;
+    }
 
     $final = withWriteLock(function ($state) use ($name, $score, $deviceId) {
       ensureRankingState($state);
@@ -847,6 +866,9 @@ switch ($action) {
     if (function_exists('mb_substr')) $newName = mb_substr($newName, 0, $MAX_NAME_CHARS);
     else $newName = substr($newName, 0, $MAX_NAME_CHARS);
 
+    $ocupado = nombreNoDisponible($newName, $deviceId);
+    if ($ocupado !== null) jsonOut(array('ok' => false, 'taken' => true, 'error' => $ocupado), 409);
+
     $final = withWriteLock(function ($state) use ($deviceId, $newName, $oldName) {
       ensureRankingState($state);
       rememberName($state, $deviceId, $newName);
@@ -864,6 +886,14 @@ switch ($action) {
     });
 
     jsonOut(array('ok' => true, 'status' => buildPublicPayload($final, $newName, $deviceId)));
+  }
+
+  /* Los nombres que YA estaban repetidos antes de que esto fuera una regla.
+     Bloquear los nuevos no arregla los viejos, y sin poder verlos el
+     problema queda escondido. */
+  case 'admin-duplicados': {
+    requireAdminAuth();
+    jsonOut(array('ok' => true, 'repetidos' => nombresRepetidos()));
   }
 
   case 'admin-status': {

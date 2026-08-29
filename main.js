@@ -142,12 +142,23 @@
   /* Avisa a los dos servicios (premios y ranking) para que el nombre nuevo
      reemplace al viejo en cualquier registro que ya tuviera este mismo
      dispositivo — sin esto, el cambio solo se vería en este celular. */
-  function renameEverywhere(newName, oldName) {
+  /* `onRechazado` es lo que hace que el bloqueo del servidor se VEA. La
+     consulta previa (check-name) se saltea si no hay internet, así que
+     puede pasar que acá el servidor diga que no. Sin esto el cambio
+     fallaba en silencio y la persona se quedaba creyendo que se guardó. */
+  function renameEverywhere(newName, oldName, onRechazado) {
     var deviceId = getDeviceId();
+    var yaAvisado = false;
+    function rechazar(msg) {
+      if (yaAvisado) return;
+      yaAvisado = true;
+      if (onRechazado) onRechazado(msg);
+    }
     var body = JSON.stringify({ action: "rename", deviceId: deviceId, newName: newName, oldName: oldName || "" });
     fetch(PRIZE_API, { method: "POST", headers: { "Content-Type": "application/json" }, body: body })
       .then(function (r) { return r.json(); })
       .then(function (res) {
+        if (res && res.taken) { rechazar(res.error); return; }
         if (res && res.state) premioState = res.state;
         safe(renderPremioSection, "renderPremioSection");
       })
@@ -167,7 +178,10 @@
       .then(function (res) {
         // Un fallo del servidor no puede pasar desapercibido: antes se
         // ignoraba la respuesta y el error quedaba invisible.
-        if (!res || !res.ok) console.warn("[rename] el ranking rechazó el cambio:", res && res.error);
+        if (!res || !res.ok) {
+          console.warn("[rename] el ranking rechazó el cambio:", res && res.error);
+          if (res && res.taken) { rechazar(res.error); return; }
+        }
         // El servidor devuelve el ranking YA con el nombre corregido: se le
         // pasa tal cual al juego para que repinte con ese dato y no dependa
         // de una segunda consulta.
@@ -185,24 +199,27 @@
      pregunta si continuar igual o cambiar de nombre. Es solo una advertencia
      — si la consulta falla por internet, sigue igual que si no estuviera
      en uso, sin bloquear al cliente. ---- */
-  function showNameTakenModal(onContinue, onChangeName) {
+  /* Ya no ofrece "continuar igual": un nombre es de una sola persona. La
+     única salida es escribir otro. `onContinue` se sigue recibiendo por
+     compatibilidad con quien llama, pero no se usa nunca. */
+  function showNameTakenModal(onContinue, onChangeName, mensaje) {
     var modal = $("[data-name-taken-modal]");
-    if (!modal) { onContinue(); return; }
+    if (!modal) { if (onChangeName) onChangeName(); return; }
+    var texto = $("[data-name-taken-text]", modal);
+    if (texto && mensaje) texto.textContent = mensaje;
     modal.hidden = false;
-    var continueBtn = $("[data-name-taken-continue]", modal);
     var changeBtn = $("[data-name-taken-change]", modal);
     var backdrop = $("[data-name-taken-close]", modal);
     function cleanup() {
       modal.hidden = true;
-      if (continueBtn) continueBtn.onclick = null;
       if (changeBtn) changeBtn.onclick = null;
       if (backdrop) backdrop.onclick = null;
     }
     function dismiss() { cleanup(); if (onChangeName) onChangeName(); }
-    if (continueBtn) continueBtn.onclick = function () { cleanup(); onContinue(); };
     if (changeBtn) changeBtn.onclick = dismiss;
     if (backdrop) backdrop.onclick = dismiss;
   }
+  window.__showNameTakenModal = showNameTakenModal;
 
   /* ---------------- Ventana de confirmación propia ----------------
      Reemplaza al confirm() del navegador: en el celular ese cuadro muestra
@@ -254,12 +271,19 @@
   }
   window.__askConfirm = askConfirm;
 
+  /* Esta consulta es solo para avisar TEMPRANO, y por eso si falla se sigue
+     de largo: dejar a alguien trabado por un problema de red sería peor.
+
+     Eso NO abre un agujero: quien se salte este aviso —cortando internet,
+     por ejemplo— igual va a chocar contra el servidor, que rechaza el
+     nombre en las cuatro puertas donde se elige o se cambia. Acá se avisa;
+     allá se decide. */
   function checkNameThenProceed(name, onContinue, onChangeName) {
     var deviceId = getDeviceId();
     fetch(RUN_API + "?action=check-name&name=" + encodeURIComponent(name) + "&deviceId=" + encodeURIComponent(deviceId), { cache: "no-store" })
       .then(function (r) { return r.json(); })
       .then(function (res) {
-        if (res && res.ok && res.taken) showNameTakenModal(onContinue, onChangeName);
+        if (res && res.ok && res.taken) showNameTakenModal(null, onChangeName);
         else onContinue();
       })
       .catch(function () { onContinue(); });
@@ -386,7 +410,19 @@
                  nombre (por ejemplo si borró los datos del navegador). Si solo
                  se avisaba cuando había nombre viejo, esos casos seguían
                  mostrando el nombre antiguo en el ranking. */
-              renameEverywhere(name, oldName);
+              /* Si el servidor lo rechaza, se deshace el cambio en este
+                 celular: si no, la persona quedaría viendo un nombre que en
+                 realidad no es suyo en ningún lado. */
+              renameEverywhere(name, oldName, function (msg) {
+                if (oldName) setCustomerName(oldName);
+                if (mode === "limited") {
+                  var vuelta = parseInt(localStorage.getItem(NAME_CHANGE_COUNT_KEY) || "1", 10);
+                  localStorage.setItem(NAME_CHANGE_COUNT_KEY, String(Math.max(0, vuelta - 1)));
+                }
+                renderHeroGreeting();
+                safe(renderPremioSection, "renderPremioSection");
+                showNameTakenModal(null, askForName, msg);
+              });
             }, askForName);
           });
         }

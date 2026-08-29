@@ -11,6 +11,7 @@ require_once __DIR__ . '/ruleta-lib.php';
 require_once __DIR__ . '/codes-lib.php';
 require_once __DIR__ . '/rename-lib.php';
 require_once __DIR__ . '/loyalty-lib.php';
+require_once __DIR__ . '/nombres-lib.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -469,6 +470,9 @@ if ($method === 'POST') {
       jsonOut(array('ok' => false, 'error' => 'Faltan datos.'), 400);
     }
     $newName = function_exists('mb_substr') ? mb_substr(strip_tags($newName), 0, 60) : substr(strip_tags($newName), 0, 60);
+
+    $ocupado = nombreNoDisponible($newName, $deviceId);
+    if ($ocupado !== null) jsonOut(array('ok' => false, 'taken' => true, 'error' => $ocupado), 409);
 
     $outcome = array('ok' => true);
     withWriteLock(function ($state) use ($deviceId, $newName, &$outcome) {

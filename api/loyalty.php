@@ -17,6 +17,7 @@
 date_default_timezone_set('America/Bogota');
 require_once __DIR__ . '/data-path.php';
 require_once __DIR__ . '/loyalty-lib.php';
+require_once __DIR__ . '/nombres-lib.php';
 require_once __DIR__ . '/customers-lib.php';
 
 session_name('toppings_admin_sess');
@@ -90,6 +91,12 @@ if ($method === 'POST') {
     if ($deviceId === '') loyOut(array('ok' => false, 'reason' => 'no-device', 'error' => 'No pudimos identificar tu dispositivo.'), 400);
 
     $codigo = isset($body['code']) ? (string) $body['code'] : '';
+    /* El nombre que la persona deja acá es su nombre en TODO el sitio, así
+       que pasa por el mismo portero que las demás puertas. Se comprueba
+       antes de registrarlo: si no, quedaría anotado y recién después se
+       rechazaría. */
+    $ocupado = nombreNoDisponible($name, $deviceId);
+    if ($ocupado !== null) loyOut(array('ok' => false, 'reason' => 'name-taken', 'error' => $ocupado), 409);
     if ($name !== '') rememberCustomer($deviceId, $name);
 
     $res = array('ok' => false, 'reason' => 'error');
