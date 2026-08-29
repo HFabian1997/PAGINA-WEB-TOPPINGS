@@ -7491,6 +7491,12 @@
       if (overlay) overlay.hidden = false;
       if (leaderboardEl) leaderboardEl.hidden = true;
 
+      /* Lo primero que se mira al terminar es si se puede volver a jugar.
+         Por eso el cartel se refresca acá, con la redacción de "fin". */
+      mostrarIntentos(modoDiversion
+        ? "🎮 Jugaste por diversión — estos puntos no cuentan para el ranking."
+        : textoQuedan(intentosQuedan, "fin"));
+
       /* Por diversión el puntaje NO se manda. El servidor además lo
          ignoraría (lleva su propia cuenta de partidas que puntúan), pero
          ni mandarlo evita que el ranking parpadee mostrando una fila que
@@ -8012,20 +8018,37 @@
         });
     }
 
-    /** El aviso que ve el jugador. Solo existe si hay tope. */
+    /* El aviso que ve el jugador. Solo existe si hay tope.
+
+       Hay DOS carteles, y hay que escribir en los dos: uno en la pantalla
+       de inicio y otro en la de fin de partida. Antes solo se escribía en
+       el de inicio, así que al dar "Jugar de nuevo" el mensaje se
+       actualizaba en una pantalla que no estaba a la vista y parecía que
+       no salía nada. */
     function mostrarIntentos(texto) {
-      var el = $("[data-run-intentos]", card);
-      if (!el) return;
-      if (!texto) { el.hidden = true; return; }
-      el.hidden = false;
-      el.textContent = texto;
+      var todos = $$("[data-run-intentos]", card);
+      if (!todos.length) return;
+      todos.forEach(function (el) {
+        if (!texto) { el.hidden = true; return; }
+        el.hidden = false;
+        el.textContent = texto;
+      });
     }
 
-    /* Se llama justo DESPUÉS de arrancar una partida, así que `n` es lo que
-       queda para las PRÓXIMAS. Con n=0 la persona está jugando su última:
-       decirle "ya usaste todos" mientras juega se lee como un error. */
-    function textoQuedan(n) {
+    /* El mismo número se dice distinto según cuándo se lea:
+
+         jugando  la partida está en curso, así que `n` es lo que queda
+                  PARA DESPUÉS. Con n=0 está jugando la última: decirle
+                  "ya usaste todos" mientras juega se lee como un error.
+
+         fin      la partida terminó y está mirando si vuelve a jugar. Acá
+                  `n` es lo que le queda de verdad, sin rodeos. */
+    function textoQuedan(n, momento) {
       if (n === null || n === undefined) return "";
+      if (momento === "fin") {
+        if (n <= 0) return "Ya no te quedan intentos. Si juegas otra vez será por diversión: esos puntos no cuentan para el ranking.";
+        return n === 1 ? "Te queda 1 intento." : "Te quedan " + n + " intentos.";
+      }
       if (n <= 0) return "Este es tu último intento. ¡Dale con todo!";
       return n === 1 ? "Te queda 1 intento después de esta partida."
                      : "Te quedan " + n + " intentos después de esta partida.";

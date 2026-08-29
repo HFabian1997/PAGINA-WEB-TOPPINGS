@@ -207,6 +207,11 @@
                     <button type="button" class="run-lb-arrow is-down" data-run-lb-down hidden aria-label="Ver los de abajo"></button>
                     <p class="run-leaderboard-countdown" data-run-leaderboard-countdown></p>
                   </div>
+                  <!-- Cuántos intentos quedan, justo encima del botón: es donde
+                       se mira antes de decidir si se vuelve a jugar. El de la
+                       pantalla de inicio no sirve acá, porque esa pantalla no
+                       está a la vista al terminar la partida. -->
+                  <p class="run-intentos" data-run-intentos hidden></p>
                   <div class="run-overlay-actions">
                     <button type="button" class="btn btn-primary" data-run-restart>Jugar de nuevo</button>
                     <button type="button" class="btn btn-ghost" data-run-home>🏠 Volver al inicio</button>
