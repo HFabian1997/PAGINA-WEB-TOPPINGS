@@ -7829,6 +7829,19 @@
       // `ok` solo viene en la respuesta de `status`; el ranking que devuelve
       // `rename` no lo trae, así que no se puede exigir.
       if (!res || res.ok === false || !res.top) return;
+
+      /* Los intentos vienen en el mismo paquete que el ranking, así que no
+         hace falta una consulta aparte. Sin tope puesto no se muestra nada:
+         el juego se ve igual que antes. */
+      if (res.intentos && res.intentos.limite > 0) {
+        var quedan = res.intentos.quedan;
+        intentosQuedan = quedan;
+        mostrarIntentos(quedan > 0
+          ? ("Tienes " + quedan + (quedan === 1 ? " intento" : " intentos") + " para alcanzar el máximo puntaje posible.")
+          : "Ya usaste todos tus intentos. Vuelve cuando empiece el próximo evento.");
+      } else {
+        mostrarIntentos("");
+      }
       if (!introLeaderboardEl || !introLeaderboardListEl) return;
       if (introLeaderboardTitleEl) {
         introLeaderboardTitleEl.textContent = "🏆 Top 3 " + periodLabel(res.rankingType);
@@ -7956,11 +7969,70 @@
       startRunBgMusic();
     }
 
+    /* ---- El tope de partidas ----
+
+       El intento se pide al servidor ANTES de arrancar, no al terminar.
+       El puntaje se manda en el game over: si el intento se descontara
+       ahí, alcanzaba con cerrar la pestaña en las partidas malas y mandar
+       solo la buena — o sea, seguir insistiendo hasta el puesto 1, que es
+       justo lo que el tope viene a cortar.
+
+       Si el servidor no contesta se deja jugar igual. Dejar a alguien sin
+       jugar por un problema de red sería peor que un intento de más. */
+    var intentosQuedan = null;   // null = sin tope configurado
+
+    function pedirIntento(alArrancar, alNegarse) {
+      fetch(LEADERBOARD_API + "?action=empezar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deviceId: getDeviceId() })
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (res) {
+          if (!res || !res.limite) { intentosQuedan = null; alArrancar(); return; }
+          intentosQuedan = typeof res.quedan === "number" ? res.quedan : null;
+          if (res.ok) alArrancar();
+          else if (alNegarse) alNegarse(res);
+        })
+        .catch(function (e) {
+          console.warn("[toppings-run] no se pudo pedir el intento:", e);
+          alArrancar();
+        });
+    }
+
+    /** El aviso que ve el jugador. Solo existe si hay tope. */
+    function mostrarIntentos(texto) {
+      var el = $("[data-run-intentos]", card);
+      if (!el) return;
+      if (!texto) { el.hidden = true; return; }
+      el.hidden = false;
+      el.textContent = texto;
+    }
+
+    /* Se llama justo DESPUÉS de arrancar una partida, así que `n` es lo que
+       queda para las PRÓXIMAS. Con n=0 la persona está jugando su última:
+       decirle "ya usaste todos" mientras juega se lee como un error. */
+    function textoQuedan(n) {
+      if (n === null || n === undefined) return "";
+      if (n <= 0) return "Este es tu último intento. ¡Dale con todo!";
+      return n === 1 ? "Te queda 1 intento después de esta partida."
+                     : "Te quedan " + n + " intentos después de esta partida.";
+    }
+
+    function avisarSinIntentos() {
+      mostrarIntentos("Ya usaste todos tus intentos. Vuelve cuando empiece el próximo evento.");
+      showStage("intro");
+      fetchIntroLeaderboard();
+    }
+
     function beginGame(name) {
       playerName = name;
       if (playerEl) playerEl.textContent = name.toUpperCase();
-      showStage("game");
-      startGame();
+      pedirIntento(function () {
+        showStage("game");
+        startGame();
+        mostrarIntentos(textoQuedan(intentosQuedan));
+      }, avisarSinIntentos);
     }
 
     // El saludo del inicio llama esto cuando el cliente cambia su nombre,
@@ -8073,7 +8145,14 @@
       });
     }
 
-    if (restartBtn) restartBtn.addEventListener("click", function () { startGame(); });
+    /* "Jugar de nuevo" es la OTRA puerta a una partida, y también descuenta.
+       Sin esto el tope se saltaba quedándose en la pantalla del juego. */
+    if (restartBtn) restartBtn.addEventListener("click", function () {
+      pedirIntento(function () {
+        startGame();
+        mostrarIntentos(textoQuedan(intentosQuedan));
+      }, avisarSinIntentos);
+    });
 
     function exitToIntro() {
       if (rafId) cancelAnimationFrame(rafId);

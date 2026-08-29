@@ -590,6 +590,14 @@
         <label>Volumen de la música (0 = silencio, 1 = máximo) <input type="range" min="0" max="1" step="0.05" data-field="musicVolume"></label>
       </div>
 
+      <h4>🎯 Límite de partidas</h4>
+      <p class="hint">Cuántas veces puede jugar cada persona antes de que se reinicie el ranking. Sirve para que llegar al primer puesto sea cuestión de jugar bien y no de insistir.</p>
+      <div class="field-grid" data-form="dailyPrize.toppingsRun">
+        <label class="full">Partidas por persona <input type="number" min="0" step="1" data-field="jugadasPorDia" placeholder="0"></label>
+        <p class="hint full"><strong>0 = sin límite</strong> (como está hoy). El contador se reinicia junto con el ranking: si lo tienes en <em>diario</em>, eso es una vez al día.</p>
+        <p class="hint full">Ojo: el intento se descuenta <strong>al empezar</strong> la partida, no al terminarla. Si no fuera así, bastaría con cerrar la página en las partidas malas y mandar solo la buena. La contra es que si a alguien se le cierra la página a mitad de partida, ese intento se perdió.</p>
+      </div>
+
       <h4>⚡ Qué tanto se dibuja</h4>
       <p class="hint">Cuántos efectos usa el juego. Bajarlo lo hace correr mejor en celulares flojos, a cambio de que se vea más simple.</p>
       <div class="field-grid" data-form="dailyPrize.toppingsRun">

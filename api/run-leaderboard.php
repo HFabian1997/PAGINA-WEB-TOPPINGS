@@ -79,6 +79,25 @@ function configuredRankingType() {
 
 /** Lee, para el ranking, si el admin lo configuró como premio directo o
     como "giro(s) en la Ruleta" — mismo patrón que configuredRankingType(). */
+/**
+ * Cuántas partidas puede jugar cada persona por período. 0 = sin tope.
+ *
+ * Sin esto, llegar al puesto 1 era cuestión de insistir y no de jugar
+ * bien: se podía repetir hasta que saliera una buena.
+ */
+function toppingsRunLimiteJugadas() {
+  global $CONTENT_FILE;
+  if (!file_exists($CONTENT_FILE)) return 0;
+  $raw = @file_get_contents($CONTENT_FILE);
+  $data = $raw ? json_decode($raw, true) : null;
+  if (!is_array($data)) return 0;
+  $n = 0;
+  if (isset($data['dailyPrize']['toppingsRun']['jugadasPorDia'])) {
+    $n = (int) $data['dailyPrize']['toppingsRun']['jugadasPorDia'];
+  }
+  return $n > 0 ? $n : 0;
+}
+
 function toppingsRunRewardConfig() {
   global $CONTENT_FILE;
   if (!file_exists($CONTENT_FILE)) return array('rewardType' => 'direct');
@@ -191,6 +210,10 @@ function defaultState() {
     // sirve para avisar cuando alguien más quiere usar el mismo nombre
     // (aunque nunca haya jugado: cronómetro, tarjeta, reto, etc.).
     'names' => array(),
+    /* Cuántas partidas lleva cada dispositivo en este período. Se borra
+       junto con los puntajes cuando el período se reinicia (resetPeriod),
+       así que con el ranking en "diario" es exactamente una vez al día. */
+    'intentos' => array(),
     'winner' => null,
     'claim' => array('status' => 'waiting', 'windowEndsAtMs' => null, 'claimedAt' => null, 'claimedName' => null, 'claimedDevice' => null),
     'history' => array(),
@@ -390,6 +413,7 @@ function resetPeriod(&$state, $type) {
   $state['periodHours'] = $type === 'custom' ? $horas : null;
   $state['periodEndAtMs'] = periodEndForType($type, $start, $horas);
   $state['scores'] = array();
+  $state['intentos'] = array();
   $state['winner'] = null;
   $state['claim'] = array('status' => 'waiting', 'windowEndsAtMs' => null, 'claimedAt' => null, 'claimedName' => null, 'claimedDevice' => null);
 }
@@ -551,6 +575,20 @@ function ensureRankingState(&$state) {
   }
 }
 
+/** Cómo va de intentos este dispositivo. `limite` 0 = sin tope. */
+function intentosDe($state, $deviceId) {
+  $limite = toppingsRunLimiteJugadas();
+  $usados = 0;
+  if ($deviceId !== '' && isset($state['intentos'][$deviceId])) {
+    $usados = (int) $state['intentos'][$deviceId];
+  }
+  return array(
+    'limite' => $limite,
+    'usados' => $usados,
+    'quedan' => $limite > 0 ? max(0, $limite - $usados) : null,
+  );
+}
+
 function buildPublicPayload($state, $requesterName, $requesterDevice) {
   $scores = $state['scores'];
   uasort($scores, function ($a, $b) {
@@ -662,6 +700,9 @@ function buildPublicPayload($state, $requesterName, $requesterDevice) {
     // (o al revés), el ganador igual recibe su aviso y nada se rompe
     'ganePasado' => $ganePasado,
     'eventoPasado' => $eventoPasado,
+    /* Cuántas partidas le quedan hoy. Va en el mismo paquete que el ranking
+       para que la pantalla de inicio lo tenga sin una consulta aparte. */
+    'intentos' => intentosDe($state, $requesterDevice),
     'history' => $history,
     // compatibilidad con el nombre anterior del campo, por si algo viejo lo espera
     'weekStart' => $state['periodStart'],
@@ -750,6 +791,43 @@ switch ($action) {
       return $state;
     });
     jsonOut(array('ok' => true));
+  }
+
+  /* Se pide un intento ANTES de jugar, no al terminar.
+
+     El puntaje se manda en el game over. Si el intento se descontara ahí,
+     alcanzaba con cerrar la pestaña en las partidas malas y mandar solo la
+     buena: o sea, seguir insistiendo hasta el puesto 1, que es justo lo
+     que el tope viene a cortar.
+
+     El costo, y hay que saberlo: si a alguien se le cierra la página a
+     mitad de partida, ese intento se perdió. Es el precio de que el tope
+     sirva para algo. */
+  case 'empezar': {
+    if ($method !== 'POST') jsonOut(array('ok' => false, 'error' => 'Método no permitido.'), 405);
+    $body = json_decode(file_get_contents('php://input'), true);
+    if (!is_array($body)) $body = array();
+    $deviceId = isset($body['deviceId']) ? trim((string) $body['deviceId']) : '';
+    if ($deviceId === '') jsonOut(array('ok' => false, 'error' => 'Falta identificar el dispositivo.'), 400);
+    if (function_exists('mb_substr')) $deviceId = mb_substr($deviceId, 0, 64);
+
+    $limite = toppingsRunLimiteJugadas();
+    if ($limite <= 0) jsonOut(array('ok' => true, 'limite' => 0, 'quedan' => null));
+
+    $resultado = array('ok' => false, 'limite' => $limite, 'quedan' => 0);
+    withWriteLock(function ($state) use ($deviceId, $limite, &$resultado) {
+      ensureRankingState($state);
+      if (!isset($state['intentos']) || !is_array($state['intentos'])) $state['intentos'] = array();
+      $usados = isset($state['intentos'][$deviceId]) ? (int) $state['intentos'][$deviceId] : 0;
+      if ($usados >= $limite) {
+        $resultado = array('ok' => false, 'limite' => $limite, 'quedan' => 0, 'usados' => $usados);
+        return $state;   // se guarda igual: ensureRankingState pudo reiniciar el período
+      }
+      $state['intentos'][$deviceId] = $usados + 1;
+      $resultado = array('ok' => true, 'limite' => $limite, 'quedan' => $limite - ($usados + 1), 'usados' => $usados + 1);
+      return $state;
+    });
+    jsonOut($resultado);
   }
 
   case 'submit': {
