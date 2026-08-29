@@ -214,6 +214,9 @@ function defaultState() {
        junto con los puntajes cuando el período se reinicia (resetPeriod),
        así que con el ranking en "diario" es exactamente una vez al día. */
     'intentos' => array(),
+    /* Cuántas partidas de este dispositivo YA sumaron al ranking. Va aparte
+       de 'intentos': uno cuenta lo que se empezó, este lo que puntuó. */
+    'puntuaron' => array(),
     'winner' => null,
     'claim' => array('status' => 'waiting', 'windowEndsAtMs' => null, 'claimedAt' => null, 'claimedName' => null, 'claimedDevice' => null),
     'history' => array(),
@@ -414,6 +417,7 @@ function resetPeriod(&$state, $type) {
   $state['periodEndAtMs'] = periodEndForType($type, $start, $horas);
   $state['scores'] = array();
   $state['intentos'] = array();
+  $state['puntuaron'] = array();
   $state['winner'] = null;
   $state['claim'] = array('status' => 'waiting', 'windowEndsAtMs' => null, 'claimedAt' => null, 'claimedName' => null, 'claimedDevice' => null);
 }
@@ -843,6 +847,26 @@ switch ($action) {
     $score = min($score, 999999);
     if (function_exists('mb_substr')) $deviceId = mb_substr($deviceId, 0, 64);
 
+    /* El tope también se aplica ACÁ, no solo al arrancar.
+
+       Al arrancar se pide permiso, pero eso vive en el navegador: quien
+       quiera puede mandar un puntaje sin haber pedido nada. Contando cuántas
+       partidas PUNTUARON, el tope se cumple venga de donde venga.
+
+       Es también lo que hace que "jugar por diversión" no sirva para
+       colarse: esas partidas llegan cuando la cuenta ya está llena.
+
+       No se rechaza el pedido: se acepta y no se guarda el puntaje. Un error
+       acá dejaría al jugador con la pantalla rota al terminar, y no hace
+       falta — el puntaje simplemente no cuenta. */
+    $limiteJugadas = toppingsRunLimiteJugadas();
+    $cuenta = true;
+    if ($limiteJugadas > 0) {
+      $estadoAhora = readState();
+      $yaPuntuaron = isset($estadoAhora['puntuaron'][$deviceId]) ? (int) $estadoAhora['puntuaron'][$deviceId] : 0;
+      $cuenta = $yaPuntuaron < $limiteJugadas;
+    }
+
     /* Mandar puntaje no es elegir nombre, y tiene su propia regla (ver
        puedeUsarNombreAlPuntuar). Si el nombre es de otro, NO se rechaza la
        partida: se guarda el puntaje con el nombre que este dispositivo ya
@@ -854,12 +878,17 @@ switch ($action) {
       $name = $suyo;
     }
 
-    $final = withWriteLock(function ($state) use ($name, $score, $deviceId) {
+    $final = withWriteLock(function ($state) use ($name, $score, $deviceId, $cuenta) {
       ensureRankingState($state);
       rememberName($state, $deviceId, $name);
       // El ranking queda congelado mientras hay un ganador esperando reclamar:
       // nadie puede seguir acumulando puntos ni superar al ganador.
       if ($state['claim']['status'] !== 'waiting') return $state;
+      /* Ya usó todas sus partidas: se le recuerda el nombre (para que el
+         panel lo siga viendo) pero el puntaje no entra al ranking. */
+      if (!$cuenta) return $state;
+      if (!isset($state['puntuaron']) || !is_array($state['puntuaron'])) $state['puntuaron'] = array();
+      $state['puntuaron'][$deviceId] = (isset($state['puntuaron'][$deviceId]) ? (int) $state['puntuaron'][$deviceId] : 0) + 1;
       // Antes de crear fila nueva, se intenta adoptar una que ya exista con
       // este mismo nombre pero guardada bajo otra llave (respaldos
       // reconstruidos, migraciones). Sin esto quedaban dos filas del mismo

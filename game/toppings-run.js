@@ -7490,6 +7490,18 @@
       if (finalScoreEl) finalScoreEl.textContent = "Puntos: " + finalScore + (isRecord ? " · 🏆 ¡Nuevo récord!" : "");
       if (overlay) overlay.hidden = false;
       if (leaderboardEl) leaderboardEl.hidden = true;
+
+      /* Por diversión el puntaje NO se manda. El servidor además lo
+         ignoraría (lleva su propia cuenta de partidas que puntúan), pero
+         ni mandarlo evita que el ranking parpadee mostrando una fila que
+         después no queda. */
+      if (modoDiversion) {
+        if (finalScoreEl) {
+          finalScoreEl.textContent = "Puntos: " + finalScore + " · 🎮 por diversión, no cuentan para el ranking";
+        }
+        fetchIntroLeaderboard();
+        return;
+      }
       submitScoreAndShowLeaderboard(finalScore);
     }
 
@@ -8019,16 +8031,54 @@
                      : "Te quedan " + n + " intentos después de esta partida.";
     }
 
+    /* ---- Cuando se acaban los intentos ----
+
+       No se cierra la puerta: se puede seguir jugando, pero esos puntos no
+       van al ranking. Cerrarla del todo sería castigar al que quiere jugar
+       un rato; dejar que sumen sería no tener tope. */
+    var modoDiversion = false;
+
     function avisarSinIntentos() {
-      mostrarIntentos("Ya usaste todos tus intentos. Vuelve cuando empiece el próximo evento.");
-      showStage("intro");
-      fetchIntroLeaderboard();
+      var modal = document.querySelector("[data-run-sin-intentos]");
+      if (!modal) {   // sin la ventana, al menos no se juega de gratis
+        mostrarIntentos("Ya usaste todos tus intentos. Vuelve cuando empiece el próximo evento.");
+        showStage("intro");
+        fetchIntroLeaderboard();
+        return;
+      }
+      var jugar = modal.querySelector("[data-run-jugar-diversion]");
+      var volver = modal.querySelector("[data-run-sin-intentos-volver]");
+      var fondo = modal.querySelector("[data-run-sin-intentos-close]");
+      modal.hidden = false;
+
+      function cerrar() {
+        modal.hidden = true;
+        if (jugar) jugar.onclick = null;
+        if (volver) volver.onclick = null;
+        if (fondo) fondo.onclick = null;
+      }
+      function alIntro() {
+        cerrar();
+        mostrarIntentos("Ya usaste todos tus intentos. Vuelve cuando empiece el próximo evento.");
+        showStage("intro");
+        fetchIntroLeaderboard();
+      }
+      if (jugar) jugar.onclick = function () {
+        cerrar();
+        modoDiversion = true;
+        mostrarIntentos("🎮 Jugando por diversión — estos puntos no cuentan para el ranking.");
+        showStage("game");
+        startGame();
+      };
+      if (volver) volver.onclick = alIntro;
+      if (fondo) fondo.onclick = alIntro;
     }
 
     function beginGame(name) {
       playerName = name;
       if (playerEl) playerEl.textContent = name.toUpperCase();
       pedirIntento(function () {
+        modoDiversion = false;   // este intento sí cuenta
         showStage("game");
         startGame();
         mostrarIntentos(textoQuedan(intentosQuedan));
@@ -8149,6 +8199,7 @@
        Sin esto el tope se saltaba quedándose en la pantalla del juego. */
     if (restartBtn) restartBtn.addEventListener("click", function () {
       pedirIntento(function () {
+        modoDiversion = false;
         startGame();
         mostrarIntentos(textoQuedan(intentosQuedan));
       }, avisarSinIntentos);

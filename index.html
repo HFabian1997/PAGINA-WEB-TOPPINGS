@@ -478,6 +478,20 @@
   </div>
 </div>
 
+<!-- Cuando se acaban los intentos. No cierra la puerta: deja jugar, pero
+     avisando claro que esos puntos no cuentan para el ranking. -->
+<div class="prize-modal name-taken-modal" data-run-sin-intentos hidden>
+  <div class="prize-modal-backdrop" data-run-sin-intentos-close></div>
+  <div class="prize-modal-card name-taken-card">
+    <p class="section-kicker">YA NO TE QUEDAN INTENTOS</p>
+    <p class="claim-prize-hint">Usaste todos tus intentos de este evento. Puedes seguir jugando, pero <strong>los puntos que hagas ya no cuentan para el ranking</strong>.</p>
+    <div class="name-taken-actions">
+      <button type="button" class="btn btn-primary" data-run-jugar-diversion>Jugar por diversión</button>
+      <button type="button" class="btn btn-ghost" data-run-sin-intentos-volver>Volver</button>
+    </div>
+  </div>
+</div>
+
 <div class="prize-modal name-taken-modal" data-name-taken-modal hidden>
   <div class="prize-modal-backdrop" data-name-taken-close></div>
   <div class="prize-modal-card name-taken-card">
