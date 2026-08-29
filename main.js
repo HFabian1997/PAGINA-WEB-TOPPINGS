@@ -811,10 +811,27 @@
         // admin haya elegido. Así se puede poner antes, entre o después de
         // cualquier imagen sin tocar código.
         frame.innerHTML = "";
-        var carousel = activeCarouselFor(info);
-        var at = carousel ? Math.max(0, Math.min(images.length, Number(carousel.position) || 0)) : -1;
 
-        if (at === 0) insertCategoryCarousel(frame, carousel, category);
+        /* Cada categoría puede tener VARIOS carruseles, cada uno con su
+           posición entre las imágenes. Se agrupan por posición: los que
+           coinciden salen uno tras otro, en el orden de la lista.
+
+           La posición se recorta al total de imágenes: si alguien puso un
+           carrusel después de la imagen 8 y después borró imágenes, sigue
+           saliendo al final en vez de desaparecer. */
+        var carruseles = activeCarouselsFor(info);
+        var porPosicion = {};
+        carruseles.forEach(function (cfg) {
+          var at = Math.max(0, Math.min(images.length, Number(cfg.position) || 0));
+          (porPosicion[at] = porPosicion[at] || []).push(cfg);
+        });
+        function insertarEn(pos) {
+          (porPosicion[pos] || []).forEach(function (cfg) {
+            insertCategoryCarousel(frame, cfg, category);
+          });
+        }
+
+        insertarEn(0);
         var shown = 0;
         images.forEach(function (src, i) {
           if (hidden.indexOf(src) === -1) {
@@ -826,7 +843,7 @@
             frame.appendChild(img);
             shown++;
           }
-          if (at === i + 1) insertCategoryCarousel(frame, carousel, category);
+          insertarEn(i + 1);
         });
       } else {
         var emptyMsg = frame.getAttribute("data-empty-msg") ||
@@ -846,6 +863,14 @@
      configurar es exactamente lo que verá el cliente. */
   function activeCarouselFor(info) {
     return window.__catCarousel ? window.__catCarousel.activeConfig(info) : null;
+  }
+  /** Todos los carruseles de la categoría, ya filtrados y ordenados. */
+  function activeCarouselsFor(info) {
+    if (!window.__catCarousel) return [];
+    if (window.__catCarousel.activeList) return window.__catCarousel.activeList(info);
+    // por si quedó una versión vieja de la biblioteca en caché
+    var uno = window.__catCarousel.activeConfig(info);
+    return uno ? [uno] : [];
   }
   function insertCategoryCarousel(frame, cfg, category) {
     if (window.__catCarousel) window.__catCarousel.insert(frame, cfg, category);

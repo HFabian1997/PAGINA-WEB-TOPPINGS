@@ -1902,10 +1902,20 @@
     bg: "", border: false, shadow: true
   };
 
-  /** Devuelve (creándola si hace falta) la config del carrusel de una categoría. */
-  function carouselOf(cat) {
-    var info = state.content[cat] || (state.content[cat] = {});
-    var c = info.carousel || (info.carousel = {});
+  /* ---- De un carrusel por categoría a varios ----
+
+     Antes cada categoría guardaba UN carrusel en `info.carousel`. Ahora
+     guarda una lista en `info.carousels`.
+
+     Lo que ya está guardado se convierte solo la primera vez que se lee: el
+     carrusel suelto pasa a ser el primero de la lista. Así Fabián no pierde
+     lo que tenía configurado y no hay que migrar el content.json a mano. */
+
+  /** Le pone los valores que falten a un carrusel leído del disco.
+   *  Vale la pena ser desconfiado acá: el panel ya se rompió entero una vez
+   *  por hacerle .forEach a un campo que estaba guardado como texto. */
+  function normalizarCarrusel(c) {
+    if (!c || typeof c !== "object") c = {};
     for (var k in CAROUSEL_DEFAULTS) {
       if (Object.prototype.hasOwnProperty.call(CAROUSEL_DEFAULTS, k) && c[k] === undefined) {
         c[k] = Array.isArray(CAROUSEL_DEFAULTS[k]) ? [] : CAROUSEL_DEFAULTS[k];
@@ -1915,14 +1925,107 @@
     return c;
   }
 
+  /** La lista de carruseles de una categoría, creándola si hace falta. */
+  function carouselesDe(cat) {
+    var info = state.content[cat] || (state.content[cat] = {});
+    if (!Array.isArray(info.carousels)) {
+      // formato viejo: el carrusel suelto pasa a ser el primero
+      info.carousels = (info.carousel && typeof info.carousel === "object")
+        ? [info.carousel] : [];
+      delete info.carousel;
+    }
+    /* Se normaliza EN EL MISMO array, sin reemplazarlo.
+
+       Antes esto hacía `info.carousels = info.carousels.map(...)`, que crea
+       un array nuevo cada vez. Como dibujar cada bloque vuelve a llamar acá,
+       la lista que había capturado el botón "Agregar" quedaba apuntando al
+       array viejo: el push iba a uno que ya nadie miraba, y agregar no hacía
+       nada. Guardar la identidad del array es lo que lo arregla. */
+    for (var i = 0; i < info.carousels.length; i++) {
+      info.carousels[i] = normalizarCarrusel(info.carousels[i]);
+    }
+    return info.carousels;
+  }
+
+  /** El carrusel número `idx` de una categoría, creándolo si hace falta. */
+  function carouselOf(cat, idx) {
+    var lista = carouselesDe(cat);
+    idx = idx || 0;
+    while (lista.length <= idx) lista.push(normalizarCarrusel({}));
+    return lista[idx];
+  }
+
   function renderCarouselAdmins() {
     $$("[data-carousel-admin]").forEach(function (host) {
-      renderCarouselAdmin(host, host.getAttribute("data-carousel-admin"));
+      renderListaCarruseles(host, host.getAttribute("data-carousel-admin"));
     });
   }
 
-  function renderCarouselAdmin(host, cat) {
-    var c = carouselOf(cat);
+  /** La categoría entera: un bloque plegable por carrusel, más el botón de
+   *  agregar. Cada bloque se dibuja en su propio contenedor para que los
+   *  campos de uno no se mezclen con los del otro. */
+  function renderListaCarruseles(host, cat) {
+    var lista = carouselesDe(cat);
+    host.innerHTML = "";
+
+    if (!lista.length) {
+      var vacio = document.createElement("p");
+      vacio.className = "hint";
+      vacio.textContent = "Todavía no hay ningún carrusel en esta página.";
+      host.appendChild(vacio);
+    }
+
+    lista.forEach(function (c, idx) {
+      var caja = document.createElement("div");
+      caja.className = "cc-bloque";
+
+      var cabecera = document.createElement("div");
+      cabecera.className = "cc-bloque-cab";
+      var titulo = document.createElement("strong");
+      titulo.textContent = "Carrusel " + (idx + 1) +
+        (c.active ? "" : "  ·  apagado") +
+        "  ·  " + (c.images || []).length + ((c.images || []).length === 1 ? " imagen" : " imágenes");
+      cabecera.appendChild(titulo);
+
+      var borrar = document.createElement("button");
+      borrar.type = "button";
+      borrar.className = "btn btn-ghost cc-borrar";
+      borrar.textContent = "Quitar";
+      borrar.onclick = function () {
+        if (!confirm("¿Quitar el carrusel " + (idx + 1) + " de esta página? Se pierden sus imágenes y su configuración.")) return;
+        lista.splice(idx, 1);
+        markDirty();
+        renderListaCarruseles(host, cat);
+      };
+      cabecera.appendChild(borrar);
+      caja.appendChild(cabecera);
+
+      var cuerpo = document.createElement("div");
+      caja.appendChild(cuerpo);
+      host.appendChild(caja);
+      renderCarouselAdmin(cuerpo, cat, idx);
+    });
+
+    var agregar = document.createElement("button");
+    agregar.type = "button";
+    agregar.className = "btn btn-primary";
+    agregar.textContent = "+ Agregar otro carrusel a esta página";
+    agregar.onclick = function () {
+      var nuevo = normalizarCarrusel({});
+      nuevo.active = true;
+      /* Al final del menú: es donde menos estorba y donde se ve enseguida
+         que se agregó, en vez de aparecer entre medio sin avisar. */
+      nuevo.position = ((state.content[cat] && state.content[cat].images) || []).length;
+      lista.push(nuevo);
+      markDirty();
+      renderListaCarruseles(host, cat);
+    };
+    host.appendChild(agregar);
+  }
+
+  function renderCarouselAdmin(host, cat, idx) {
+    idx = idx || 0;
+    var c = carouselOf(cat, idx);
     var menuImages = (state.content[cat] && state.content[cat].images) || [];
 
     host.innerHTML =
@@ -2005,11 +2108,11 @@
         if (!rel) return;
         c.images.push({ src: rel, active: true });
         markDirty();
-        renderCarouselAdmin(host, cat);
+        renderCarouselAdmin(host, cat, idx);
       });
     };
 
-    $("[data-cc-preview]", host).onclick = function () { openCarouselPreview(cat); };
+    $("[data-cc-preview]", host).onclick = function () { openCarouselPreview(cat, idx); };
   }
 
   function renderCarouselImages(host, cat, c) {
@@ -2022,10 +2125,10 @@
     if (!list.__sortable) {
       list.__sortable = true;
       makeSortable(list, function (from, to) {
-        var cfg = carouselOf(cat);
+        var cfg = carouselOf(cat, idx);
         cfg.images.splice(to, 0, cfg.images.splice(from, 1)[0]);
         markDirty();
-        renderCarouselAdmin(host, cat);
+        renderCarouselAdmin(host, cat, idx);
       });
     }
 
@@ -2049,17 +2152,17 @@
 
       var onBox = row.querySelector('[data-role="on"]');
       onBox.checked = item.active !== false;
-      onBox.onchange = function () { item.active = onBox.checked; markDirty(); renderCarouselAdmin(host, cat); };
+      onBox.onchange = function () { item.active = onBox.checked; markDirty(); renderCarouselAdmin(host, cat, idx); };
 
       var up = row.querySelector('[data-role="up"]');
       var down = row.querySelector('[data-role="down"]');
       up.disabled = idx === 0;
       down.disabled = idx === c.images.length - 1;
-      up.onclick = function () { c.images.splice(idx - 1, 0, c.images.splice(idx, 1)[0]); markDirty(); renderCarouselAdmin(host, cat); };
-      down.onclick = function () { c.images.splice(idx + 1, 0, c.images.splice(idx, 1)[0]); markDirty(); renderCarouselAdmin(host, cat); };
+      up.onclick = function () { c.images.splice(idx - 1, 0, c.images.splice(idx, 1)[0]); markDirty(); renderCarouselAdmin(host, cat, idx); };
+      down.onclick = function () { c.images.splice(idx + 1, 0, c.images.splice(idx, 1)[0]); markDirty(); renderCarouselAdmin(host, cat, idx); };
       row.querySelector('[data-role="remove"]').onclick = function () {
         if (!confirm("¿Quitar esta imagen del carrusel?")) return;
-        c.images.splice(idx, 1); markDirty(); renderCarouselAdmin(host, cat);
+        c.images.splice(idx, 1); markDirty(); renderCarouselAdmin(host, cat, idx);
       };
       list.appendChild(row);
     });
@@ -2096,8 +2199,8 @@
       var down = row.querySelector('[data-role="down"]');
       up.disabled = c.position === 0;
       down.disabled = c.position === total;
-      up.onclick = function () { c.position = Math.max(0, c.position - 1); markDirty(); renderCarouselAdmin(host, cat); };
-      down.onclick = function () { c.position = Math.min(total, c.position + 1); markDirty(); renderCarouselAdmin(host, cat); };
+      up.onclick = function () { c.position = Math.max(0, c.position - 1); markDirty(); renderCarouselAdmin(host, cat, idx); };
+      down.onclick = function () { c.position = Math.min(total, c.position + 1); markDirty(); renderCarouselAdmin(host, cat, idx); };
       row.addEventListener("dragstart", function (e) {
         e.dataTransfer.setData("text/plain", "carousel");
         row.classList.add("is-dragging");
@@ -2116,7 +2219,7 @@
         var r = row.getBoundingClientRect();
         c.position = (e.clientY - r.top) < r.height / 2 ? slot : slot + 1;
         markDirty();
-        renderCarouselAdmin(host, cat);
+        renderCarouselAdmin(host, cat, idx);
       });
     }
     return row;
@@ -2124,15 +2227,15 @@
 
   /* Vista previa: usa EXACTAMENTE el mismo carrusel que ve el cliente
      (lib/cat-carousel.js), así lo que se ve aquí es lo que se publicará. */
-  function openCarouselPreview(cat) {
-    var c = carouselOf(cat);
+  function openCarouselPreview(cat, idx) {
+    var c = carouselOf(cat, idx || 0);
     var modal = $("[data-cc-preview-modal]");
     var body = $("[data-cc-preview-body]", modal);
     var prev = $(".cat-carousel", body);
     if (prev && window.__catCarousel) window.__catCarousel.destroy(prev);
     body.innerHTML = "";
 
-    var usable = window.__catCarousel && window.__catCarousel.activeConfig({ carousel: c });
+    var usable = window.__catCarousel && window.__catCarousel.usable ? window.__catCarousel.usable(c) : window.__catCarousel.activeConfig({ carousel: c });
     if (!usable) {
       body.innerHTML = '<p class="hint">Activa el carrusel y agrega al menos una imagen activa para ver la vista previa.</p>';
     } else {
