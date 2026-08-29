@@ -2074,9 +2074,13 @@
     host.appendChild(agregar);
   }
 
-  function renderCarouselAdmin(host, cat, idx) {
-    idx = idx || 0;
-    var c = carouselOf(cat, idx);
+  /* `iCar` es CUÁL carrusel de la categoría es este. Se llama distinto del
+     `idx` de las imágenes a propósito: cuando los dos se llamaban igual, el
+     de la imagen tapaba al del carrusel dentro del bucle y se redibujaba el
+     carrusel equivocado. */
+  function renderCarouselAdmin(host, cat, iCar) {
+    iCar = iCar || 0;
+    var c = carouselOf(cat, iCar);
     var menuImages = (state.content[cat] && state.content[cat].images) || [];
 
     host.innerHTML =
@@ -2148,8 +2152,8 @@
       el.oninput = function () { c[k] = (Number(el.value) || 0) * scale; markDirty(); };
     });
 
-    renderCarouselImages(host, cat, c);
-    renderCarouselBlocks(host, cat, c, menuImages);
+    renderCarouselImages(host, cat, iCar, c);
+    renderCarouselBlocks(host, cat, iCar, c, menuImages);
 
     $("[data-cc-add]", host).onchange = function (e) {
       var file = e.target.files[0];
@@ -2159,14 +2163,14 @@
         if (!rel) return;
         c.images.push({ src: rel, active: true });
         markDirty();
-        renderCarouselAdmin(host, cat, idx);
+        renderCarouselAdmin(host, cat, iCar);
       });
     };
 
-    $("[data-cc-preview]", host).onclick = function () { openCarouselPreview(cat, idx); };
+    $("[data-cc-preview]", host).onclick = function () { openCarouselPreview(cat, iCar); };
   }
 
-  function renderCarouselImages(host, cat, c) {
+  function renderCarouselImages(host, cat, iCar, c) {
     var list = $("[data-cc-images]", host);
     if (!c.images.length) {
       list.innerHTML = '<p class="hint">Todavía no has agregado imágenes a este carrusel.</p>';
@@ -2176,10 +2180,10 @@
     if (!list.__sortable) {
       list.__sortable = true;
       makeSortable(list, function (from, to) {
-        var cfg = carouselOf(cat, idx);
+        var cfg = carouselOf(cat, iCar);
         cfg.images.splice(to, 0, cfg.images.splice(from, 1)[0]);
         markDirty();
-        renderCarouselAdmin(host, cat, idx);
+        renderCarouselAdmin(host, cat, iCar);
       });
     }
 
@@ -2203,17 +2207,17 @@
 
       var onBox = row.querySelector('[data-role="on"]');
       onBox.checked = item.active !== false;
-      onBox.onchange = function () { item.active = onBox.checked; markDirty(); renderCarouselAdmin(host, cat, idx); };
+      onBox.onchange = function () { item.active = onBox.checked; markDirty(); renderCarouselAdmin(host, cat, iCar); };
 
       var up = row.querySelector('[data-role="up"]');
       var down = row.querySelector('[data-role="down"]');
       up.disabled = idx === 0;
       down.disabled = idx === c.images.length - 1;
-      up.onclick = function () { c.images.splice(idx - 1, 0, c.images.splice(idx, 1)[0]); markDirty(); renderCarouselAdmin(host, cat, idx); };
-      down.onclick = function () { c.images.splice(idx + 1, 0, c.images.splice(idx, 1)[0]); markDirty(); renderCarouselAdmin(host, cat, idx); };
+      up.onclick = function () { c.images.splice(idx - 1, 0, c.images.splice(idx, 1)[0]); markDirty(); renderCarouselAdmin(host, cat, iCar); };
+      down.onclick = function () { c.images.splice(idx + 1, 0, c.images.splice(idx, 1)[0]); markDirty(); renderCarouselAdmin(host, cat, iCar); };
       row.querySelector('[data-role="remove"]').onclick = function () {
         if (!confirm("¿Quitar esta imagen del carrusel?")) return;
-        c.images.splice(idx, 1); markDirty(); renderCarouselAdmin(host, cat, idx);
+        c.images.splice(idx, 1); markDirty(); renderCarouselAdmin(host, cat, iCar);
       };
       list.appendChild(row);
     });
@@ -2222,7 +2226,10 @@
   /* Lista de BLOQUES: las imágenes del menú y el carrusel en una sola lista
      ordenable. Mover el bloque del carrusel cambia su posición. Si mañana se
      agregan más imágenes al menú, aparecen aquí solas. */
-  function renderCarouselBlocks(host, cat, c, menuImages) {
+  /* `iCar` tiene que llegar hasta las flechas. Sin él, al apretarlas se
+     cambiaba la posición y se guardaba, pero el redibujo fallaba con un
+     error de variable inexistente: el cambio no se veía hasta recargar. */
+  function renderCarouselBlocks(host, cat, iCar, c, menuImages) {
     var box = $("[data-cc-blocks]", host);
     var total = menuImages.length;
     var pos = Math.max(0, Math.min(total, Number(c.position) || 0));
@@ -2230,12 +2237,12 @@
 
     box.innerHTML = "";
     for (var slot = 0; slot <= total; slot++) {
-      if (slot === pos) box.appendChild(buildCarouselBlockRow(host, cat, c, total, true, null, slot));
-      if (slot < total) box.appendChild(buildCarouselBlockRow(host, cat, c, total, false, menuImages[slot], slot));
+      if (slot === pos) box.appendChild(buildCarouselBlockRow(host, cat, iCar, c, total, true, null, slot));
+      if (slot < total) box.appendChild(buildCarouselBlockRow(host, cat, iCar, c, total, false, menuImages[slot], slot));
     }
   }
 
-  function buildCarouselBlockRow(host, cat, c, total, isCarousel, src, slot) {
+  function buildCarouselBlockRow(host, cat, iCar, c, total, isCarousel, src, slot) {
     var row = document.createElement("div");
     row.className = "cc-block" + (isCarousel ? " is-carousel" : "");
     if (isCarousel) {
@@ -2250,8 +2257,8 @@
       var down = row.querySelector('[data-role="down"]');
       up.disabled = c.position === 0;
       down.disabled = c.position === total;
-      up.onclick = function () { c.position = Math.max(0, c.position - 1); markDirty(); renderCarouselAdmin(host, cat, idx); };
-      down.onclick = function () { c.position = Math.min(total, c.position + 1); markDirty(); renderCarouselAdmin(host, cat, idx); };
+      up.onclick = function () { c.position = Math.max(0, c.position - 1); markDirty(); renderCarouselAdmin(host, cat, iCar); };
+      down.onclick = function () { c.position = Math.min(total, c.position + 1); markDirty(); renderCarouselAdmin(host, cat, iCar); };
       row.addEventListener("dragstart", function (e) {
         e.dataTransfer.setData("text/plain", "carousel");
         row.classList.add("is-dragging");
@@ -2270,7 +2277,7 @@
         var r = row.getBoundingClientRect();
         c.position = (e.clientY - r.top) < r.height / 2 ? slot : slot + 1;
         markDirty();
-        renderCarouselAdmin(host, cat, idx);
+        renderCarouselAdmin(host, cat, iCar);
       });
     }
     return row;
