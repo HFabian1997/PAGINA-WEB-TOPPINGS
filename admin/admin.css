@@ -961,3 +961,42 @@ body.is-sorting-active { user-select: none; }
 }
 .cc-bloque-cab strong { font-size: .95rem; }
 .cc-borrar { padding: .25rem .7rem; font-size: .8rem; }
+/* ---- Mis temas ----
+   Cada tema se muestra con sus PROPIOS colores, no con los de la página.
+   Es lo que permite elegir mirando en vez de ir probando uno por uno. */
+.tema-caja {
+  display: flex; align-items: center; gap: .9rem;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 12px;
+  padding: .75rem .9rem;
+  margin: 0 0 .7rem;
+  flex-wrap: wrap;
+}
+.tema-caja.is-activo { border-color: var(--accent, #ffd400); }
+.tema-muestra {
+  width: 58px; height: 58px; flex: 0 0 auto;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,.18);
+  display: flex; align-items: center; justify-content: center; gap: .3rem;
+}
+.tema-muestra-punto { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+.tema-muestra-texto { font-weight: 800; font-size: .95rem; }
+.tema-cuerpo { flex: 1; min-width: 180px; }
+.tema-titulo { font-weight: 700; margin-bottom: .45rem; }
+.tema-acciones { display: flex; gap: .4rem; flex-wrap: wrap; }
+.tema-acciones .btn { padding: .3rem .8rem; font-size: .82rem; }
+.tema-borrar { opacity: .75; }
+/* El editor ocupa toda la fila: los controles necesitan ancho */
+.tema-editor {
+  flex: 1 0 100%;
+  margin-top: .7rem; padding-top: .7rem;
+  border-top: 1px solid rgba(255,255,255,.10);
+}
+.tema-campo {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: .8rem; margin-bottom: .5rem;
+}
+.tema-campo > span { font-size: .85rem; color: var(--ink-mute, rgba(255,255,255,.6)); }
+.tema-campo input[type=color] { width: 54px; height: 32px; padding: 0; border-radius: 7px; }
+.tema-campo input[type=text], .tema-campo select { max-width: 60%; }
+.temas-acciones { display: flex; gap: .5rem; flex-wrap: wrap; margin: 1rem 0; }

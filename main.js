@@ -61,6 +61,153 @@
         $$("[data-pagenav]").forEach(function (b) { b.hidden = true; });
       }
     }
+
+    /* La decoración va al final: necesita saber ya si las animaciones
+       quedaron apagadas. */
+    aplicarDecoracion();
+  }
+  window.__aplicarDecoracion = aplicarDecoracion;   // lo usa la vista previa del panel
+
+  /* ---------------- Decoración del tema ----------------
+
+     Lo que convierte un cambio de colores en un TEMA: algo cayendo suave
+     de fondo — hojas en Halloween, nieve en Navidad, corazones en Amor.
+
+     Se dibuja en un lienzo y no con elementos de la página a propósito.
+     Veinte elementos moviéndose como <div> obligan al navegador a
+     recalcular la posición de todo en cada cuadro; en un lienzo son veinte
+     dibujos y nada más. En el juego ya aprendimos lo que cuesta eso en un
+     celular flojo.
+
+     Se apaga sola en tres casos, y los tres importan:
+       · si el tema no pide decoración
+       · si el cliente tiene las animaciones desactivadas
+       · si el sistema del celular pide menos movimiento (accesibilidad)
+
+     Y se detiene cuando la pestaña no está a la vista: seguir dibujando
+     ahí es gastar batería a cambio de nada. */
+  var DECORACIONES = {
+    hojas:        { color: "255,140,40",  forma: "hoja",      cuantos: 16, vel: 22 },
+    nieve:        { color: "255,255,255", forma: "copo",      cuantos: 22, vel: 18 },
+    corazones:    { color: "255,110,160", forma: "corazon",   cuantos: 14, vel: 20 },
+    /* Un murciélago de verdad es negro, pero esta página es oscura: pintado
+       de negro no se ve nada. Se usa un morado apagado, que sobre el fondo
+       oscuro se lee como silueta igual. */
+    murcielagos:  { color: "150,110,185", forma: "murcielago",cuantos: 10, vel: 34 },
+    confeti:      { color: "",            forma: "confeti",   cuantos: 20, vel: 26 }
+  };
+
+  var decoLienzo = null, decoRaf = null, decoPiezas = [], decoCfg = null, decoT0 = 0;
+
+  function quitarDecoracion() {
+    if (decoRaf) { cancelAnimationFrame(decoRaf); decoRaf = null; }
+    if (decoLienzo && decoLienzo.parentNode) decoLienzo.parentNode.removeChild(decoLienzo);
+    decoLienzo = null; decoPiezas = []; decoCfg = null;
+  }
+
+  function aplicarDecoracion() {
+    quitarDecoracion();
+    var c = data.customization || {};
+    var cual = c.decoracion || "ninguna";
+    if (cual === "ninguna" || !DECORACIONES[cual]) return;
+    if (c.effects && c.effects.animations === false) return;
+    try {
+      if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    } catch (e) {}
+
+    decoCfg = DECORACIONES[cual];
+    decoLienzo = document.createElement("canvas");
+    decoLienzo.className = "tema-decoracion";
+    decoLienzo.setAttribute("aria-hidden", "true");
+    document.body.appendChild(decoLienzo);
+
+    var ctx = decoLienzo.getContext("2d");
+    var DPR = Math.min(window.devicePixelRatio || 1, 2);
+    var W = 0, H = 0;
+
+    function medir() {
+      W = window.innerWidth; H = window.innerHeight;
+      decoLienzo.width = Math.round(W * DPR);
+      decoLienzo.height = Math.round(H * DPR);
+      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    }
+    medir();
+    window.addEventListener("resize", medir);
+
+    var TONOS = ["255,212,0", "255,90,140", "120,200,255", "140,255,170", "190,120,255"];
+    decoPiezas = [];
+    for (var i = 0; i < decoCfg.cuantos; i++) {
+      decoPiezas.push({
+        x: Math.random(), y: Math.random(),
+        r: 5 + Math.random() * 7,
+        vel: 0.6 + Math.random() * 0.8,
+        vaiven: 10 + Math.random() * 26,
+        fase: Math.random() * Math.PI * 2,
+        giro: Math.random() * Math.PI * 2,
+        velGiro: (Math.random() - 0.5) * 1.6,
+        tono: TONOS[i % TONOS.length]
+      });
+    }
+
+    decoT0 = performance.now();
+    function cuadro(ahora) {
+      decoRaf = requestAnimationFrame(cuadro);
+      if (document.hidden) return;         // pestaña escondida: no se gasta batería
+      var t = (ahora - decoT0) / 1000;
+      ctx.clearRect(0, 0, W, H);
+
+      for (var k = 0; k < decoPiezas.length; k++) {
+        var p = decoPiezas[k];
+        var caida = (p.y + (t * decoCfg.vel * p.vel) / H) % 1.25 - 0.12;
+        var py = caida * H;
+        var px = p.x * W + Math.sin(t * 0.7 + p.fase) * p.vaiven;
+        var color = decoCfg.forma === "confeti" ? p.tono : decoCfg.color;
+        ctx.save();
+        ctx.translate(px, py);
+        ctx.rotate(p.giro + t * p.velGiro);
+        ctx.fillStyle = "rgba(" + color + ",.55)";
+        dibujarPieza(ctx, decoCfg.forma, p.r);
+        ctx.restore();
+      }
+    }
+    decoRaf = requestAnimationFrame(cuadro);
+  }
+
+  /** Cada forma, centrada en el cero para que el giro salga del medio. */
+  function dibujarPieza(ctx, forma, r) {
+    if (forma === "copo") {
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.4, 0, Math.PI * 2); ctx.fill();
+      return;
+    }
+    if (forma === "hoja") {
+      ctx.beginPath();
+      ctx.moveTo(0, -r);
+      ctx.quadraticCurveTo(r, -r * 0.2, 0, r);
+      ctx.quadraticCurveTo(-r, -r * 0.2, 0, -r);
+      ctx.fill();
+      return;
+    }
+    if (forma === "corazon") {
+      var s = r * 0.5;
+      ctx.beginPath();
+      ctx.moveTo(0, s * 0.9);
+      ctx.bezierCurveTo(-s * 2, -s * 0.6, -s * 0.7, -s * 1.9, 0, -s * 0.7);
+      ctx.bezierCurveTo(s * 0.7, -s * 1.9, s * 2, -s * 0.6, 0, s * 0.9);
+      ctx.fill();
+      return;
+    }
+    if (forma === "murcielago") {
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.quadraticCurveTo(-r * 0.6, -r * 0.7, -r * 1.4, 0);
+      ctx.quadraticCurveTo(-r * 0.6, r * 0.4, 0, r * 0.3);
+      ctx.quadraticCurveTo(r * 0.6, r * 0.4, r * 1.4, 0);
+      ctx.quadraticCurveTo(r * 0.6, -r * 0.7, 0, 0);
+      ctx.fill();
+      return;
+    }
+    // confeti: un rectangulito
+    ctx.fillRect(-r * 0.3, -r * 0.55, r * 0.6, r * 1.1);
   }
 
   /* ---------------- WhatsApp links ---------------- */

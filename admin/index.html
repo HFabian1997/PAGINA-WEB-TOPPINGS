@@ -60,6 +60,7 @@
 
     <span class="admin-tab-group-label">⚙️ Configuración general</span>
     <button class="admin-tab" data-tab="ia">Configuración de IA</button>
+    <button class="admin-tab" data-tab="temas">🎭 Mis temas</button>
     <button class="admin-tab" data-tab="personalizacion">Personalización</button>
     <button class="admin-tab" data-tab="flotantes">🫧 Botones flotantes</button>
   </nav>
@@ -1015,6 +1016,21 @@
     <h2>🫧 Botones flotantes</h2>
     <p class="hint">Qué botón se ve en cada página. Solo controla dónde aparecen: cómo funcionan no cambia — la burbuja de Zona Secreta, por ejemplo, sigue igual donde la muestres.</p>
     <div class="flotantes-tabla" data-flotantes-tabla></div>
+  </section>
+
+  <section class="admin-panel" data-panel="temas" hidden>
+    <h2>🎭 Mis temas</h2>
+    <p class="hint">Un tema es el aspecto completo de la página guardado con nombre: los colores, el fondo y lo que cae de adorno. Aplicás uno y toda la página cambia de una.</p>
+    <p class="hint"><strong>Los podés editar a tu gusto.</strong> No son fijos: cada uno abre con sus propios colores y los cambiás como quieras. Los tres que vienen (Halloween, Navidad, Amor y Amistad) son un punto de partida, no una regla.</p>
+
+    <div data-temas-lista></div>
+
+    <div class="temas-acciones">
+      <button type="button" class="btn btn-primary" data-tema-nuevo>+ Crear un tema nuevo</button>
+      <button type="button" class="btn btn-ghost" data-tema-desde-actual>Guardar cómo se ve ahora como tema</button>
+    </div>
+
+    <p class="hint">Aplicar un tema <strong>reemplaza</strong> los colores y el fondo que tengas puestos en Personalización. Si lo que tenés ahora te gusta, guardalo como tema primero con el botón de arriba y no lo perdés.</p>
   </section>
 
   <section class="admin-panel" data-panel="personalizacion" hidden>

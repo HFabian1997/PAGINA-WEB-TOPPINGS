@@ -1473,3 +1473,20 @@ body.no-animations .scroll-hint-text { animation: none; }
 /* En pantallas angostas el globo no cabe al lado del botón: se esconde y
    queda solo el ícono, que ya se entiende. */
 @media (max-width: 420px) { .fab-vote-label { display: none; } }
+
+/* ---- Decoración del tema ----
+   Va detrás de todo el contenido y no recibe toques: es adorno, no debe
+   estorbar un botón. `pointer-events:none` es lo que lo garantiza. */
+.tema-decoracion {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+  opacity: .85;
+}
+/* Si el cliente pidió menos movimiento, no se dibuja (ya se apaga en el
+   código, pero esto cubre el caso de que el lienzo quede puesto). */
+@media (prefers-reduced-motion: reduce) { .tema-decoracion { display: none; } }
+.no-animations .tema-decoracion { display: none; }

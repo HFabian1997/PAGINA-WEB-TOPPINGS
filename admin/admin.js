@@ -2317,6 +2317,291 @@
     });
   }
 
+  /* ==================== 🎭 Mis temas ====================
+
+     Un tema es el aspecto completo de la página guardado con nombre. No es
+     una función aparte: son los MISMOS valores que ya usa Personalización,
+     metidos en una caja con etiqueta.
+
+     Por eso aplicar un tema es copiar esos valores a `customization` y nada
+     más. La página no sabe que existen los temas ni necesita saberlo: ya
+     sabe pintar con esos valores desde siempre. Si mañana se agregan temas
+     nuevos, la página no cambia una línea.
+
+     Y por eso también son editables de verdad: cada tema guarda sus propios
+     valores y se tocan con los mismos controles de siempre. Los tres que
+     vienen son un punto de partida, no algo fijo. */
+
+  /** Qué cosas de la personalización forman parte de un tema.
+   *
+   *  Se nombran una por una a propósito. Guardar `customization` entera
+   *  metería adentro cosas que NO son el aspecto —si las ventanas llevan
+   *  chorreado, si se ven las flechas— y aplicar un tema le cambiaría a
+   *  Fabián ajustes que él no asocia con el color de la página. */
+  var CAMPOS_DEL_TEMA = [
+    "accentColor", "textColor",
+    "backgroundType", "backgroundColor", "backgroundImage", "backgroundOverlay",
+    "decoracion"
+  ];
+
+  var DECORACIONES_TEMA = [
+    ["ninguna", "Sin adorno"],
+    ["hojas", "🍂 Hojas cayendo"],
+    ["nieve", "❄️ Nieve"],
+    ["corazones", "💗 Corazones"],
+    ["murcielagos", "🦇 Murciélagos"],
+    ["confeti", "🎉 Confeti"]
+  ];
+
+  /** Los tres que vienen de fábrica. Se crean UNA vez, la primera que se
+   *  abre la pestaña, y a partir de ahí son suyos: si los edita, quedan
+   *  editados; si los borra, no vuelven solos. */
+  function temasDeFabrica() {
+    return [
+      { id: "halloween", nombre: "Halloween", icono: "🎃", valores: {
+          accentColor: "#FF7A18", textColor: "#FFF3E6",
+          backgroundType: "color", backgroundColor: "#140A1E",
+          backgroundOverlay: 0.9, decoracion: "murcielagos" } },
+      { id: "navidad", nombre: "Navidad", icono: "🎄", valores: {
+          accentColor: "#E8453C", textColor: "#F4FAFF",
+          backgroundType: "color", backgroundColor: "#0B1F2E",
+          backgroundOverlay: 0.88, decoracion: "nieve" } },
+      { id: "amor", nombre: "Amor y Amistad", icono: "💗", valores: {
+          accentColor: "#FF4F8B", textColor: "#FFF0F5",
+          backgroundType: "color", backgroundColor: "#2A0F1E",
+          backgroundOverlay: 0.86, decoracion: "corazones" } }
+    ];
+  }
+
+  function temasEstado() {
+    var t = state.content.temas;
+    if (!t || typeof t !== "object" || Array.isArray(t)) t = state.content.temas = {};
+    if (!Array.isArray(t.lista)) {
+      t.lista = temasDeFabrica();
+      markDirty();
+    }
+    // cada tema, por desconfianza: el panel ya se rompió por un campo que no era lo que parecía
+    t.lista = t.lista.filter(function (x) { return x && typeof x === "object"; });
+    t.lista.forEach(function (x, i) {
+      if (!x.id) x.id = "tema_" + Date.now().toString(36) + i;
+      if (typeof x.nombre !== "string" || !x.nombre.trim()) x.nombre = "Tema " + (i + 1);
+      if (typeof x.icono !== "string") x.icono = "🎨";
+      if (!x.valores || typeof x.valores !== "object") x.valores = {};
+    });
+    return t;
+  }
+
+  /** Aplica un tema: copia sus valores a la personalización de siempre. */
+  function aplicarTema(tema) {
+    var c = customization();
+    CAMPOS_DEL_TEMA.forEach(function (k) {
+      if (tema.valores[k] !== undefined && tema.valores[k] !== "") c[k] = tema.valores[k];
+    });
+    temasEstado().activo = tema.id;
+    markDirty();
+    renderAll();
+  }
+
+  /** Guarda el aspecto actual de la página como un tema nuevo. */
+  function temaDesdeActual(nombre) {
+    var c = customization();
+    var valores = {};
+    CAMPOS_DEL_TEMA.forEach(function (k) { if (c[k] !== undefined) valores[k] = c[k]; });
+    return { id: "tema_" + Date.now().toString(36), nombre: nombre, icono: "🎨", valores: valores };
+  }
+
+  function renderTemas() {
+    var host = $("[data-temas-lista]");
+    if (!host) return;
+    var t = temasEstado();
+    host.innerHTML = "";
+
+    if (!t.lista.length) {
+      var vacio = document.createElement("p");
+      vacio.className = "hint";
+      vacio.textContent = "No tenés ningún tema guardado. Creá uno nuevo o guardá cómo se ve la página ahora.";
+      host.appendChild(vacio);
+      return;
+    }
+
+    t.lista.forEach(function (tema, idx) {
+      var caja = document.createElement("div");
+      caja.className = "tema-caja" + (t.activo === tema.id ? " is-activo" : "");
+
+      /* La muestra: los colores del tema, no los de la página. Es lo que
+         permite elegir mirando en vez de probando uno por uno. */
+      var v = tema.valores;
+      var muestra = document.createElement("div");
+      muestra.className = "tema-muestra";
+      muestra.style.background = v.backgroundType === "color" && v.backgroundColor
+        ? v.backgroundColor : "#141414";
+      muestra.innerHTML =
+        '<span class="tema-muestra-punto" style="background:' + (v.accentColor || "#FFD400") + '"></span>' +
+        '<span class="tema-muestra-texto" style="color:' + (v.textColor || "#fff") + '">Aa</span>';
+      caja.appendChild(muestra);
+
+      var cuerpo = document.createElement("div");
+      cuerpo.className = "tema-cuerpo";
+
+      var titulo = document.createElement("div");
+      titulo.className = "tema-titulo";
+      titulo.textContent = tema.icono + "  " + tema.nombre + (t.activo === tema.id ? "   · puesto ahora" : "");
+      cuerpo.appendChild(titulo);
+
+      var acciones = document.createElement("div");
+      acciones.className = "tema-acciones";
+
+      var poner = document.createElement("button");
+      poner.type = "button";
+      poner.className = "btn btn-primary";
+      poner.textContent = t.activo === tema.id ? "Volver a aplicar" : "Aplicar";
+      poner.onclick = function () { aplicarTema(tema); };
+      acciones.appendChild(poner);
+
+      var editar = document.createElement("button");
+      editar.type = "button";
+      editar.className = "btn btn-ghost";
+      editar.textContent = abiertoTema[tema.id] ? "Cerrar" : "Editar";
+      editar.onclick = function () {
+        abiertoTema[tema.id] = !abiertoTema[tema.id];
+        renderTemas();
+      };
+      acciones.appendChild(editar);
+
+      var borrar = document.createElement("button");
+      borrar.type = "button";
+      borrar.className = "btn btn-ghost tema-borrar";
+      borrar.textContent = "Quitar";
+      borrar.onclick = function () {
+        if (!confirm("¿Quitar el tema «" + tema.nombre + "»? Lo que ya está aplicado en la página no cambia.")) return;
+        t.lista.splice(idx, 1);
+        markDirty();
+        renderTemas();
+      };
+      acciones.appendChild(borrar);
+
+      cuerpo.appendChild(acciones);
+      caja.appendChild(cuerpo);
+
+      if (abiertoTema[tema.id]) caja.appendChild(editorDeTema(tema));
+      host.appendChild(caja);
+    });
+  }
+
+  var abiertoTema = {};
+
+  /** Los controles para editar UN tema. Son los mismos valores que
+   *  Personalización, pero escribiendo en el tema y no en la página: tocar
+   *  acá no cambia nada hasta que se aplique. */
+  function editorDeTema(tema) {
+    var caja = document.createElement("div");
+    caja.className = "tema-editor";
+    var v = tema.valores;
+
+    function fila(etiqueta, control) {
+      var l = document.createElement("label");
+      l.className = "tema-campo";
+      var sp = document.createElement("span");
+      sp.textContent = etiqueta;
+      l.appendChild(sp);
+      l.appendChild(control);
+      caja.appendChild(l);
+      return l;
+    }
+
+    var nombre = document.createElement("input");
+    nombre.type = "text";
+    nombre.value = tema.nombre;
+    nombre.oninput = function () { tema.nombre = nombre.value; markDirty(); };
+    nombre.onblur = renderTemas;
+    fila("Nombre del tema", nombre);
+
+    var icono = document.createElement("input");
+    icono.type = "text";
+    icono.value = tema.icono;
+    icono.maxLength = 4;
+    icono.oninput = function () { tema.icono = icono.value; markDirty(); };
+    icono.onblur = renderTemas;
+    fila("Emoji", icono);
+
+    [["accentColor", "Color de acento", "#FFD400"],
+     ["textColor", "Color del texto", "#FFFFFF"],
+     ["backgroundColor", "Color de fondo", "#0A0A0A"]].forEach(function (c) {
+      var inp = document.createElement("input");
+      inp.type = "color";
+      inp.value = v[c[0]] || c[2];
+      inp.oninput = function () {
+        v[c[0]] = inp.value;
+        if (c[0] === "backgroundColor") v.backgroundType = "color";
+        markDirty();
+        renderTemas();
+      };
+      fila(c[1], inp);
+    });
+
+    var fondo = document.createElement("select");
+    [["color", "Color sólido"], ["texture", "Textura urbana"], ["image", "La imagen que ya tenés puesta"]]
+      .forEach(function (o) {
+        var op = document.createElement("option");
+        op.value = o[0]; op.textContent = o[1];
+        fondo.appendChild(op);
+      });
+    fondo.value = v.backgroundType || "color";
+    fondo.onchange = function () { v.backgroundType = fondo.value; markDirty(); renderTemas(); };
+    fila("Tipo de fondo", fondo);
+
+    var deco = document.createElement("select");
+    DECORACIONES_TEMA.forEach(function (o) {
+      var op = document.createElement("option");
+      op.value = o[0]; op.textContent = o[1];
+      deco.appendChild(op);
+    });
+    deco.value = v.decoracion || "ninguna";
+    deco.onchange = function () { v.decoracion = deco.value; markDirty(); };
+    fila("Qué cae de adorno", deco);
+
+    var oscuro = document.createElement("input");
+    oscuro.type = "range";
+    oscuro.min = "0.5"; oscuro.max = "1"; oscuro.step = "0.02";
+    oscuro.value = v.backgroundOverlay == null ? 0.88 : v.backgroundOverlay;
+    oscuro.oninput = function () { v.backgroundOverlay = Number(oscuro.value); markDirty(); };
+    fila("Qué tan oscuras se ven las tarjetas", oscuro);
+
+    var nota = document.createElement("p");
+    nota.className = "hint";
+    nota.textContent = "Estos cambios se guardan en el tema. Para verlos en la página, aplicá el tema.";
+    caja.appendChild(nota);
+
+    return caja;
+  }
+
+  function initTemas() {
+    var nuevo = $("[data-tema-nuevo]");
+    if (nuevo) nuevo.addEventListener("click", function () {
+      var t = temasEstado();
+      var tema = { id: "tema_" + Date.now().toString(36), nombre: "Tema nuevo", icono: "🎨",
+                   valores: { accentColor: "#FFD400", textColor: "#FFFFFF",
+                              backgroundType: "color", backgroundColor: "#0A0A0A",
+                              backgroundOverlay: 0.88, decoracion: "ninguna" } };
+      t.lista.push(tema);
+      abiertoTema[tema.id] = true;   // recién creado: se abre para configurarlo
+      markDirty();
+      renderTemas();
+    });
+
+    var desde = $("[data-tema-desde-actual]");
+    if (desde) desde.addEventListener("click", function () {
+      var nombre = prompt("¿Cómo se va a llamar este tema?", "Mi tema");
+      if (nombre === null) return;
+      nombre = (nombre || "").trim() || "Mi tema";
+      var t = temasEstado();
+      var tema = temaDesdeActual(nombre);
+      t.lista.push(tema);
+      markDirty();
+      renderTemas();
+    });
+  }
+
   /* ==================== ⏱️ Cronómetro: los dos modos ====================
      El selector solo muestra los campos del modo elegido; la configuración del
      otro sigue guardada en content.json intacta, así que alternar no borra nada. */
@@ -2633,6 +2918,7 @@
     renderAudioFields();
     renderImageLists();
     renderCarouselAdmins();
+    renderTemas();
     renderGallery();
     renderRepeatLists();
     renderAiDocStatus();
@@ -4941,6 +5227,7 @@
     initAiDoc();
     initBgTypeToggle();
     initLooks();
+    initTemas();
     initAddHomeImage();
     initPrizeMethodOrder();
     initStopTimeRound();
