@@ -19,6 +19,60 @@
      Se corre primero que cualquier otra cosa en boot(), para que el resto de
      la página ya pinte con los valores elegidos desde el panel y no haya un
      "flash" del tema por defecto más de lo necesario. */
+  /* ---------------- Tinte del tema ----------------
+
+     Un tema no debería tener que elegir entre cambiar el ambiente de la
+     página y conservar el fondo. El tinte resuelve eso: una capa de color
+     translúcida sobre la textura.
+
+     Y no se queda en el fondo. Las tarjetas y los paneles son grises fijos
+     con algo de transparencia, así que sobre un fondo teñido se verían casi
+     igual que siempre y el cambio quedaría a medias. Así que el gris de las
+     tarjetas también se corre hacia el color del tema —poco, para que el
+     texto siga legible, pero lo suficiente para que se note que la página
+     entera cambió y no solo el fondo. */
+
+  /** "#RRGGBB" o "#RGB" a [r,g,b]; null si no se entiende. */
+  function aRgb(hex) {
+    if (typeof hex !== "string") return null;
+    var h = hex.trim().replace(/^#/, "");
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    if (!/^[0-9a-fA-F]{6}$/.test(h)) return null;
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+  }
+
+  /** Los grises de las tarjetas, tal como están en styles.css. */
+  var GRISES = [["--bg", 17, 17, 17], ["--bg-2", 26, 26, 26],
+                ["--bg-3", 35, 35, 35], ["--card", 28, 28, 28]];
+
+  function aplicarTinte(root, c) {
+    var rgb = aRgb(c.tinte);
+    var f = Number(c.tinteFuerza);
+    if (!isFinite(f)) f = 0;
+    f = Math.max(0, Math.min(0.85, f));
+
+    if (!rgb || f <= 0) {
+      root.style.setProperty("--page-tint", "none");
+      GRISES.forEach(function (g) { root.style.removeProperty(g[0]); });
+      return;
+    }
+
+    var color = "rgba(" + rgb[0] + "," + rgb[1] + "," + rgb[2] + "," + f.toFixed(3) + ")";
+    // un degradado de un solo color: es la forma de pintar un plano como capa de imagen
+    root.style.setProperty("--page-tint", "linear-gradient(" + color + "," + color + ")");
+
+    /* Las tarjetas se corren hacia el color del tema a un tercio de la
+       fuerza del fondo. Más que eso y el texto blanco empieza a pelear con
+       el color de atrás. */
+    var mezcla = f * 0.34;
+    GRISES.forEach(function (g) {
+      var r = Math.round(g[1] + (rgb[0] - g[1]) * mezcla);
+      var vd = Math.round(g[2] + (rgb[1] - g[2]) * mezcla);
+      var a = Math.round(g[3] + (rgb[2] - g[3]) * mezcla);
+      root.style.setProperty(g[0], "rgba(" + r + "," + vd + "," + a + ", var(--overlay-alpha))");
+    });
+  }
+
   function applyCustomization() {
     var c = data.customization;
     if (!c) return;
@@ -41,6 +95,8 @@
       root.style.setProperty("--page-bg-image", "url('" + c.backgroundImage + "')");
     }
     // backgroundType "texture" (o sin definir): se deja la textura urbana de siempre.
+
+    aplicarTinte(root, c);
 
     /* Estilo de las ventanas emergentes (Personalización → Ventanas).
        "urban" = franja de pintura con chorreado + textura de muro;

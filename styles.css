@@ -43,6 +43,20 @@
   --page-bg-color: #0a0a0a;
   --page-bg-image: url("assets/img/bg-texture.jpg");
 
+  /* Tinte del tema. Va ENCIMA de la textura, no en su lugar.
+
+     La textura urbana es un jpg opaco pintado con `cover`: tapa toda la
+     pantalla, así que --page-bg-color queda debajo y no se ve nunca. Un
+     tema que quisiera cambiar el ambiente de la página tenía solo dos
+     caminos malos: apagar la textura y dejar un color plano, o cambiar un
+     color que nadie va a ver.
+
+     Con el tinte la textura sigue ahí —el fondo de Toppings con sus logos
+     intacto— pero toda la página se va a morado en Halloween, a verde en
+     Navidad, a vino en Amor. `none` es el valor normal: sin tema, no
+     pinta nada. */
+  --page-tint: none;
+
   /* Ventanas emergentes: el chorreado y la textura se configuran desde
      Personalización → Ventanas emergentes. */
   --modal-drip: #FFD400;
@@ -72,7 +86,8 @@ html::before {
   z-index: -1;
   pointer-events: none;
   background-color: var(--page-bg-color);
-  background-image: var(--page-bg-image);
+  /* Dos capas: el tinte primero (queda arriba), la textura debajo. */
+  background-image: var(--page-tint), var(--page-bg-image);
   background-position: center;
   background-size: cover;
   background-repeat: no-repeat;

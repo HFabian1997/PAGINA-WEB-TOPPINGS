@@ -2340,6 +2340,7 @@
    *  Fabián ajustes que él no asocia con el color de la página. */
   var CAMPOS_DEL_TEMA = [
     "accentColor", "textColor",
+    "tinte", "tinteFuerza",
     "backgroundType", "backgroundColor", "backgroundImage", "backgroundOverlay",
     "decoracion"
   ];
@@ -2357,18 +2358,22 @@
    *  abre la pestaña, y a partir de ahí son suyos: si los edita, quedan
    *  editados; si los borra, no vuelven solos. */
   function temasDeFabrica() {
+    /* Ninguno toca `backgroundType`: así el fondo de Toppings —la textura
+       con los logos— se queda tal cual, y el tema lo TIÑE. Reemplazarlo por
+       un color plano cambiaba, sí, pero a costa de perder lo que ya estaba
+       bien. */
     return [
       { id: "halloween", nombre: "Halloween", icono: "🎃", valores: {
           accentColor: "#FF7A18", textColor: "#FFF3E6",
-          backgroundType: "color", backgroundColor: "#140A1E",
+          tinte: "#3A1055", tinteFuerza: 0.52,
           backgroundOverlay: 0.9, decoracion: "murcielagos" } },
       { id: "navidad", nombre: "Navidad", icono: "🎄", valores: {
           accentColor: "#E8453C", textColor: "#F4FAFF",
-          backgroundType: "color", backgroundColor: "#0B1F2E",
+          tinte: "#0C3B2A", tinteFuerza: 0.5,
           backgroundOverlay: 0.88, decoracion: "nieve" } },
       { id: "amor", nombre: "Amor y Amistad", icono: "💗", valores: {
           accentColor: "#FF4F8B", textColor: "#FFF0F5",
-          backgroundType: "color", backgroundColor: "#2A0F1E",
+          tinte: "#4A0D28", tinteFuerza: 0.5,
           backgroundOverlay: 0.86, decoracion: "corazones" } }
     ];
   }
@@ -2397,6 +2402,17 @@
     CAMPOS_DEL_TEMA.forEach(function (k) {
       if (tema.valores[k] !== undefined && tema.valores[k] !== "") c[k] = tema.valores[k];
     });
+
+    /* El tinte se escribe SIEMPRE, incluso vacío.
+
+       Los demás campos se saltan cuando el tema no los trae —por eso un
+       tema puede no tocar el fondo y dejar el tuyo en paz—. Con el tinte
+       esa misma regla sería una trampa: aplicar Halloween y después un
+       tema sin tinte dejaría la página morada para siempre, sin ninguna
+       forma de sacarle el morado desde el panel. */
+    c.tinte = tema.valores.tinte || "";
+    c.tinteFuerza = Number(tema.valores.tinteFuerza) || 0;
+
     temasEstado().activo = tema.id;
     markDirty();
     renderAll();
@@ -2408,6 +2424,15 @@
     var valores = {};
     CAMPOS_DEL_TEMA.forEach(function (k) { if (c[k] !== undefined) valores[k] = c[k]; });
     return { id: "tema_" + Date.now().toString(36), nombre: nombre, icono: "🎨", valores: valores };
+  }
+
+  /** "#RRGGBB" o "#RGB" a [r,g,b]; null si no se entiende. */
+  function aRgbAdmin(hex) {
+    if (typeof hex !== "string") return null;
+    var h = hex.trim().replace(/^#/, "");
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    if (!/^[0-9a-fA-F]{6}$/.test(h)) return null;
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
   }
 
   function renderTemas() {
@@ -2433,8 +2458,20 @@
       var v = tema.valores;
       var muestra = document.createElement("div");
       muestra.className = "tema-muestra";
-      muestra.style.background = v.backgroundType === "color" && v.backgroundColor
-        ? v.backgroundColor : "#141414";
+      /* Lo que se ve en el cuadrito es lo mismo que va a pasar en la
+         página: si el tema reemplaza el fondo, su color; si lo tiñe, el
+         gris oscuro de siempre con el tinte encima, en la misma fuerza. */
+      if (v.backgroundType === "color" && v.backgroundColor) {
+        muestra.style.background = v.backgroundColor;
+      } else if (v.tinte && Number(v.tinteFuerza) > 0) {
+        var rgbM = aRgbAdmin(v.tinte);
+        var fM = Math.max(0, Math.min(0.85, Number(v.tinteFuerza)));
+        muestra.style.background = rgbM
+          ? "linear-gradient(rgba(" + rgbM.join(",") + "," + fM + "),rgba(" + rgbM.join(",") + "," + fM + ")), #141414"
+          : "#141414";
+      } else {
+        muestra.style.background = "#141414";
+      }
       muestra.innerHTML =
         '<span class="tema-muestra-punto" style="background:' + (v.accentColor || "#FFD400") + '"></span>' +
         '<span class="tema-muestra-texto" style="color:' + (v.textColor || "#fff") + '">Aa</span>';
@@ -2525,30 +2562,59 @@
     fila("Emoji", icono);
 
     [["accentColor", "Color de acento", "#FFD400"],
-     ["textColor", "Color del texto", "#FFFFFF"],
-     ["backgroundColor", "Color de fondo", "#0A0A0A"]].forEach(function (c) {
+     ["textColor", "Color del texto", "#FFFFFF"]].forEach(function (c) {
       var inp = document.createElement("input");
       inp.type = "color";
       inp.value = v[c[0]] || c[2];
-      inp.oninput = function () {
-        v[c[0]] = inp.value;
-        if (c[0] === "backgroundColor") v.backgroundType = "color";
-        markDirty();
-        renderTemas();
-      };
+      inp.oninput = function () { v[c[0]] = inp.value; markDirty(); renderTemas(); };
       fila(c[1], inp);
     });
 
+    /* El tinte: lo que de verdad le cambia el ambiente a la página entera
+       sin borrarle el fondo que ya tiene. */
+    var tinte = document.createElement("input");
+    tinte.type = "color";
+    tinte.value = v.tinte || "#3A1055";
+    tinte.oninput = function () {
+      v.tinte = tinte.value;
+      // si la fuerza estaba en cero, elegir un color no se vería y parecería roto
+      if (!Number(v.tinteFuerza)) v.tinteFuerza = 0.5;
+      markDirty(); renderTemas();
+    };
+    fila("Color que tiñe toda la página", tinte);
+
+    var fuerza = document.createElement("input");
+    fuerza.type = "range";
+    fuerza.min = "0"; fuerza.max = "0.85"; fuerza.step = "0.02";
+    fuerza.value = v.tinteFuerza == null ? 0 : v.tinteFuerza;
+    fuerza.oninput = function () { v.tinteFuerza = Number(fuerza.value); markDirty(); };
+    fila("Qué tan fuerte tiñe (en cero no tiñe nada)", fuerza);
+
     var fondo = document.createElement("select");
-    [["color", "Color sólido"], ["texture", "Textura urbana"], ["image", "La imagen que ya tenés puesta"]]
+    [["", "No tocarlo — dejar el que tenés puesto"],
+     ["texture", "Textura urbana"],
+     ["color", "Color sólido (le quita la textura)"],
+     ["image", "La imagen que ya tenés puesta"]]
       .forEach(function (o) {
         var op = document.createElement("option");
         op.value = o[0]; op.textContent = o[1];
         fondo.appendChild(op);
       });
-    fondo.value = v.backgroundType || "color";
+    fondo.value = v.backgroundType || "";
     fondo.onchange = function () { v.backgroundType = fondo.value; markDirty(); renderTemas(); };
-    fila("Tipo de fondo", fondo);
+    fila("Qué hace con el fondo", fondo);
+
+    /* Este color va pegado al selector de arriba y solo aparece cuando se
+       eligió "color sólido". Antes estaba suelto entre los otros colores y
+       era una trampa: tocarlo apagaba la textura de la página sin que
+       nada avisara. */
+    if (v.backgroundType === "color") {
+      var fondoColor = document.createElement("input");
+      fondoColor.type = "color";
+      fondoColor.value = v.backgroundColor || "#0A0A0A";
+      fondoColor.oninput = function () { v.backgroundColor = fondoColor.value; markDirty(); renderTemas(); };
+      fila("→ Color sólido del fondo", fondoColor);
+    }
 
     var deco = document.createElement("select");
     DECORACIONES_TEMA.forEach(function (o) {
@@ -2581,7 +2647,7 @@
       var t = temasEstado();
       var tema = { id: "tema_" + Date.now().toString(36), nombre: "Tema nuevo", icono: "🎨",
                    valores: { accentColor: "#FFD400", textColor: "#FFFFFF",
-                              backgroundType: "color", backgroundColor: "#0A0A0A",
+                              tinte: "", tinteFuerza: 0,
                               backgroundOverlay: 0.88, decoracion: "ninguna" } };
       t.lista.push(tema);
       abiertoTema[tema.id] = true;   // recién creado: se abre para configurarlo
